@@ -1,0 +1,808 @@
+<!DOCTYPE html>
+<html class="light" lang="en">
+<head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>JWLZIFY | The Future of High Jewelry</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;0,700;1,300;1,400;1,600;1,700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+<script>
+tailwind.config = {
+  darkMode:"class",
+  theme:{extend:{colors:{
+    "primary":"#3c6474","on-primary":"#ffffff",
+    "primary-container":"#b9e2f5","on-primary-container":"#3e6576",
+    "primary-fixed":"#c0e9fc","primary-fixed-dim":"#a4cddf",
+    "secondary":"#5e5e5b","on-secondary":"#ffffff",
+    "secondary-container":"#e1dfdb","on-secondary-container":"#63635f",
+    "surface":"#fbf9f9","surface-dim":"#dbdad9",
+    "surface-container-lowest":"#ffffff","surface-container-low":"#f5f3f3",
+    "surface-container":"#efeded","surface-container-high":"#e9e8e7",
+    "surface-container-highest":"#e3e2e2",
+    "on-surface":"#1b1c1c","on-surface-variant":"#41484b",
+    "outline":"#71787c","outline-variant":"#c1c7cb",
+    "inverse-surface":"#303031","inverse-primary":"#a4cddf",
+    "background":"#fbf9f9",
+  }}}
+}
+</script>
+<style>
+/* ── Hero sky fallback ── */
+.hero-bg { background: linear-gradient(180deg,#1a2e38 0%,#243e4a 35%,#2c4e5c 60%,#1a2e38 100%); }
+
+/* ── Hero headline ── */
+.hero-h1 {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: clamp(42px, 5.5vw, 72px);
+  font-weight: 600;
+  font-style: italic;
+  line-height: 1.08;
+  letter-spacing: -0.01em;
+  color: white;
+  text-shadow: 0 2px 28px rgba(0,0,0,0.28);
+}
+
+/* ── Transparent nav — nuclear override ── */
+nav, header {
+  background: transparent !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  box-shadow: none !important;
+  border-bottom: none !important;
+}
+nav.nav-visible, header.nav-visible {
+  background: rgba(251,249,249,0.96) !important;
+  backdrop-filter: blur(20px) !important;
+  -webkit-backdrop-filter: blur(20px) !important;
+  transition: background 0.35s ease, backdrop-filter 0.35s ease;
+}
+
+/* Nav links: white default → dark on nav-visible */
+.nav-link {
+  color: rgba(255,255,255,0.92) !important;
+  border-bottom: 2px solid transparent !important;
+  transition: color 0.35s ease, border-color 0.35s ease;
+}
+.nav-link.nav-active {
+  color: rgba(255,255,255,0.96) !important;
+  font-weight: 600 !important;
+  border-bottom: 2px solid rgba(255,255,255,0.45) !important;
+}
+nav.nav-visible .nav-link,
+header.nav-visible .nav-link {
+  color: #1b1c1c !important;
+  border-bottom: 2px solid transparent !important;
+}
+nav.nav-visible .nav-link.nav-active,
+header.nav-visible .nav-link.nav-active {
+  color: #3c6474 !important;
+  border-bottom: 2px solid #3c6474 !important;
+}
+
+/* Brand logo */
+.brand-logo {
+  color: rgba(255,255,255,0.92) !important;
+  transition: color 0.35s ease;
+}
+nav.nav-visible .brand-logo,
+header.nav-visible .brand-logo { color: #1b1c1c !important; }
+
+/* Sign In */
+.nav-signin {
+  color: rgba(255,255,255,0.72) !important;
+  transition: color 0.35s ease;
+  cursor: pointer;
+}
+nav.nav-visible .nav-signin,
+header.nav-visible .nav-signin { color: #1b1c1c !important; }
+
+/* Mobile menu icon */
+.nav-menu-btn {
+  color: rgba(255,255,255,0.88) !important;
+  transition: color 0.35s ease;
+}
+nav.nav-visible .nav-menu-btn,
+header.nav-visible .nav-menu-btn { color: #1b1c1c !important; }
+
+/* GENERATE button */
+#navGenerateBtn {
+  background: transparent !important;
+  color: rgba(255,255,255,0.92) !important;
+  border: 1.5px solid rgba(255,255,255,0.52) !important;
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  border-radius: 0.5rem;
+  padding: 12px 28px;
+  cursor: pointer;
+  transition: background 0.35s ease, color 0.35s ease, border-color 0.35s ease, box-shadow 0.35s ease;
+}
+nav.nav-visible #navGenerateBtn,
+header.nav-visible #navGenerateBtn {
+  background: #3c6474 !important;
+  color: white !important;
+  border-color: #3c6474 !important;
+  box-shadow: 0 8px 28px rgba(60,100,116,0.28);
+}
+</style>
+</head>
+<body class="bg-[#fbf9f9] text-[#1b1c1c] min-h-screen">
+
+<!-- ════════════════════════════
+     NAVIGATION
+════════════════════════════ -->
+<header class="fixed top-0 w-full z-50" id="siteHeader" style="background: transparent !important; box-shadow: none !important; border: none !important;">
+  <nav id="mainNav" class="flex justify-between items-center w-full max-w-[1600px] mx-auto px-4 md:px-16 py-5" style="background: transparent !important; box-shadow: none !important; border: none !important;">
+    <div class="flex items-center gap-10">
+      <a href="index.html" class="brand-logo" style="font-family:'Playfair Display',serif;font-size:22px;font-weight:600;letter-spacing:0.32em;text-transform:uppercase;color:rgba(255,255,255,0.92);">JWLZIFY</a>
+      <div class="hidden lg:flex items-center gap-8">
+        <a href="index.html"       class="nav-link nav-active" style="color:rgba(255,255,255,0.96);">Home</a>
+        <a href="collections.html" class="nav-link">Collections</a>
+        <a href="ailab.html"       class="nav-link">AI Lab</a>
+        <a href="about.html"       class="nav-link">About Us</a>
+        <a href="support.html"     class="nav-link">Support</a>
+      </div>
+    </div>
+    <div class="flex items-center gap-5">
+      <div id="authBtnWrapper" class="hidden lg:flex items-center"></div>
+      <a href="ailab.html">
+        <button id="navGenerateBtn" class="active:scale-95">GENERATE</button>
+      </a>
+      <button class="lg:hidden nav-menu-btn" aria-label="Menu" style="background:none;border:none;">
+        <span class="material-symbols-outlined">menu</span>
+      </button>
+    </div>
+  </nav>
+</header>
+
+<main>
+
+<!-- ════════════════════════════
+     HERO — VIDEO BACKGROUND
+════════════════════════════ -->
+<section class="relative min-h-screen flex flex-col items-center justify-center overflow-hidden hero-bg" id="hero">
+
+  <!-- Video background -->
+  <video autoplay muted loop playsinline
+    style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0;">
+    <source src="jwlzify-front-cover-animation.mp4" type="video/mp4">
+  </video>
+
+  <!-- Cinematic dark overlay for white text -->
+  <div class="absolute inset-0 pointer-events-none" style="z-index:1;
+    background: linear-gradient(180deg,
+      rgba(0,0,0,0.42) 0%,
+      rgba(0,0,0,0.24) 38%,
+      rgba(0,0,0,0.32) 72%,
+      rgba(0,0,0,0.45) 100%);"></div>
+
+  <!-- Ice crystal particles -->
+  <canvas id="crystalCanvas" class="absolute inset-0 w-full h-full pointer-events-none" style="z-index:2;"></canvas>
+
+  <!-- Hero content -->
+  <div class="relative w-full max-w-[1600px] mx-auto px-4 md:px-16 text-center"
+       style="z-index:3;padding-top:10vh;padding-bottom:0;">
+    <div class="mx-auto max-w-4xl flex flex-col items-center">
+
+      <!-- Headline -->
+      <h1 class="hero-h1 mb-12">
+        Imagined by You.<br>
+        <span style="color:rgba(255,255,255,0.95);font-weight:400;font-family:'Cormorant Garamond',serif;font-style:italic;">Perfected by AI.</span>
+      </h1>
+
+      <!-- Tagline -->
+      <p class="mb-16" style="font-family:'Cormorant Garamond',serif;font-style:italic;font-weight:600;font-size:clamp(18px,2vw,24px);color:rgba(255,255,255,0.78);letter-spacing:0.04em;">
+        Wear a piece no one else will ever own.
+      </p>
+
+      <!-- CTA -->
+      <a href="ailab.html">
+        <button class="label text-white px-16 py-5 rounded-lg active:scale-[0.97] transition-all btn-glow"
+                style="background:#3c6474;font-size:13px;letter-spacing:0.22em;border:none;">
+          Start Creating
+        </button>
+      </a>
+
+    </div>
+  </div>
+</section>
+
+
+<!-- ════════════════════════════
+     FEATURES BENTO GRID
+════════════════════════════ -->
+<section class="py-32 max-w-[1600px] mx-auto px-4 md:px-16" id="features">
+
+  <div class="flex flex-col lg:flex-row lg:items-end gap-6 mb-20">
+    <div class="max-w-xl">
+      <span class="eyebrow">Our Capabilities</span>
+      <h2 class="h-section mb-4">Crafting the Future</h2>
+      <p class="body-lg">We build jewelry the way it should have always been made — starting with you. Every piece begins as a thought, refined by AI, and brought to life by hand. No catalogues. No compromises. Just yours.</p>
+    </div>
+    <div class="hidden lg:block h-px flex-1 bg-[#c1c7cb]/30 ml-12 mb-2"></div>
+  </div>
+
+  <div class="grid grid-cols-12 gap-8">
+
+    <!-- AI Concepts — 8 cols -->
+    <div class="col-span-12 lg:col-span-8 glass border border-[#c1c7cb]/20 rounded-[32px] p-10 md:p-12
+                flex flex-col overflow-hidden group feat-large"
+         style="min-height:460px;box-shadow:0 20px 60px rgba(0,0,0,0.04);">
+      <div class="flex flex-col md:flex-row gap-10">
+        <div class="flex-1">
+          <div class="flex items-center justify-center rounded-full mb-6" style="width:48px;height:48px;background:rgba(60,100,116,0.08);">
+            <span class="material-symbols-outlined" style="color:#3c6474;font-size:24px;">model_training</span>
+          </div>
+          <h3 class="h-card mb-4">AI-Generated Concepts</h3>
+          <p class="body-copy max-w-sm">
+            Our AI draws on a vast design vocabulary to generate forms that feel entirely new — pieces that couldn't have existed without you asking for them.
+          </p>
+        </div>
+        <div class="flex-1 grid grid-cols-2 gap-4 translate-y-4 group-hover:translate-y-0 transition-transform duration-700">
+          <img class="feat-img w-full h-60 rounded-2xl object-cover"
+               src="https://lh3.googleusercontent.com/aida-public/AB6AXuD0937fENp8cSNmJtoHJFhhQvaY458o9In7y2byk1Ir_TnRIne7sy7GXGcfekWaAVNK7VR0RnzUrCgAbjp6emfWUl73ZOAeM9nC29LpYG3ca7vjurpYnmCc-mLs3xm2WN7zcozmEeaQ-4skvrtgDN2Kn_MWmipgTQTnicUIoOTiMfaOG9u4zHFYLEA_W8Z0Jm94kseJuFYjpHlc1AwzyPnDbX-7cELpXtKF9XYdp-3BhYRJ-vHsoayIzIz6W79-5xC-aJa0QUHGcIwE"
+               alt="AI design sketches"
+               onerror="this.style.cssText='background:linear-gradient(135deg,#b9e2f5,#a4cddf);min-height:240px;border-radius:1rem;';this.removeAttribute('src')"/>
+          <img class="feat-img w-full h-60 rounded-2xl object-cover"
+               src="https://lh3.googleusercontent.com/aida-public/AB6AXuAv1LoA4uj1akdQaCLcVX3JA_O_8Mtay00rYmTClhgOANfm64GInyRfvPrTeoWdOHnpq3YeCVFdsuTgRDjPbpZK4HL4pYNmBNaBJ7K6kCzLKRmuXRNKf2OyhviQmurDaPiSEBBoQmf1D49T1mAzhPykrG-dIpmkkAiMYuxWGL9-dff6_vTZSZBozS1_ys2RWPj9W08M4uXxDLfQPmj5mG9c0DBJsx7wRwI9Rnji5VIoJh_mco-nAwt4qJSWi3y1GcRazmMPJ9J4jQQ7"
+               alt="3D concept render"
+               onerror="this.style.cssText='background:linear-gradient(135deg,#a4cddf,#8fb8cc);min-height:240px;border-radius:1rem;';this.removeAttribute('src')"/>
+        </div>
+      </div>
+    </div>
+
+    <!-- Real-time Customization — 4 cols -->
+    <div class="col-span-12 lg:col-span-4 bg-[#f5f3f3] border border-[#c1c7cb]/10 rounded-[32px]
+                p-10 md:p-12 flex flex-col justify-center text-center group hover:bg-white transition-colors duration-500">
+      <div class="mb-8 flex justify-center">
+        <div class="flex items-center justify-center rounded-full group-hover:scale-110 transition-transform"
+             style="width:48px;height:48px;background:rgba(60,100,116,0.08);">
+          <span class="material-symbols-outlined" style="color:#3c6474;font-size:24px;">tune</span>
+        </div>
+      </div>
+      <h3 class="h-card mb-4">Real-time Customization</h3>
+      <p class="body-copy px-2">
+        Modify carats, clarity, and metal composition in our immersive 3D viewer
+        with instant visual feedback.
+      </p>
+    </div>
+
+    <!-- Handcrafted Finish — 4 cols dark -->
+    <div class="col-span-12 lg:col-span-4 rounded-[32px] flex flex-col items-start justify-end
+                min-h-[400px] relative overflow-hidden group" style="background:#303031;">
+      <img class="absolute inset-0 w-full h-full object-cover opacity-50
+                  group-hover:scale-110 group-hover:opacity-65 transition-all duration-1000"
+           src="https://lh3.googleusercontent.com/aida-public/AB6AXuADZi08S320hK7KvmaH8ZaIQ_jjZp8pAruouV7vokp-wK5FZGpVHHf4aC972DsuIdrA3ZwrufdRdveGbcDpE_zxy1X3DUtHoZSE0g0Cry4AFKlSp3PZm7RNeeZp_5Iokg82vOTNgUO_wxJO6vFxEejdZzkol-gV5jSI76mZyj8dO-6R0_9aOkF-QaaKdFWxJ6RqzksRE2sjKWYake8G2xSBjWZMRmoCeGlyfzgzUrjkR8OUpIDMre_ZUCcAL5WJptF1y0Ztph6FFRxA"
+           alt="Master jeweler atelier"
+           onerror="this.style.opacity='0'"/>
+      <div class="absolute inset-0 bg-gradient-to-t from-black/65 via-black/10 to-transparent"></div>
+      <div class="relative z-10 p-10">
+        <h3 class="mb-3 text-white" style="font-family:'Playfair Display',serif;font-size:28px;font-weight:500;line-height:1.3;">Handcrafted Finish</h3>
+        <p style="color:rgba(255,255,255,0.6);font-family:'Inter',sans-serif;font-size:16px;line-height:1.7;">
+          Master artisans bring AI precision to life with traditional techniques in our Antwerp atelier.
+        </p>
+      </div>
+    </div>
+
+    <!-- Ethical Sourcing — 8 cols -->
+    <div class="col-span-12 lg:col-span-8 bg-[#efeded] border border-[#c1c7cb]/10 rounded-[32px]
+                p-10 md:p-12 flex flex-col md:flex-row items-center gap-12 group">
+      <div class="flex-1">
+        <div class="mb-6">
+          <div class="flex items-center justify-center rounded-full" style="width:48px;height:48px;background:rgba(60,100,116,0.08);">
+            <span class="material-symbols-outlined" style="color:#3c6474;font-size:24px;">eco</span>
+          </div>
+        </div>
+        <h3 class="h-card mb-4">Ethical Sourcing</h3>
+        <p class="body-copy">
+          Every stone we use is ethically sourced and fully traceable. You know exactly what you're wearing and where it came from.
+        </p>
+      </div>
+      <div class="flex-1 h-64 w-full rounded-2xl overflow-hidden shadow-2xl">
+        <img class="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-110"
+             src="https://lh3.googleusercontent.com/aida-public/AB6AXuBsGnZIZvXML7J0FDUB6qTEYalGeQ8dZYrzyB5qJruvVxezjFV2CJeCZSd6WrdgEP8g-rPsWzLdSoUQaLLIyphR3kgR2B94MHYWJTO_mKBdD3mHHGsaF9xoOm3SRuKNvLLkhx1MjGcHAgY25Ebn06Zvt2d5bpHbTH6R_5belOBVS1gPYcOHtclBIUDnqkC15o4B9dfgNdiHkVspJJrrsI1HXixu7z1i-6YKw_OVbCXxA0REi9x1RqKlqWbVMER05WSYEjM0eoRoliiB"
+             alt="Ethically sourced diamonds"
+             onerror="this.style.cssText='background:linear-gradient(135deg,#b9e2f5,#6b9db5);';this.removeAttribute('src')"/>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+
+<!-- ════════════════════════════
+     WHAT WE OFFER
+════════════════════════════ -->
+<section class="py-32" id="offer"
+         style="background:linear-gradient(180deg,rgba(185,226,245,0.07) 0%,rgba(251,249,249,0) 100%);">
+  <div class="max-w-[1600px] mx-auto px-4 md:px-16">
+
+    <div class="flex flex-col lg:flex-row lg:items-end gap-6 mb-20">
+      <div class="max-w-xl">
+        <span class="eyebrow">OUR MATERIALS</span>
+        <h2 class="h-section mb-4">What We Offer</h2>
+      </div>
+      <div class="hidden lg:block h-px flex-1 bg-[#c1c7cb]/30 ml-12 mb-2"></div>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+
+      <div class="offer-card">
+        <div class="flex items-center justify-center rounded-full mb-5" style="width:48px;height:48px;background:rgba(60,100,116,0.08);">
+          <span class="material-symbols-outlined" style="color:#3c6474;font-size:24px;">diamond</span>
+        </div>
+        <h3 class="h-sub mb-3">925 Silver + Moissanite VVS</h3>
+        <p class="body-copy">Maximum brilliance at the most accessible price point. Moissanite refracts light more intensely than diamond.</p>
+      </div>
+
+      <div class="offer-card">
+        <div class="flex items-center justify-center rounded-full mb-5" style="width:48px;height:48px;background:rgba(60,100,116,0.08);">
+          <span class="material-symbols-outlined" style="color:#3c6474;font-size:24px;">radio_button_unchecked</span>
+        </div>
+        <h3 class="h-sub mb-3">925 Silver + Lab Diamond VVS</h3>
+        <p class="body-copy">Certified lab-grown diamonds in sterling silver. Ethically created, chemically identical to mined.</p>
+      </div>
+
+      <div class="offer-card">
+        <div class="flex items-center justify-center rounded-full mb-5" style="width:48px;height:48px;background:rgba(60,100,116,0.08);">
+          <span class="material-symbols-outlined" style="color:#3c6474;font-size:24px;">workspace_premium</span>
+        </div>
+        <h3 class="h-sub mb-3">10ct Gold + Lab Diamond</h3>
+        <p class="body-copy">A step into gold with the sustainability of lab-grown stones. Great balance of luxury and value.</p>
+      </div>
+
+      <div class="offer-card">
+        <div class="flex items-center justify-center rounded-full mb-5" style="width:48px;height:48px;background:rgba(60,100,116,0.08);">
+          <span class="material-symbols-outlined" style="color:#3c6474;font-size:24px;">verified</span>
+        </div>
+        <h3 class="h-sub mb-3">10ct Gold + Natural Diamond VS/VVS</h3>
+        <p class="body-copy">Natural diamonds in 10ct gold. VS/VVS clarity — near flawless to the naked eye.</p>
+      </div>
+
+      <div class="offer-card">
+        <div class="flex items-center justify-center rounded-full mb-5" style="width:48px;height:48px;background:rgba(60,100,116,0.08);">
+          <span class="material-symbols-outlined" style="color:#3c6474;font-size:24px;">star</span>
+        </div>
+        <h3 class="h-sub mb-3">14ct Gold + Lab Diamond</h3>
+        <p class="body-copy">Premium gold purity with certified lab-grown diamonds. The JWLZIFY signature tier.</p>
+      </div>
+
+      <div class="offer-card">
+        <div class="flex items-center justify-center rounded-full mb-5" style="width:48px;height:48px;background:rgba(60,100,116,0.08);">
+          <span class="material-symbols-outlined" style="color:#3c6474;font-size:24px;">auto_awesome</span>
+        </div>
+        <h3 class="h-sub mb-3">14ct Gold + Natural Diamond VS/VVS</h3>
+        <p class="body-copy">The pinnacle. 14ct gold with natural VS/VVS diamonds. Heirloom quality.</p>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+
+<!-- ════════════════════════════
+     TRENDING GALLERY
+════════════════════════════ -->
+<section class="py-32 bg-white" id="gallery">
+  <div class="max-w-[1600px] mx-auto px-4 md:px-16">
+
+    <div class="flex flex-col lg:flex-row justify-between items-end mb-20 gap-6">
+      <div class="max-w-xl">
+        <span class="eyebrow">Community</span>
+        <h2 class="h-section mb-4">Trending Creations</h2>
+        <p class="body-lg">Inspired by the collective imagination of our global community.</p>
+      </div>
+      <a href="collections.html" class="btn-ghost flex-shrink-0" style="font-size:12px;letter-spacing:0.22em;">
+        View Full Gallery
+        <span class="material-symbols-outlined" style="font-size:18px;">arrow_forward</span>
+      </a>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-10 items-start">
+
+      <div class="gal-card group cursor-pointer">
+        <div class="aspect-[3/4] rounded-2xl overflow-hidden mb-6 relative"
+             style="box-shadow:0 20px 40px rgba(0,0,0,0.06);">
+          <img class="gal-img w-full h-full object-cover"
+               src="https://lh3.googleusercontent.com/aida-public/AB6AXuAPdCeguYQnaPVMEU_e-Rbn4HgDq5zRSjFpU8kuIwpcH-3i4VMAGJb843gN6MZSoB2j4_9dT9fSX9K35aoAFb-eWGNP-M1m8YzHr75rUnqVbhDdBry3S7uuRqH1vZPWMYTKmsp00uvruqisx_8ZVrKej-e-hooyos4-CQ8AM0zt46IgmsQuE9uGMtJKLmWDLvxxdm4jAJn5O7t4Tw3S83NkwNmzR7sFljEr3ey-KQI8SKSYoQYSgL8o944bbBWrcZwys9o-2dovZrbz"
+               alt="The Nebula Drop"
+               onerror="this.closest('.aspect-\\[3\\/4\\]').style.background='linear-gradient(135deg,#efeded,#b9e2f5)'"/>
+          <div class="gal-overlay absolute inset-0 flex items-center justify-center"
+               style="background:rgba(185,226,245,0.4);">
+            <span class="bg-white px-8 py-3 rounded-lg label shadow-xl text-[#3e6576]"
+                  style="font-size:11px;">Re-Design</span>
+          </div>
+        </div>
+        <p style="font-family:'Playfair Display',serif;font-size:22px;font-weight:500;font-style:italic;color:#1b1c1c;line-height:1.4;margin-bottom:4px;">The Nebula Drop</p>
+        <p class="label text-[#41484b] opacity-55" style="font-size:11px;">@aurelius_design</p>
+      </div>
+
+      <div class="gal-card group cursor-pointer lg:translate-y-12">
+        <div class="aspect-[3/4] rounded-2xl overflow-hidden mb-6 relative"
+             style="box-shadow:0 20px 40px rgba(0,0,0,0.06);">
+          <img class="gal-img w-full h-full object-cover"
+               src="https://lh3.googleusercontent.com/aida-public/AB6AXuAkfMxKOZaQ4UHEJmokPcSPmkC9SR5zFDaZwyfLyAAKr0JpPQN8cqagOfacnRNKaZGA4tQCBqsBYal-0LIraFsj-FnelcxyfhU_rBtIe4dRuiIyCtWV6Al4STrQNMR-m9TEjpP0nVXuUyCMzsgYjbzB63YftHtSVLbE59UNUadgpMeYvGLgCQsCyyMPPBfPebdaWRHES857uRmICpM5JokugsDm2P2yrXO_0iCTsR9gQBGVtpslY9kntswCkDItd4BZc4XGa8bSRPXq"
+               alt="Minimalist Solitaire"
+               onerror="this.closest('.aspect-\\[3\\/4\\]').style.background='linear-gradient(135deg,#e9e8e7,#a4cddf)'"/>
+          <div class="gal-overlay absolute inset-0 flex items-center justify-center"
+               style="background:rgba(185,226,245,0.4);">
+            <span class="bg-white px-8 py-3 rounded-lg label shadow-xl text-[#3e6576]" style="font-size:11px;">Re-Design</span>
+          </div>
+        </div>
+        <p style="font-family:'Playfair Display',serif;font-size:22px;font-weight:500;font-style:italic;color:#1b1c1c;line-height:1.4;margin-bottom:4px;">Minimalist Solitaire</p>
+        <p class="label text-[#41484b] opacity-55" style="font-size:11px;">@ethereal_jewels</p>
+      </div>
+
+      <div class="gal-card group cursor-pointer">
+        <div class="aspect-[3/4] rounded-2xl overflow-hidden mb-6 relative"
+             style="box-shadow:0 20px 40px rgba(0,0,0,0.06);">
+          <img class="gal-img w-full h-full object-cover"
+               src="https://lh3.googleusercontent.com/aida-public/AB6AXuCJc2KaCp_4cJsArdX6AzqVR9YMSKuOPjmxE4aLw_8S-zz6ZnsYSd8BDonY5SHpzyc7gaFWQxRiXUbR7ZpbdzwGP9AWo3eUPhKmz4l6idgziCEk68nJzQ-eCZJItWUrPu-ETHJckpJ3wIVzeG-5779eF2GPsyPrvlW4ESBxIcZDTMv6z5HLTStZdl8FILBU3mg1bsm56vfy7L4dQ8BvjDmEmnR2L8fZwSclQH2Qbgv_X3CsYCOSOc_K84k3Xy05cZSL9LoC4JbG8xLZ"
+               alt="Architectural Cuff"
+               onerror="this.closest('.aspect-\\[3\\/4\\]').style.background='linear-gradient(135deg,#dbdad9,#8fb8cc)'"/>
+          <div class="gal-overlay absolute inset-0 flex items-center justify-center"
+               style="background:rgba(185,226,245,0.4);">
+            <span class="bg-white px-8 py-3 rounded-lg label shadow-xl text-[#3e6576]" style="font-size:11px;">Re-Design</span>
+          </div>
+        </div>
+        <p style="font-family:'Playfair Display',serif;font-size:22px;font-weight:500;font-style:italic;color:#1b1c1c;line-height:1.4;margin-bottom:4px;">Architectural Cuff</p>
+        <p class="label text-[#41484b] opacity-55" style="font-size:11px;">@future_heirloom</p>
+      </div>
+
+      <div class="gal-card group cursor-pointer lg:translate-y-12">
+        <div class="aspect-[3/4] rounded-2xl overflow-hidden mb-6 relative"
+             style="box-shadow:0 20px 40px rgba(0,0,0,0.06);">
+          <img class="gal-img w-full h-full object-cover"
+               src="https://lh3.googleusercontent.com/aida-public/AB6AXuBfcGSH3FyoF4cE8ImRPjEqTXdHYXcQvIzV5Y5HGdYgTzB2khXA2rgHWl3Q-fuWBOBX_1szuD-JzU0nC7hzgU0Jwa9t2oU9w2oldDQVONUYK482VYezu9bhMiWTc8edNLaQllny-Ra8dDPWkhmp6Mq58wCqMOUMzZH5ANfkb93K5pSPAL7ngDSHzEZt-X8TfxjydUl_kriRiHBqjI3jIoeCE9fdFHk0x5UAk06XtyAcQlCFluFn9aBvbOrSghuqJkHpDaS30ACM6s13"
+               alt="Chronos Edition"
+               onerror="this.closest('.aspect-\\[3\\/4\\]').style.background='linear-gradient(135deg,#e3e2e2,#6b9db5)'"/>
+          <div class="gal-overlay absolute inset-0 flex items-center justify-center"
+               style="background:rgba(185,226,245,0.4);">
+            <span class="bg-white px-8 py-3 rounded-lg label shadow-xl text-[#3e6576]" style="font-size:11px;">Re-Design</span>
+          </div>
+        </div>
+        <p style="font-family:'Playfair Display',serif;font-size:22px;font-weight:500;font-style:italic;color:#1b1c1c;line-height:1.4;margin-bottom:4px;">Chronos Edition</p>
+        <p class="label text-[#41484b] opacity-55" style="font-size:11px;">@titan_design</p>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+
+<!-- ════════════════════════════
+     PRICING PREVIEW
+════════════════════════════ -->
+<section class="py-32 bg-[#fbf9f9]" id="pricing">
+  <div class="max-w-[1600px] mx-auto px-4 md:px-16">
+
+    <div class="text-center mb-20">
+      <span class="eyebrow">Our Capabilities</span>
+      <h2 class="h-section mb-6">Our Collections</h2>
+    </div>
+
+    <!-- Flow steps -->
+    <div class="flex flex-col md:flex-row items-center justify-center gap-0 mb-24 max-w-[900px] mx-auto">
+      <div class="flex flex-col items-center text-center flex-1 px-4">
+        <div class="flex items-center justify-center rounded-full mb-4" style="width:48px;height:48px;background:rgba(60,100,116,0.08);">
+          <span class="material-symbols-outlined" style="color:#3c6474;font-size:24px;">auto_awesome</span>
+        </div>
+        <p class="label" style="font-size:10px;letter-spacing:0.18em;color:#3c6474;">STEP 1</p>
+        <p style="font-family:'Playfair Display',serif;font-size:18px;font-weight:500;color:#1b1c1c;margin-top:4px;">Design</p>
+        <p class="body-copy mt-2" style="font-size:13px;color:#71787c;">Describe your piece to our AI</p>
+      </div>
+      <div class="hidden md:block h-px w-12 bg-[#c1c7cb]/50 flex-shrink-0 mx-2"></div>
+      <div class="flex flex-col items-center text-center flex-1 px-4">
+        <div class="flex items-center justify-center rounded-full mb-4" style="width:48px;height:48px;background:rgba(60,100,116,0.08);">
+          <span class="material-symbols-outlined" style="color:#3c6474;font-size:24px;">refresh</span>
+        </div>
+        <p class="label" style="font-size:10px;letter-spacing:0.18em;color:#3c6474;">STEP 2</p>
+        <p style="font-family:'Playfair Display',serif;font-size:18px;font-weight:500;color:#1b1c1c;margin-top:4px;">Refine</p>
+        <p class="body-copy mt-2" style="font-size:13px;color:#71787c;">Tweak until it's exactly right</p>
+      </div>
+      <div class="hidden md:block h-px w-12 bg-[#c1c7cb]/50 flex-shrink-0 mx-2"></div>
+      <div class="flex flex-col items-center text-center flex-1 px-4">
+        <div class="flex items-center justify-center rounded-full mb-4" style="width:48px;height:48px;background:rgba(60,100,116,0.08);">
+          <span class="material-symbols-outlined" style="color:#3c6474;font-size:24px;">videocam</span>
+        </div>
+        <p class="label" style="font-size:10px;letter-spacing:0.18em;color:#3c6474;">STEP 3</p>
+        <p style="font-family:'Playfair Display',serif;font-size:18px;font-weight:500;color:#1b1c1c;margin-top:4px;">Try On</p>
+        <p class="body-copy mt-2" style="font-size:13px;color:#71787c;">See it on you via live camera</p>
+      </div>
+      <div class="hidden md:block h-px w-12 bg-[#c1c7cb]/50 flex-shrink-0 mx-2"></div>
+      <div class="flex flex-col items-center text-center flex-1 px-4">
+        <div class="flex items-center justify-center rounded-full mb-4" style="width:48px;height:48px;background:rgba(60,100,116,0.08);">
+          <span class="material-symbols-outlined" style="color:#3c6474;font-size:24px;">receipt_long</span>
+        </div>
+        <p class="label" style="font-size:10px;letter-spacing:0.18em;color:#3c6474;">STEP 4</p>
+        <p style="font-family:'Playfair Display',serif;font-size:18px;font-weight:500;color:#1b1c1c;margin-top:4px;">Get Quoted</p>
+        <p class="body-copy mt-2" style="font-size:13px;color:#71787c;">Instant itemised estimate</p>
+      </div>
+      <div class="hidden md:block h-px w-12 bg-[#c1c7cb]/50 flex-shrink-0 mx-2"></div>
+      <div class="flex flex-col items-center text-center flex-1 px-4">
+        <div class="flex items-center justify-center rounded-full mb-4" style="width:48px;height:48px;background:rgba(60,100,116,0.08);">
+          <span class="material-symbols-outlined" style="color:#3c6474;font-size:24px;">shopping_bag</span>
+        </div>
+        <p class="label" style="font-size:10px;letter-spacing:0.18em;color:#3c6474;">STEP 5</p>
+        <p style="font-family:'Playfair Display',serif;font-size:18px;font-weight:500;color:#1b1c1c;margin-top:4px;">Order</p>
+        <p class="body-copy mt-2" style="font-size:13px;color:#71787c;">Commission it with one click</p>
+      </div>
+    </div>
+
+    <!-- Price cards -->
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-6 mb-16">
+
+      <div class="bg-white rounded-2xl p-8 border border-[#c1c7cb]/20 ambient hover:shadow-lg transition-shadow">
+        <div class="flex items-center justify-center rounded-full mb-6" style="width:48px;height:48px;background:rgba(60,100,116,0.08);">
+          <span class="material-symbols-outlined" style="color:#3c6474;font-size:24px;">diamond</span>
+        </div>
+        <p class="body-copy mt-3" style="font-size:13px;color:#71787c;">Solitaires to full pavé statement bands</p>
+      </div>
+
+      <div class="bg-white rounded-2xl p-8 border border-[#c1c7cb]/20 ambient hover:shadow-lg transition-shadow">
+        <div class="flex items-center justify-center rounded-full mb-6" style="width:48px;height:48px;background:rgba(60,100,116,0.08);">
+          <span class="material-symbols-outlined" style="color:#3c6474;font-size:24px;">radio_button_unchecked</span>
+        </div>
+        <p class="body-copy mt-3" style="font-size:13px;color:#71787c;">Delicate pendants to statement collars</p>
+      </div>
+
+      <div class="bg-white rounded-2xl p-8 border border-[#c1c7cb]/20 ambient hover:shadow-lg transition-shadow">
+        <div class="flex items-center justify-center rounded-full mb-6" style="width:48px;height:48px;background:rgba(60,100,116,0.08);">
+          <span class="material-symbols-outlined" style="color:#3c6474;font-size:24px;">hearing</span>
+        </div>
+        <p class="body-copy mt-3" style="font-size:13px;color:#71787c;">Micro studs to chandelier drops</p>
+      </div>
+
+      <div class="bg-white rounded-2xl p-8 border border-[#c1c7cb]/20 ambient hover:shadow-lg transition-shadow">
+        <div class="flex items-center justify-center rounded-full mb-6" style="width:48px;height:48px;background:rgba(60,100,116,0.08);">
+          <span class="material-symbols-outlined" style="color:#3c6474;font-size:24px;">watch</span>
+        </div>
+        <p class="body-copy mt-3" style="font-size:13px;color:#71787c;">Slim bangles to wide sculptural cuffs</p>
+      </div>
+
+    </div>
+
+    <!-- Includes strip -->
+    <div class="rounded-2xl p-8 md:p-12 flex flex-col md:flex-row items-center gap-10 justify-between"
+         style="background:linear-gradient(135deg,rgba(185,226,245,0.12),rgba(255,255,255,0.9));border:1px solid rgba(185,226,245,0.4);">
+      <div>
+        <p class="label mb-2" style="font-size:10px;letter-spacing:0.18em;color:#3c6474;">EVERY ORDER INCLUDES</p>
+        <div class="flex flex-wrap gap-x-10 gap-y-3 mt-4">
+          <div class="flex items-center gap-2">
+            <span class="material-symbols-outlined text-[#3c6474]" style="font-size:18px;">verified</span>
+            <span class="body-copy" style="font-size:13px;">GIA Certified Stones</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="material-symbols-outlined text-[#3c6474]" style="font-size:18px;">image</span>
+            <span class="body-copy" style="font-size:13px;">Archival AI Render</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="material-symbols-outlined text-[#3c6474]" style="font-size:18px;">local_shipping</span>
+            <span class="body-copy" style="font-size:13px;">White-Glove Delivery</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="material-symbols-outlined text-[#3c6474]" style="font-size:18px;">schedule</span>
+            <span class="body-copy" style="font-size:13px;">4–6 Week Crafting</span>
+          </div>
+        </div>
+      </div>
+      <a href="ailab.html" class="flex-shrink-0">
+        <button class="btn-primary btn-glow" style="font-size:13px;letter-spacing:0.22em;padding:18px 40px;">
+          Design Your Piece
+        </button>
+      </a>
+    </div>
+
+  </div>
+</section>
+
+
+<!-- ════════════════════════════
+     CUSTOMER REVIEWS
+════════════════════════════ -->
+<section class="py-32 bg-[#fbf9f9]">
+  <div class="max-w-[1600px] mx-auto px-4 md:px-16">
+
+    <div class="text-center mb-20">
+      <span class="eyebrow">COMMUNITY VOICES</span>
+      <h2 class="h-section mb-4">What Our Clients Say</h2>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+
+      <div class="review-card">
+        <div class="flex items-start justify-between mb-3">
+          <div><p class="review-name">Priya M.</p><p class="review-date">March 2026</p></div>
+          <div class="review-stars">★★★★★</div>
+        </div>
+        <p class="review-text">I designed my own engagement ring through the AI lab and it came out exactly how I envisioned it. The 14ct gold with lab diamond is absolutely stunning. Shipping was fast and the packaging felt incredibly premium.</p>
+      </div>
+
+      <div class="review-card">
+        <div class="flex items-start justify-between mb-3">
+          <div><p class="review-name">Jordan T.</p><p class="review-date">April 2026</p></div>
+          <div class="review-stars">★★★★½</div>
+        </div>
+        <p class="review-text">The moissanite bracelet I built is getting compliments every single day. The design tool was easier to use than I expected. Would love even more stone shape options but overall this is next level.</p>
+      </div>
+
+      <div class="review-card">
+        <div class="flex items-start justify-between mb-3">
+          <div><p class="review-name">Camille R.</p><p class="review-date">February 2026</p></div>
+          <div class="review-stars">★★★★★</div>
+        </div>
+        <p class="review-text">Ordered a 925 silver necklace with VVS moissanite for my sister's birthday. She cried. The quality is insane for what I paid.</p>
+      </div>
+
+      <div class="review-card">
+        <div class="flex items-start justify-between mb-3">
+          <div><p class="review-name">Marcus O.</p><p class="review-date">January 2026</p></div>
+          <div class="review-stars">★★★★</div>
+        </div>
+        <p class="review-text">Solid experience overall. The AI generated a really unique ring design and the specs card told me exactly what I was getting. Took a bit longer than expected to arrive but the piece itself is flawless.</p>
+      </div>
+
+      <div class="review-card">
+        <div class="flex items-start justify-between mb-3">
+          <div><p class="review-name">Aisha K.</p><p class="review-date">April 2026</p></div>
+          <div class="review-stars">★★★★★</div>
+        </div>
+        <p class="review-text">I was skeptical about ordering custom jewelry online but JWLZIFY completely changed my mind. The 14ct gold and natural diamond ring I designed is better than anything I've seen in stores at twice the price.</p>
+      </div>
+
+      <div class="review-card">
+        <div class="flex items-start justify-between mb-3">
+          <div><p class="review-name">Tyler B.</p><p class="review-date">March 2026</p></div>
+          <div class="review-stars">★★★★½</div>
+        </div>
+        <p class="review-text">The community gallery is such a cool feature — I was inspired by someone else's design and then customised it. My 10ct gold band came out exactly as the AI described it.</p>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+</main>
+
+<!-- ════════════════════════════
+     FOOTER
+════════════════════════════ -->
+<footer class="w-full py-24 bg-white border-t border-[#c1c7cb]/12">
+  <div class="max-w-[1600px] mx-auto px-4 md:px-16">
+    <div class="grid grid-cols-12 gap-16 mb-20">
+      <div class="col-span-12 lg:col-span-4 flex flex-col gap-8">
+        <span style="font-family:'Playfair Display',serif;font-size:24px;font-weight:600;letter-spacing:0.32em;color:#3c6474;text-transform:uppercase;">JWLZIFY</span>
+        <p class="body-copy" style="max-width:280px;color:rgba(65,72,75,0.72);">The future of high jewelry. Leading the global revolution in AI-driven bespoke craftsmanship and ethical luxury.</p>
+        <div class="flex gap-4">
+          <div class="w-10 h-10 rounded-full flex items-center justify-center cursor-pointer hover:bg-[#3c6474] hover:text-white transition-all" style="background:#efeded;border:1px solid rgba(193,199,203,0.3);"><span class="material-symbols-outlined" style="font-size:18px;">share</span></div>
+          <div class="w-10 h-10 rounded-full flex items-center justify-center cursor-pointer hover:bg-[#3c6474] hover:text-white transition-all" style="background:#efeded;border:1px solid rgba(193,199,203,0.3);"><span class="material-symbols-outlined" style="font-size:18px;">public</span></div>
+          <div class="w-10 h-10 rounded-full flex items-center justify-center cursor-pointer hover:bg-[#3c6474] hover:text-white transition-all" style="background:#efeded;border:1px solid rgba(193,199,203,0.3);"><span class="material-symbols-outlined" style="font-size:18px;">mail</span></div>
+        </div>
+      </div>
+      <div class="col-span-12 lg:col-span-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-10">
+        <div class="flex flex-col gap-6">
+          <p class="label" style="font-size:12px;letter-spacing:0.13em;color:#1b1c1c;font-weight:700;">Experience</p>
+          <ul class="flex flex-col gap-3">
+            <li><a href="ailab.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">The Lab</a></li>
+            <li><a href="about.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Expert Jewelers</a></li>
+            <li><a href="about.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Your Journey</a></li>
+            <li><a href="collections.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Collections</a></li>
+          </ul>
+        </div>
+        <div class="flex flex-col gap-6">
+          <p class="label" style="font-size:12px;letter-spacing:0.13em;color:#1b1c1c;font-weight:700;">Philosophy</p>
+          <ul class="flex flex-col gap-3">
+            <li><a href="about.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Ethical Sourcing</a></li>
+            <li><a href="about.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Sustainability</a></li>
+            <li><a href="about.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Blockchain Trust</a></li>
+            <li><a href="about.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Our Story</a></li>
+          </ul>
+        </div>
+        <div class="flex flex-col gap-6">
+          <p class="label" style="font-size:12px;letter-spacing:0.13em;color:#1b1c1c;font-weight:700;">Support</p>
+          <ul class="flex flex-col gap-3">
+            <li><a href="support.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Account</a></li>
+            <li><a href="support.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Order Status</a></li>
+            <li><a href="support.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Shipping &amp; Delivery</a></li>
+            <li><a href="support.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Returns &amp; Exchanges</a></li>
+            <li><a href="support.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Warranty</a></li>
+            <li><a href="support.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Authenticity</a></li>
+            <li><a href="support.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Size Guide</a></li>
+          </ul>
+        </div>
+        <div class="flex flex-col gap-6">
+          <p class="label" style="font-size:12px;letter-spacing:0.13em;color:#1b1c1c;font-weight:700;">Legal</p>
+          <ul class="flex flex-col gap-3">
+            <li><a href="legal.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Privacy Policy</a></li>
+            <li><a href="legal.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Terms &amp; Conditions</a></li>
+            <li><a href="legal.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Returns &amp; Exchanges</a></li>
+            <li><a href="legal.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Shipping Policy</a></li>
+            <li><a href="legal.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Warranty</a></li>
+            <li><a href="legal.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Cookies Policy</a></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="pt-10 flex flex-col sm:flex-row justify-between items-center gap-4"
+         style="border-top:0.5px solid rgba(193,199,203,0.3);">
+      <p class="label" style="font-size:11px;letter-spacing:0.13em;color:rgba(65,72,75,0.5);">© 2025 JWLZIFY Holdings. All Rights Reserved.</p>
+      <p class="label" style="font-size:11px;letter-spacing:0.13em;color:rgba(65,72,75,0.5);">Crafted with Precision in Toronto &amp; Antwerp</p>
+    </div>
+  </div>
+</footer>
+
+<!-- Ice crystal particle system -->
+<script>
+(function(){
+  const canvas=document.getElementById('crystalCanvas');
+  if(!canvas)return;
+  const ctx=canvas.getContext('2d');
+  const hero=document.getElementById('hero');
+  function resize(){canvas.width=hero.offsetWidth;canvas.height=hero.offsetHeight;}
+  resize();
+  window.addEventListener('resize',resize);
+  function drawCrystal(x,y,r,angle,alpha){
+    ctx.save();ctx.translate(x,y);ctx.rotate(angle);ctx.globalAlpha=alpha;
+    ctx.strokeStyle='rgba(255,255,255,0.88)';ctx.lineWidth=0.85;ctx.lineCap='round';
+    for(let i=0;i<6;i++){
+      ctx.save();ctx.rotate(Math.PI/3*i);
+      ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(0,-r);
+      ctx.moveTo(0,-r*0.55);ctx.lineTo(r*0.28,-r*0.75);
+      ctx.moveTo(0,-r*0.55);ctx.lineTo(-r*0.28,-r*0.75);
+      ctx.stroke();ctx.restore();
+    }
+    ctx.beginPath();ctx.arc(0,0,r*0.08,0,Math.PI*2);
+    ctx.fillStyle='rgba(255,255,255,0.8)';ctx.fill();ctx.restore();
+  }
+  function spawn(){
+    const maxAge=260+Math.random()*320;
+    return{x:Math.random()*canvas.width,y:canvas.height*(0.15+Math.random()*0.65),
+           r:4+Math.random()*9,vy:-(0.18+Math.random()*0.45),vx:(Math.random()-0.5)*0.28,
+           ang:Math.random()*Math.PI*2,spin:(Math.random()-0.5)*0.012,
+           maxA:0.4+Math.random()*0.45,age:0,maxAge};
+  }
+  let pts=[];
+  for(let i=0;i<28;i++){const p=spawn();p.age=Math.random()*p.maxAge;pts.push(p);}
+  function frame(){
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    if(pts.length<35&&Math.random()<0.025)pts.push(spawn());
+    pts=pts.filter(p=>p.age<p.maxAge);
+    for(const p of pts){
+      p.age++;p.x+=p.vx;p.y+=p.vy;p.ang+=p.spin;
+      const t=p.age/p.maxAge;
+      const a=t<0.14?p.maxA*(t/0.14):t>0.78?p.maxA*((1-t)/0.22):p.maxA;
+      drawCrystal(p.x,p.y,p.r,p.ang,a);
+    }
+    requestAnimationFrame(frame);
+  }
+  frame();
+})();
+</script>
+
+<script>
+  const navEl = document.getElementById('siteHeader');
+  const scrollThreshold = () => window.innerHeight * 0.9;
+  window.addEventListener('scroll', () => {
+    if (window.scrollY > scrollThreshold()) {
+      navEl.classList.add('nav-visible');
+    } else if (!navEl.matches(':hover')) {
+      navEl.classList.remove('nav-visible');
+    }
+  });
+  navEl.addEventListener('mouseenter', () => navEl.classList.add('nav-visible'));
+  navEl.addEventListener('mouseleave', () => {
+    if (window.scrollY <= scrollThreshold()) navEl.classList.remove('nav-visible');
+  });
+</script>
+<script src="firebase-auth.js"></script>
+
+</body>
+</html>

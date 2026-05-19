@@ -1,0 +1,1872 @@
+<!DOCTYPE html>
+<html class="light" lang="en">
+<head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>JWLZIFY | AI Design Lab</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+<script>
+tailwind.config={darkMode:"class",theme:{extend:{colors:{
+  "primary":"#3c6474","on-primary":"#ffffff",
+  "primary-container":"#b9e2f5","on-primary-container":"#3e6576",
+  "primary-fixed":"#c0e9fc","primary-fixed-dim":"#a4cddf",
+  "secondary":"#5e5e5b","on-secondary":"#ffffff",
+  "secondary-container":"#e1dfdb","on-secondary-container":"#63635f",
+  "surface":"#fbf9f9","surface-dim":"#dbdad9",
+  "surface-container-lowest":"#ffffff","surface-container-low":"#f5f3f3",
+  "surface-container":"#efeded","surface-container-high":"#e9e8e7",
+  "surface-container-highest":"#e3e2e2",
+  "on-surface":"#1b1c1c","on-surface-variant":"#41484b",
+  "outline":"#71787c","outline-variant":"#c1c7cb",
+  "background":"#fbf9f9",
+}}}}
+</script>
+<style>
+/* ── Step panel transitions ── */
+.sp { display:none; animation: fadeStep 0.45s ease; }
+.sp.active { display:block; }
+@keyframes fadeStep {
+  from { opacity:0; transform:translateY(12px); }
+  to   { opacity:1; transform:translateY(0); }
+}
+
+/* ── Progress dots ── */
+.prog-dot {
+  width:32px; height:32px; border-radius:50%;
+  display:flex; align-items:center; justify-content:center;
+  font-family:'Inter',sans-serif; font-size:12px; font-weight:700;
+  border:2px solid #c1c7cb; color:#71787c;
+  transition:all 0.3s ease; flex-shrink:0;
+}
+.prog-dot.done { background:#3c6474; border-color:#3c6474; color:#fff; }
+.prog-dot.current { background:#b9e2f5; border-color:#3c6474; color:#3c6474; }
+.prog-line { flex:1; height:1px; background:#c1c7cb; transition:background 0.3s ease; }
+.prog-line.done { background:#3c6474; }
+
+/* ── Type selector buttons ── */
+.type-btn {
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap:8px; padding:20px 14px; border-radius:12px;
+  border:1.5px solid rgba(193,199,203,0.45);
+  background:#fff; cursor:pointer;
+  transition:all 0.2s ease; flex:1; min-width:0;
+  font-family:'Inter',sans-serif; font-size:11px; font-weight:600;
+  letter-spacing:0.1em; text-transform:uppercase; color:#41484b;
+}
+.type-btn:hover { border-color:#3c6474; color:#3c6474; background:rgba(185,226,245,0.06); }
+.type-btn.active {
+  background:linear-gradient(135deg,rgba(185,226,245,0.3),rgba(255,255,255,0.9));
+  border-color:#3c6474; color:#3c6474;
+  box-shadow:0 4px 16px rgba(60,100,116,0.14);
+}
+.type-btn span.material-symbols-outlined { font-size:28px; }
+
+/* ── Lab input ── */
+.lab-input {
+  width:100%; background:#fff; border:1.5px solid rgba(193,199,203,0.5);
+  border-radius:10px; padding:14px 18px; font-family:'Inter',sans-serif;
+  font-size:15px; color:#1b1c1c; outline:none;
+  transition:border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.lab-input:focus { border-color:#3c6474; box-shadow:0 0 0 3px rgba(185,226,245,0.3); }
+.lab-input::placeholder { color:#a0a6a9; }
+
+/* ── Chip ── */
+.lab-chip {
+  display:inline-flex; align-items:center; gap:6px;
+  padding:8px 16px; border-radius:100px;
+  border:1.5px solid rgba(193,199,203,0.45); background:#fff;
+  font-family:'Inter',sans-serif; font-size:11px; font-weight:600;
+  letter-spacing:0.08em; color:#41484b; cursor:pointer;
+  transition:all 0.2s ease; white-space:nowrap;
+}
+.lab-chip:hover { border-color:#3c6474; color:#3c6474; }
+.lab-chip.active {
+  background:linear-gradient(135deg,rgba(185,226,245,0.35),rgba(255,255,255,0.8));
+  border-color:#b9e2f5; color:#3c6474;
+  box-shadow:0 2px 10px rgba(185,226,245,0.4);
+}
+
+/* ── Placeholder pulsing ── */
+@keyframes placeholderPulse {
+  0%,100% { opacity:0.55; transform:scale(1); }
+  50%      { opacity:0.85; transform:scale(1.04); }
+}
+.ph-orb { border-radius:50%; filter:blur(60px); animation:placeholderPulse 4s ease-in-out infinite; }
+.ph-orb-b { animation-delay:-2s; animation-duration:5.5s; }
+
+/* ── Loading diamond spin ── */
+@keyframes dSpin { to { transform:rotate(45deg) rotate(360deg); } }
+.d-spinner {
+  width:48px; height:48px; border-radius:6px;
+  background:linear-gradient(135deg,#b9e2f5 0%,#3c6474 100%);
+  transform:rotate(45deg);
+  animation:dSpin 1.2s linear infinite;
+}
+
+/* ── Reveal skeleton for refine panel ── */
+@keyframes shimmer {
+  from { background-position:-400px 0; }
+  to   { background-position:400px 0; }
+}
+.skeleton {
+  background:linear-gradient(90deg,#efeded 25%,#e3e2e2 50%,#efeded 75%);
+  background-size:800px 100%;
+  animation:shimmer 1.4s infinite;
+  border-radius:8px;
+}
+
+/* ── Try-on camera view ── */
+#camWrap { position:relative; overflow:hidden; background:#0d1215; }
+#camWrap video { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; transform:scaleX(-1); }
+#jewelryOverlay, #jewelryOverlay2 {
+  position:absolute;
+  background:transparent !important;
+  background-color:transparent !important;
+  border:none !important;
+  outline:none !important;
+  box-shadow:none !important;
+  -webkit-box-shadow:none !important;
+  filter:none !important;
+  -webkit-filter:none !important;
+  mix-blend-mode:normal !important;
+  backdrop-filter:none !important;
+  -webkit-backdrop-filter:none !important;
+  transition:opacity 0.4s ease;
+  cursor:grab;
+}
+.tryon-overlay {
+  background:transparent !important;
+  background-color:transparent !important;
+  box-shadow:none !important;
+  border:none !important;
+  filter:none !important;
+  mix-blend-mode:normal !important;
+  backdrop-filter:none !important;
+  outline:none !important;
+}
+
+/* ── Quote card ── */
+.quote-row {
+  display:flex; justify-content:space-between; align-items:center;
+  padding:14px 0; border-bottom:0.5px solid rgba(193,199,203,0.3);
+  font-family:'Inter',sans-serif;
+}
+.quote-row:last-child { border-bottom:none; }
+.quote-total {
+  display:flex; justify-content:space-between; align-items:center;
+  padding:20px 0 0;
+}
+
+/* ── Order form ── */
+.order-input {
+  width:100%; background:#fff; border:1.5px solid rgba(193,199,203,0.5);
+  border-radius:10px; padding:14px 18px; font-family:'Inter',sans-serif;
+  font-size:15px; color:#1b1c1c; outline:none;
+  transition:border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.order-input:focus { border-color:#3c6474; box-shadow:0 0 0 3px rgba(185,226,245,0.25); }
+.order-input::placeholder { color:#a0a6a9; }
+
+/* ── AI suggestions ── */
+.ai-sug {
+  display:flex; gap:12px; align-items:flex-start; padding:16px;
+  border-radius:10px; border:1.5px solid rgba(185,226,245,0.4);
+  background:rgba(185,226,245,0.06); cursor:pointer;
+  transition:all 0.2s ease;
+}
+.ai-sug:hover { background:rgba(185,226,245,0.14); border-color:#b9e2f5; }
+
+/* ── Pendant size buttons ── */
+.psize-btn {
+  font-family:'Inter',sans-serif; font-size:12px; font-weight:500;
+  padding:8px 16px; border-radius:8px;
+  border:1px solid rgba(193,199,203,0.55);
+  background:transparent; color:#1b1c1c;
+  cursor:pointer; transition:all 0.2s ease;
+}
+.psize-btn:hover { border-color:#3c6474; color:#3c6474; }
+.psize-btn.psize-active {
+  background:#b9e2f5; color:#234c5b;
+  border-color:transparent;
+  box-shadow:0 4px 14px rgba(185,226,245,0.45);
+}
+
+/* ── Step section container ── */
+.lab-wrap { max-width:1400px; margin:0 auto; padding:60px 16px 80px; }
+@media(min-width:768px){ .lab-wrap { padding:72px 64px 100px; } }
+</style>
+</head>
+<body class="bg-[#fbf9f9] text-[#1b1c1c]">
+
+<!-- ════════════════════════════
+     NAVIGATION
+════════════════════════════ -->
+<header id="siteHeader" class="sticky top-0 w-full z-50 nav-glass border-b border-[#c1c7cb]/20"
+        style="box-shadow:0 1px 18px rgba(0,0,0,0.04);">
+  <nav class="flex justify-between items-center w-full max-w-[1600px] mx-auto px-4 md:px-16 py-5">
+    <div class="flex items-center gap-10">
+      <a href="index.html" style="font-family:'Playfair Display',serif;font-size:22px;font-weight:600;letter-spacing:0.32em;color:#3c6474;text-transform:uppercase;">JWLZIFY</a>
+      <div class="hidden lg:flex items-center gap-8">
+        <a href="index.html"       class="nav-link">Home</a>
+        <a href="collections.html" class="nav-link">Collections</a>
+        <a href="ailab.html"       class="nav-link nav-active">AI Lab</a>
+        <a href="about.html"       class="nav-link">About Us</a>
+        <a href="support.html"     class="nav-link">Support</a>
+      </div>
+    </div>
+    <div class="flex items-center gap-5">
+      <div id="authBtnWrapper" class="hidden lg:flex items-center"></div>
+      <button class="label text-white px-7 py-3 rounded-lg active:scale-95 transition-all hover:brightness-110 btn-glow"
+              onclick="goStep(1);"
+              style="background:#3c6474;font-size:11px;letter-spacing:0.16em;border:none;">NEW DESIGN</button>
+      <button class="lg:hidden text-[#1b1c1c]" aria-label="Menu" style="background:none;border:none;">
+        <span class="material-symbols-outlined">menu</span>
+      </button>
+    </div>
+  </nav>
+</header>
+
+<!-- ════════════════════════════
+     PROGRESS BAR
+════════════════════════════ -->
+<div class="sticky z-40 w-full bg-white/95 border-b border-[#c1c7cb]/20"
+     style="top:73px;backdrop-filter:blur(12px);">
+  <div class="max-w-[900px] mx-auto px-4 md:px-16 py-4">
+    <div class="flex items-center gap-0">
+      <div id="dot1" class="prog-dot current">1</div>
+      <div id="line12" class="prog-line"></div>
+      <div id="dot2" class="prog-dot">2</div>
+      <div id="line23" class="prog-line"></div>
+      <div id="dot3" class="prog-dot">3</div>
+      <div id="line34" class="prog-line"></div>
+      <div id="dot4" class="prog-dot">4</div>
+      <div id="line45" class="prog-line"></div>
+      <div id="dot5" class="prog-dot">5</div>
+    </div>
+    <div class="flex justify-between mt-2">
+      <span class="label text-[#3c6474]" style="font-size:9px;letter-spacing:0.12em;">DESIGN</span>
+      <span class="label text-[#71787c]" style="font-size:9px;letter-spacing:0.12em;">REFINE</span>
+      <span class="label text-[#71787c]" style="font-size:9px;letter-spacing:0.12em;">TRY ON</span>
+      <span class="label text-[#71787c]" style="font-size:9px;letter-spacing:0.12em;">QUOTE</span>
+      <span class="label text-[#71787c]" style="font-size:9px;letter-spacing:0.12em;">ORDER</span>
+    </div>
+  </div>
+</div>
+
+<main>
+
+<!-- ════════════════════════════
+     STEP 1 — DESIGN
+════════════════════════════ -->
+<div id="s1" class="sp active">
+  <div class="lab-wrap">
+    <div class="grid lg:grid-cols-2 gap-16 items-start">
+
+      <!-- LEFT: Design Inputs -->
+      <div>
+        <span class="eyebrow">AI Design Studio</span>
+        <h1 style="font-family:'Playfair Display',serif;font-size:clamp(32px,4vw,48px);font-weight:600;line-height:1.12;letter-spacing:-0.02em;color:#1b1c1c;margin-bottom:10px;">
+          Describe Your Vision
+        </h1>
+        <p class="body-copy mb-10" style="color:#71787c;">Tell the AI exactly what you want. Be as detailed or as abstract as you like — it listens.</p>
+
+        <!-- Jewelry Type -->
+        <div class="mb-8">
+          <label class="label block mb-3" style="font-size:10px;letter-spacing:0.18em;color:#3c6474;">Jewelry Type</label>
+          <div class="flex flex-wrap gap-2">
+            <button class="type-btn active" data-type="ring" onclick="setType(this,'ring')">
+              <span class="material-symbols-outlined">diamond</span>Ring
+            </button>
+            <button class="type-btn" data-type="necklace" onclick="setType(this,'necklace')">
+              <span class="material-symbols-outlined">radio_button_unchecked</span>Necklace
+            </button>
+            <button class="type-btn" data-type="pendant" onclick="setType(this,'pendant')">
+              <span class="material-symbols-outlined">circle</span>Pendant
+            </button>
+            <button class="type-btn" data-type="earrings" onclick="setType(this,'earrings')">
+              <span class="material-symbols-outlined">hearing</span>Earrings
+            </button>
+            <button class="type-btn" data-type="bracelet" onclick="setType(this,'bracelet')">
+              <span class="material-symbols-outlined">watch</span>Bracelet
+            </button>
+          </div>
+        </div>
+
+        <!-- Describe Your Vision -->
+        <div class="mb-6">
+          <label class="label block mb-3" style="font-size:10px;letter-spacing:0.18em;color:#3c6474;">Your Description</label>
+          <textarea id="promptArea" rows="5" class="lab-input"
+            style="resize:vertical;line-height:1.7;"
+            placeholder="e.g. An Art Deco engagement ring with a emerald-cut center diamond, geometric platinum shoulders with baguette accents, and subtle milgrain detail around the gallery…"></textarea>
+          <p class="mt-2 body-copy" style="font-size:13px;color:#a0a6a9;">The more detail you give, the more precise the result. Describe the shape, stone, feeling, occasion.</p>
+        </div>
+
+        <!-- Material -->
+        <div class="grid grid-cols-2 gap-4 mb-6">
+          <div>
+            <label class="label block mb-2" style="font-size:10px;letter-spacing:0.18em;color:#3c6474;">Metal</label>
+            <select id="materialSelect" class="lab-input" style="cursor:pointer;" onchange="updateGemOptions()">
+              <option value="925silver">925 Silver</option>
+              <option value="10ctgold">10ct Gold</option>
+              <option value="14ctgold">14ct Gold</option>
+            </select>
+          </div>
+          <div>
+            <label class="label block mb-2" style="font-size:10px;letter-spacing:0.18em;color:#3c6474;">Primary Stone</label>
+            <select id="gemSelect" class="lab-input" style="cursor:pointer;">
+              <option value="moissanite_vvs">Moissanite VVS</option>
+              <option value="lab_diamond_vvs">Lab Diamond VVS</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Style Chips -->
+        <div class="mb-8">
+          <label class="label block mb-3" style="font-size:10px;letter-spacing:0.18em;color:#3c6474;">Design Aesthetic</label>
+          <div class="flex flex-wrap gap-2" id="styleChips">
+            <button class="lab-chip active" data-style="Art Deco" onclick="setStyle(this)">Art Deco</button>
+            <button class="lab-chip" data-style="Minimalist"  onclick="setStyle(this)">Minimalist</button>
+            <button class="lab-chip" data-style="Vintage"     onclick="setStyle(this)">Vintage</button>
+            <button class="lab-chip" data-style="Modern"      onclick="setStyle(this)">Modern</button>
+            <button class="lab-chip" data-style="Maximalist"  onclick="setStyle(this)">Maximalist</button>
+            <button class="lab-chip" data-style="Organic"     onclick="setStyle(this)">Organic</button>
+          </div>
+        </div>
+
+        <!-- Generate Button -->
+        <button id="generateBtn" onclick="startGeneration(false)"
+                class="w-full btn-primary btn-glow"
+                style="padding:20px;font-size:13px;letter-spacing:0.22em;justify-content:center;gap:10px;">
+          <span class="material-symbols-outlined gen-icon" id="genIcon" style="font-size:20px;">auto_awesome</span>
+          <span id="genText">Generate Masterpiece</span>
+        </button>
+      </div>
+
+      <!-- RIGHT: Preview Placeholder / Loading -->
+      <div class="hidden lg:block">
+
+        <!-- Placeholder (initial) -->
+        <div id="previewPlaceholder">
+          <div class="relative rounded-2xl overflow-hidden flex flex-col items-center justify-center"
+               style="aspect-ratio:1;background:linear-gradient(135deg,#f5f3f3 0%,#e9e8e7 100%);border:1px solid rgba(193,199,203,0.3);">
+            <!-- Ambient orbs -->
+            <div class="ph-orb absolute" style="width:320px;height:320px;background:#b9e2f5;top:-20%;right:-15%;opacity:0.35;"></div>
+            <div class="ph-orb ph-orb-b absolute" style="width:260px;height:260px;background:#a4cddf;bottom:-15%;left:-10%;opacity:0.25;"></div>
+            <!-- Center content -->
+            <div class="relative z-10 text-center px-12">
+              <div style="width:72px;height:72px;border-radius:10px;background:linear-gradient(135deg,#b9e2f5,#3c6474);transform:rotate(45deg);margin:0 auto 32px;opacity:0.6;box-shadow:0 12px 36px rgba(60,100,116,0.25);"></div>
+              <p style="font-family:'Playfair Display',serif;font-size:22px;font-style:italic;color:#3c6474;opacity:0.7;line-height:1.4;">Your masterpiece<br>will appear here</p>
+              <p class="mt-4 body-copy" style="font-size:13px;color:#a0a6a9;">Fill in your vision and press Generate</p>
+            </div>
+          </div>
+          <!-- Prompt examples -->
+          <div class="mt-6 flex flex-col gap-3">
+            <p class="label" style="font-size:10px;letter-spacing:0.18em;color:#71787c;">INSPIRATION PROMPTS</p>
+            <button class="text-left p-4 rounded-xl border border-[#c1c7cb]/30 bg-white hover:border-[#3c6474]/40 hover:bg-[#f5f3f3] transition-all"
+                    onclick="useInspiration(this)"
+                    data-prompt="A delicate Art Nouveau ring with a pear-shaped moonstone center, flowing organic vine shoulders set with tiny diamonds, crafted in 18k rose gold">
+              <p class="body-copy" style="font-size:13px;font-style:italic;color:#41484b;">"Art Nouveau ring, pear moonstone, flowing vine shoulders, rose gold"</p>
+            </button>
+            <button class="text-left p-4 rounded-xl border border-[#c1c7cb]/30 bg-white hover:border-[#3c6474]/40 hover:bg-[#f5f3f3] transition-all"
+                    onclick="useInspiration(this)"
+                    data-prompt="A bold architectural necklace with geometric platinum links, each set with a channel of pavé diamonds, inspired by brutalist architecture">
+              <p class="body-copy" style="font-size:13px;font-style:italic;color:#41484b;">"Geometric platinum necklace, pavé diamond links, brutalist architecture"</p>
+            </button>
+            <button class="text-left p-4 rounded-xl border border-[#c1c7cb]/30 bg-white hover:border-[#3c6474]/40 hover:bg-[#f5f3f3] transition-all"
+                    onclick="useInspiration(this)"
+                    data-prompt="Long chandelier earrings in 18k white gold, cascading aquamarine drops with a diamond halo at each station, maximalist and dramatic">
+              <p class="body-copy" style="font-size:13px;font-style:italic;color:#41484b;">"Chandelier earrings, cascading aquamarine drops, diamond halos"</p>
+            </button>
+          </div>
+        </div>
+
+        <!-- Loading state (hidden) -->
+        <div id="previewLoading" class="hidden">
+          <div class="relative rounded-2xl overflow-hidden flex flex-col items-center justify-center"
+               style="aspect-ratio:1;background:linear-gradient(135deg,#f5f3f3 0%,#e9e8e7 100%);border:1px solid rgba(193,199,203,0.3);">
+            <div class="ph-orb absolute" style="width:350px;height:350px;background:#b9e2f5;top:-20%;right:-15%;opacity:0.4;"></div>
+            <div class="ph-orb ph-orb-b absolute" style="width:280px;height:280px;background:#a4cddf;bottom:-15%;left:-10%;opacity:0.3;"></div>
+            <div class="relative z-10 text-center px-12">
+              <div class="d-spinner mx-auto mb-8"></div>
+              <p style="font-family:'Playfair Display',serif;font-size:20px;font-style:italic;color:#3c6474;line-height:1.4;" id="loadingMsg">
+                Reading your creative brief…
+              </p>
+              <p class="mt-3 body-copy" style="font-size:13px;color:#a0a6a9;">This takes about 15–25 seconds</p>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ════════════════════════════
+     STEP 2 — REFINE
+════════════════════════════ -->
+<div id="s2" class="sp">
+  <div class="lab-wrap">
+    <div class="mb-10">
+      <span class="eyebrow">Your AI Creation</span>
+      <h2 style="font-family:'Playfair Display',serif;font-size:clamp(28px,3.5vw,42px);font-weight:600;line-height:1.12;color:#1b1c1c;">
+        Your Piece, Rendered by AI
+      </h2>
+    </div>
+
+    <div class="grid lg:grid-cols-5 gap-12">
+
+      <!-- Image — 3 cols -->
+      <div class="lg:col-span-3">
+        <div class="relative rounded-2xl overflow-hidden shadow-2xl" style="background:#e9e8e7;">
+          <img id="refineImg" src="" alt="Your AI jewelry design"
+               class="w-full h-auto block"
+               style="min-height:400px;object-fit:cover;">
+          <!-- Badge -->
+          <div class="absolute top-4 left-4 glass px-4 py-2 rounded-full border border-white/40 flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full bg-[#3c6474] animate-pulse"></span>
+            <span class="label" style="font-size:10px;letter-spacing:0.12em;color:#3c6474;" id="refineBadge">RING · 18K YELLOW GOLD · ART DECO</span>
+          </div>
+        </div>
+        <!-- Tweak row -->
+        <div class="mt-6 flex gap-3">
+          <textarea id="tweakPrompt" rows="2" class="lab-input flex-1"
+            style="resize:none;line-height:1.6;"
+            placeholder="Describe what to change — e.g. 'Make the band thinner' or 'Add more diamonds'…"></textarea>
+          <button onclick="startGeneration(true)"
+                  class="btn-primary flex-shrink-0 px-6"
+                  style="align-self:stretch;font-size:11px;letter-spacing:0.14em;gap:6px;">
+            <span class="material-symbols-outlined" style="font-size:18px;">refresh</span>
+            Regenerate
+          </button>
+        </div>
+      </div>
+
+      <!-- Right panel — 2 cols -->
+      <div class="lg:col-span-2 flex flex-col gap-6">
+
+        <!-- AI Analyst Card -->
+        <div class="rounded-2xl p-6 border border-[#b9e2f5]/50"
+             style="background:linear-gradient(135deg,rgba(185,226,245,0.08),rgba(255,255,255,0.7));">
+          <div class="flex items-center gap-3 mb-5">
+            <div class="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0"
+                 style="background:#b9e2f5;">
+              <span class="material-symbols-outlined text-[#3c6474]" style="font-size:18px;">psychology</span>
+            </div>
+            <div>
+              <p class="label" style="font-size:10px;letter-spacing:0.14em;color:#3c6474;">AI Design Analyst</p>
+              <p class="body-copy" style="font-size:13px;color:#41484b;">3 suggestions for your piece</p>
+            </div>
+          </div>
+          <div id="suggestionList" class="flex flex-col gap-3"></div>
+        </div>
+
+        <!-- Actions -->
+        <div class="flex flex-col gap-3">
+          <button onclick="goStep(3)"
+                  class="btn-primary btn-glow"
+                  style="justify-content:center;padding:18px;font-size:12px;letter-spacing:0.2em;gap:8px;">
+            <span class="material-symbols-outlined" style="font-size:18px;">videocam</span>
+            Try It On
+          </button>
+          <button onclick="goStep(4)"
+                  class="btn-outline"
+                  style="justify-content:center;padding:16px;font-size:11px;letter-spacing:0.16em;">
+            Skip to Quote
+          </button>
+          <button onclick="goStep(1)"
+                  class="btn-ghost justify-center py-3"
+                  style="font-size:11px;letter-spacing:0.14em;">
+            <span class="material-symbols-outlined" style="font-size:16px;">arrow_back</span>
+            Start Over
+          </button>
+        </div>
+
+        <!-- AI Spec Card -->
+        <div id="specCardWrap">
+          <!-- Skeleton while loading -->
+          <div id="specSkeleton" class="spec-card hidden">
+            <div class="skeleton mb-4" style="height:11px;width:50%;"></div>
+            <div class="flex flex-col gap-3">
+              <div class="flex justify-between"><div class="skeleton" style="height:10px;width:28%;"></div><div class="skeleton" style="height:10px;width:42%;"></div></div>
+              <div class="flex justify-between"><div class="skeleton" style="height:10px;width:22%;"></div><div class="skeleton" style="height:10px;width:36%;"></div></div>
+              <div class="flex justify-between"><div class="skeleton" style="height:10px;width:32%;"></div><div class="skeleton" style="height:10px;width:30%;"></div></div>
+              <div class="flex justify-between"><div class="skeleton" style="height:10px;width:25%;"></div><div class="skeleton" style="height:10px;width:38%;"></div></div>
+              <div class="flex justify-between"><div class="skeleton" style="height:10px;width:30%;"></div><div class="skeleton" style="height:10px;width:26%;"></div></div>
+              <div class="flex justify-between"><div class="skeleton" style="height:10px;width:20%;"></div><div class="skeleton" style="height:10px;width:44%;"></div></div>
+            </div>
+          </div>
+          <!-- Populated spec content -->
+          <div id="specContent" class="spec-card hidden"></div>
+        </div>
+
+        <!-- Piece info card (fallback when spec API unavailable) -->
+        <div id="specFallbackCard" class="rounded-xl p-5 bg-[#f5f3f3] border border-[#c1c7cb]/20">
+          <p class="label mb-3" style="font-size:10px;letter-spacing:0.16em;color:#3c6474;">DESIGN DETAILS</p>
+          <div class="flex flex-col gap-2">
+            <div class="flex justify-between">
+              <span class="body-copy" style="font-size:13px;color:#71787c;">Type</span>
+              <span class="label" style="font-size:12px;" id="detailType">Ring</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="body-copy" style="font-size:13px;color:#71787c;">Material</span>
+              <span class="label" style="font-size:12px;" id="detailMaterial">18k Yellow Gold</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="body-copy" style="font-size:13px;color:#71787c;">Stone</span>
+              <span class="label" style="font-size:12px;" id="detailGem">Diamond</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="body-copy" style="font-size:13px;color:#71787c;">Aesthetic</span>
+              <span class="label" style="font-size:12px;" id="detailStyle">Art Deco</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ════════════════════════════
+     STEP 3 — TRY ON
+════════════════════════════ -->
+<div id="s3" class="sp">
+  <div class="lab-wrap" style="padding-bottom:60px;">
+    <div class="text-center mb-8">
+      <span class="eyebrow">Virtual Try-On</span>
+      <h2 style="font-family:'Playfair Display',serif;font-size:clamp(28px,3.5vw,42px);font-weight:600;color:#1b1c1c;margin-bottom:10px;">
+        See It On You
+      </h2>
+      <p class="body-copy" style="color:#71787c;max-width:420px;margin:auto;">
+        Your live camera with the piece overlaid — exactly like a Snapchat filter.
+      </p>
+    </div>
+
+    <div class="flex flex-col items-center gap-5">
+
+      <!-- ── Camera viewport ── -->
+      <div id="camWrap" class="rounded-3xl"
+           style="width:100%;max-width:780px;aspect-ratio:16/9;">
+
+        <!-- Video feed (filled by JS srcObject) -->
+        <video id="camVideo" autoplay playsinline muted
+               style="width:100%;height:100%;object-fit:cover;transform:scaleX(-1);"></video>
+
+        <!-- Jewelry overlays — bg removed via canvas, transparent PNG only -->
+        <img id="jewelryOverlay"  src="" alt="" class="tryon-overlay"
+             style="position:absolute;display:none;background:transparent;border:none;box-shadow:none;filter:none;">
+        <img id="jewelryOverlay2" src="" alt="" class="tryon-overlay"
+             style="position:absolute;display:none;background:transparent;border:none;box-shadow:none;filter:none;">
+
+        <!-- ── Loading state ── -->
+        <div id="camLoading" class="absolute inset-0 flex flex-col items-center justify-center gap-5">
+          <div class="d-spinner"></div>
+          <p style="font-family:'Playfair Display',serif;font-size:18px;font-style:italic;color:rgba(255,255,255,0.7);">Starting camera…</p>
+        </div>
+
+        <!-- ── Camera denied ── -->
+        <div id="camDenied" class="hidden absolute inset-0 flex flex-col items-center justify-center gap-6 px-10 text-center">
+          <span class="material-symbols-outlined" style="font-size:52px;color:rgba(255,255,255,0.45);">videocam_off</span>
+          <p style="color:rgba(255,255,255,0.7);font-size:15px;font-family:'Inter',sans-serif;max-width:260px;line-height:1.6;">Camera access is needed. Allow it in your browser settings and try again.</p>
+          <button onclick="startCamera()" class="btn-primary" style="font-size:11px;letter-spacing:0.16em;padding:12px 28px;">Allow &amp; Retry</button>
+        </div>
+
+        <!-- ── Guide pill (top) — appears once camera is live ── -->
+        <div id="camGuide" class="hidden absolute top-5 left-0 right-0 flex justify-center pointer-events-none">
+          <div class="px-4 py-2 rounded-full" style="background:rgba(0,0,0,0.48);backdrop-filter:blur(10px);">
+            <span class="label" style="font-size:9.5px;letter-spacing:0.18em;color:rgba(255,255,255,0.88);" id="guideText">CENTER YOUR CHEST IN FRAME</span>
+          </div>
+        </div>
+
+        <!-- ── Jewelry type badge (top-right) ── -->
+        <div id="jewBadge" class="hidden absolute top-5 right-5">
+          <div class="px-3 py-1.5 rounded-full flex items-center gap-2"
+               style="background:rgba(185,226,245,0.18);backdrop-filter:blur(12px);border:1px solid rgba(185,226,245,0.38);">
+            <span class="w-1.5 h-1.5 rounded-full bg-[#b9e2f5] animate-pulse"></span>
+            <span class="label" style="font-size:9px;letter-spacing:0.18em;color:#b9e2f5;" id="jewBadgeText">RING</span>
+          </div>
+        </div>
+
+        <!-- ── Screenshot hint (bottom) ── -->
+        <div id="camHint" class="hidden absolute bottom-5 left-0 right-0 flex justify-center pointer-events-none">
+          <span class="label" style="font-size:8.5px;letter-spacing:0.14em;color:rgba(255,255,255,0.4);">WIN+SHIFT+S TO SCREENSHOT</span>
+        </div>
+
+      </div>
+
+      <!-- ── Drag hint ── -->
+      <p style="font-family:'Inter',sans-serif;font-size:11px;font-style:italic;color:rgba(65,72,75,0.5);text-align:center;margin-top:6px;">Drag to reposition</p>
+
+      <!-- ── Pendant size selector (pendant + necklace only) ── -->
+      <div id="pendantSizeRow" style="display:none;width:100%;max-width:780px;">
+        <p style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;letter-spacing:0.18em;text-transform:uppercase;color:#3c6474;margin-bottom:10px;">Pendant Size</p>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <button class="psize-btn psize-active" data-inches="0.5"  onclick="setPendantSize(this)">0.5 in</button>
+          <button class="psize-btn"              data-inches="1"    onclick="setPendantSize(this)">1 in</button>
+          <button class="psize-btn"              data-inches="1.5"  onclick="setPendantSize(this)">1.5 in</button>
+          <button class="psize-btn"              data-inches="2"    onclick="setPendantSize(this)">2 in</button>
+          <button class="psize-btn"              data-inches="custom" onclick="setPendantSize(this)">Custom</button>
+          <input id="pendantCustomIn" type="number" min="0.25" max="4" step="0.25"
+                 placeholder="inches"
+                 oninput="applyPendantInches(parseFloat(this.value))"
+                 style="display:none;width:90px;padding:8px 12px;font-family:'Inter',sans-serif;font-size:13px;
+                        border:1px solid rgba(193,199,203,0.55);border-radius:8px;outline:none;
+                        color:#1b1c1c;background:#fff;">
+        </div>
+      </div>
+
+      <!-- ── Controls below camera ── -->
+      <div class="flex gap-3 justify-center flex-wrap" style="width:100%;max-width:720px;">
+        <button onclick="goStep(4)"
+                class="btn-primary btn-glow flex-1"
+                style="justify-content:center;font-size:12px;letter-spacing:0.18em;gap:8px;padding:16px 20px;max-width:280px;">
+          <span class="material-symbols-outlined" style="font-size:18px;">receipt_long</span>
+          Get My Quote
+        </button>
+        <button onclick="goStep(2)" class="btn-outline flex-shrink-0"
+                style="font-size:11px;padding:14px 22px;">Back</button>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+
+<!-- ════════════════════════════
+     STEP 4 — QUOTE
+════════════════════════════ -->
+<div id="s4" class="sp">
+  <div class="lab-wrap">
+    <div class="text-center mb-12">
+      <span class="eyebrow">Your Estimate</span>
+      <h2 style="font-family:'Playfair Display',serif;font-size:clamp(28px,3.5vw,42px);font-weight:600;color:#1b1c1c;margin-bottom:12px;">
+        Transparent Pricing
+      </h2>
+      <p class="body-lg" style="color:#5e5e5b;">No hidden fees. No guessing. Here is your personalised estimate.</p>
+    </div>
+
+    <div class="max-w-[780px] mx-auto grid md:grid-cols-5 gap-8">
+
+      <!-- Left: image thumbnail -->
+      <div class="md:col-span-2 flex flex-col gap-5">
+        <div class="rounded-2xl overflow-hidden shadow-xl" style="background:#e9e8e7;">
+          <img id="quoteImg" src="" alt="Your design" class="w-full h-auto block" style="min-height:240px;object-fit:cover;">
+        </div>
+        <div class="rounded-xl p-5 bg-[#f5f3f3] border border-[#c1c7cb]/20">
+          <p class="label mb-3" style="font-size:10px;letter-spacing:0.16em;color:#3c6474;">WHAT'S INCLUDED</p>
+          <ul class="flex flex-col gap-3" id="includesList">
+            <!-- Generated by JS -->
+          </ul>
+        </div>
+      </div>
+
+      <!-- Right: price breakdown -->
+      <div class="md:col-span-3">
+        <div class="rounded-2xl bg-white p-8 shadow-xl border border-[#c1c7cb]/15">
+          <!-- Header -->
+          <div class="flex items-center gap-3 pb-6 mb-6" style="border-bottom:1px solid rgba(193,199,203,0.35);">
+            <div style="width:40px;height:40px;background:linear-gradient(135deg,#b9e2f5,#3c6474);border-radius:6px;transform:rotate(45deg);flex-shrink:0;"></div>
+            <div>
+              <p class="label" style="font-size:10px;letter-spacing:0.18em;color:#3c6474;">JWLZIFY ESTIMATE</p>
+              <p style="font-family:'Playfair Display',serif;font-size:18px;font-weight:500;color:#1b1c1c;" id="quoteHeading">Art Deco Ring</p>
+            </div>
+          </div>
+
+          <!-- Price rows -->
+          <div id="priceRows"></div>
+
+          <!-- Total -->
+          <div class="quote-total mt-2 pt-5" style="border-top:2px solid #1b1c1c;">
+            <span style="font-family:'Playfair Display',serif;font-size:20px;font-weight:600;color:#1b1c1c;">Estimated Total</span>
+            <span style="font-family:'Playfair Display',serif;font-size:32px;font-weight:700;color:#3c6474;" id="quoteTotal">$0</span>
+          </div>
+
+          <!-- Crafting time -->
+          <div class="mt-5 flex items-center gap-3 p-4 rounded-xl" style="background:rgba(185,226,245,0.12);border:1px solid rgba(185,226,245,0.4);">
+            <span class="material-symbols-outlined text-[#3c6474]" style="font-size:20px;">schedule</span>
+            <div>
+              <p class="label" style="font-size:10px;letter-spacing:0.14em;color:#3c6474;">CRAFTING TIME</p>
+              <p class="body-copy" style="font-size:14px;color:#41484b;">4–6 Weeks · GIA Certified · Master Artisan</p>
+            </div>
+          </div>
+
+          <!-- CTA -->
+          <div class="flex flex-col gap-3 mt-6">
+            <button onclick="goStep(5)"
+                    class="btn-primary btn-glow"
+                    style="justify-content:center;padding:18px;font-size:12px;letter-spacing:0.2em;gap:8px;">
+              <span class="material-symbols-outlined" style="font-size:18px;">shopping_bag</span>
+              Place This Order
+            </button>
+            <button onclick="goStep(2)"
+                    class="btn-outline"
+                    style="justify-content:center;padding:16px;font-size:11px;letter-spacing:0.14em;">
+              Make Changes to Design
+            </button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+
+<!-- ════════════════════════════
+     STEP 5 — ORDER FORM
+════════════════════════════ -->
+<div id="s5" class="sp">
+  <div class="lab-wrap">
+    <div class="text-center mb-12">
+      <span class="eyebrow">Complete Your Order</span>
+      <h2 style="font-family:'Playfair Display',serif;font-size:clamp(28px,3.5vw,42px);font-weight:600;color:#1b1c1c;margin-bottom:12px;">
+        Your Details
+      </h2>
+      <p class="body-lg" style="color:#5e5e5b;">Secure and private. Your order will be confirmed via email.</p>
+    </div>
+
+    <div class="max-w-[760px] mx-auto">
+
+      <!-- Mini quote summary -->
+      <div class="mb-8 p-5 rounded-2xl border border-[#b9e2f5]/50 flex items-center gap-5"
+           style="background:linear-gradient(135deg,rgba(185,226,245,0.1),rgba(255,255,255,0.8));">
+        <img id="orderThumb" src="" alt="" class="w-16 h-16 rounded-xl object-cover shadow-md flex-shrink-0">
+        <div>
+          <p class="label" style="font-size:10px;letter-spacing:0.14em;color:#3c6474;">YOUR COMMISSION</p>
+          <p style="font-family:'Playfair Display',serif;font-size:18px;font-weight:500;color:#1b1c1c;" id="orderSummaryTitle">Art Deco Ring · 18k Yellow Gold</p>
+          <p style="font-family:'Playfair Display',serif;font-size:22px;font-weight:700;color:#3c6474;" id="orderSummaryPrice">$0</p>
+        </div>
+      </div>
+
+      <form id="orderForm" onsubmit="submitOrder(event)"
+            class="bg-white rounded-2xl p-8 md:p-12 shadow-xl border border-[#c1c7cb]/15">
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-5 mb-5">
+          <div>
+            <label class="label block mb-2" style="font-size:10px;letter-spacing:0.16em;color:#3c6474;">First Name *</label>
+            <input type="text" required placeholder="First name" class="order-input">
+          </div>
+          <div>
+            <label class="label block mb-2" style="font-size:10px;letter-spacing:0.16em;color:#3c6474;">Last Name *</label>
+            <input type="text" required placeholder="Last name" class="order-input">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-5 mb-5">
+          <div>
+            <label class="label block mb-2" style="font-size:10px;letter-spacing:0.16em;color:#3c6474;">Email Address *</label>
+            <input type="email" required placeholder="you@example.com" class="order-input">
+          </div>
+          <div>
+            <label class="label block mb-2" style="font-size:10px;letter-spacing:0.16em;color:#3c6474;">Phone Number</label>
+            <input type="tel" placeholder="+1 (416) 555-0000" class="order-input">
+          </div>
+        </div>
+
+        <div style="border-top:0.5px solid rgba(193,199,203,0.4);margin:24px 0 24px;"></div>
+        <p class="label mb-5" style="font-size:11px;letter-spacing:0.18em;color:#1b1c1c;">SHIPPING ADDRESS</p>
+
+        <div class="mb-5">
+          <label class="label block mb-2" style="font-size:10px;letter-spacing:0.16em;color:#3c6474;">Street Address *</label>
+          <input type="text" required placeholder="123 Luxury Ave" class="order-input mb-3">
+          <input type="text" placeholder="Apartment, suite, unit (optional)" class="order-input">
+        </div>
+
+        <div class="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-5">
+          <div>
+            <label class="label block mb-2" style="font-size:10px;letter-spacing:0.16em;color:#3c6474;">City *</label>
+            <input type="text" required placeholder="Toronto" class="order-input">
+          </div>
+          <div>
+            <label class="label block mb-2" style="font-size:10px;letter-spacing:0.16em;color:#3c6474;">Province / State *</label>
+            <input type="text" required placeholder="Ontario" class="order-input">
+          </div>
+          <div>
+            <label class="label block mb-2" style="font-size:10px;letter-spacing:0.16em;color:#3c6474;">Postal Code *</label>
+            <input type="text" required placeholder="M5V 2T6" class="order-input">
+          </div>
+        </div>
+
+        <div class="mb-6">
+          <label class="label block mb-2" style="font-size:10px;letter-spacing:0.16em;color:#3c6474;">Country</label>
+          <select class="order-input" style="cursor:pointer;">
+            <option>Canada</option>
+            <option>United States</option>
+            <option>United Kingdom</option>
+            <option>Australia</option>
+            <option>Other</option>
+          </select>
+        </div>
+
+        <div class="mb-6">
+          <label class="label block mb-2" style="font-size:10px;letter-spacing:0.16em;color:#3c6474;">Special Instructions</label>
+          <textarea rows="3" placeholder="Gift wrapping, engraving requests, ring size (if known), delivery date preference…"
+                    class="order-input" style="resize:vertical;line-height:1.65;"></textarea>
+        </div>
+
+        <div style="border-top:0.5px solid rgba(193,199,203,0.4);margin:24px 0 24px;"></div>
+
+        <div class="flex items-start gap-3 mb-8">
+          <input type="checkbox" required id="termsCheck" class="mt-1" style="accent-color:#3c6474;width:18px;height:18px;cursor:pointer;">
+          <label for="termsCheck" class="body-copy cursor-pointer" style="font-size:14px;color:#41484b;">
+            I agree to the <a href="#" style="color:#3c6474;text-decoration:underline;">Terms of Service</a> and understand this is a bespoke commission that will be crafted to order. Standard delivery is 4–6 weeks.
+          </label>
+        </div>
+
+        <button type="submit" id="orderSubmitBtn" class="w-full btn-primary btn-glow"
+                style="justify-content:center;padding:20px;font-size:13px;letter-spacing:0.22em;gap:10px;">
+          <span class="material-symbols-outlined" style="font-size:20px;">verified</span>
+          <span id="orderBtnText">Confirm &amp; Place Order</span>
+        </button>
+
+        <p class="text-center mt-5 body-copy" style="font-size:13px;color:#a0a6a9;">
+          🔒 Secured with 256-bit encryption · Payment collected at confirmation call
+        </p>
+      </form>
+    </div>
+  </div>
+</div>
+
+
+<!-- ════════════════════════════
+     SUCCESS
+════════════════════════════ -->
+<div id="sSuccess" class="sp">
+  <div class="lab-wrap text-center">
+    <div class="max-w-[600px] mx-auto">
+      <div class="w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-8"
+           style="background:linear-gradient(135deg,#b9e2f5,rgba(60,100,116,0.2));">
+        <span class="material-symbols-outlined text-[#3c6474]" style="font-size:42px;font-variation-settings:'FILL' 1;">check_circle</span>
+      </div>
+      <span class="eyebrow">Order Received</span>
+      <h2 style="font-family:'Playfair Display',serif;font-size:clamp(32px,4vw,48px);font-weight:600;color:#1b1c1c;line-height:1.1;margin-bottom:16px;">
+        Your Commission<br>Is Confirmed
+      </h2>
+      <p class="body-lg mb-4" style="color:#5e5e5b;max-width:440px;margin:0 auto 16px;">
+        You'll receive a confirmation email shortly with your archival AI render, order ID, and crafting timeline.
+      </p>
+      <p class="label mb-12" style="font-size:11px;letter-spacing:0.16em;color:#3c6474;" id="orderIdDisplay">ORDER #JWLZ-000000</p>
+
+      <div class="flex flex-col sm:flex-row gap-4 justify-center mb-16">
+        <a href="collections.html"><button class="btn-primary" style="font-size:12px;letter-spacing:0.16em;">Explore Gallery</button></a>
+        <a href="index.html"><button class="btn-outline" style="font-size:11px;letter-spacing:0.14em;">Return Home</button></a>
+      </div>
+
+      <!-- Timeline -->
+      <div class="rounded-2xl p-8 text-left" style="background:#f5f3f3;border:1px solid rgba(193,199,203,0.3);">
+        <p class="label mb-6" style="font-size:10px;letter-spacing:0.18em;color:#3c6474;">WHAT HAPPENS NEXT</p>
+        <div class="flex flex-col gap-5">
+          <div class="flex items-start gap-4">
+            <div class="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 bg-[#b9e2f5]">
+              <span class="material-symbols-outlined text-[#3c6474]" style="font-size:16px;">mail</span>
+            </div>
+            <div>
+              <p class="label" style="font-size:11px;color:#1b1c1c;">Today — Confirmation email with your AI render</p>
+            </div>
+          </div>
+          <div class="flex items-start gap-4">
+            <div class="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 bg-[#b9e2f5]">
+              <span class="material-symbols-outlined text-[#3c6474]" style="font-size:16px;">call</span>
+            </div>
+            <div>
+              <p class="label" style="font-size:11px;color:#1b1c1c;">Within 24h — Private consultation call with our concierge</p>
+            </div>
+          </div>
+          <div class="flex items-start gap-4">
+            <div class="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 bg-[#b9e2f5]">
+              <span class="material-symbols-outlined text-[#3c6474]" style="font-size:16px;">construction</span>
+            </div>
+            <div>
+              <p class="label" style="font-size:11px;color:#1b1c1c;">Weeks 1–6 — Master jeweler crafts your piece in Antwerp</p>
+            </div>
+          </div>
+          <div class="flex items-start gap-4">
+            <div class="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 bg-[#3c6474]">
+              <span class="material-symbols-outlined text-white" style="font-size:16px;">local_shipping</span>
+            </div>
+            <div>
+              <p class="label" style="font-size:11px;color:#1b1c1c;">Week 6 — White-glove insured delivery to your door</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</main>
+
+<!-- ════════════════════════════
+     FOOTER
+════════════════════════════ -->
+<footer class="w-full py-24 bg-white border-t border-[#c1c7cb]/12">
+  <div class="max-w-[1600px] mx-auto px-4 md:px-16">
+    <div class="grid grid-cols-12 gap-16 mb-20">
+      <div class="col-span-12 lg:col-span-4 flex flex-col gap-8">
+        <span style="font-family:'Playfair Display',serif;font-size:24px;font-weight:600;letter-spacing:0.32em;color:#3c6474;text-transform:uppercase;">JWLZIFY</span>
+        <p class="body-copy" style="max-width:280px;color:rgba(65,72,75,0.72);">The future of high jewelry. Leading the global revolution in AI-driven bespoke craftsmanship and ethical luxury.</p>
+        <div class="flex gap-4">
+          <div class="w-10 h-10 rounded-full flex items-center justify-center cursor-pointer hover:bg-[#3c6474] hover:text-white transition-all" style="background:#efeded;border:1px solid rgba(193,199,203,0.3);"><span class="material-symbols-outlined" style="font-size:18px;">share</span></div>
+          <div class="w-10 h-10 rounded-full flex items-center justify-center cursor-pointer hover:bg-[#3c6474] hover:text-white transition-all" style="background:#efeded;border:1px solid rgba(193,199,203,0.3);"><span class="material-symbols-outlined" style="font-size:18px;">public</span></div>
+          <div class="w-10 h-10 rounded-full flex items-center justify-center cursor-pointer hover:bg-[#3c6474] hover:text-white transition-all" style="background:#efeded;border:1px solid rgba(193,199,203,0.3);"><span class="material-symbols-outlined" style="font-size:18px;">mail</span></div>
+        </div>
+      </div>
+      <div class="col-span-12 lg:col-span-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-10">
+        <div class="flex flex-col gap-6">
+          <p class="label" style="font-size:12px;letter-spacing:0.13em;color:#1b1c1c;font-weight:700;">Experience</p>
+          <ul class="flex flex-col gap-3">
+            <li><a href="ailab.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">The Lab</a></li>
+            <li><a href="about.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Expert Jewelers</a></li>
+            <li><a href="about.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Your Journey</a></li>
+            <li><a href="collections.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Collections</a></li>
+          </ul>
+        </div>
+        <div class="flex flex-col gap-6">
+          <p class="label" style="font-size:12px;letter-spacing:0.13em;color:#1b1c1c;font-weight:700;">Philosophy</p>
+          <ul class="flex flex-col gap-3">
+            <li><a href="about.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Ethical Sourcing</a></li>
+            <li><a href="about.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Sustainability</a></li>
+            <li><a href="about.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Blockchain Trust</a></li>
+            <li><a href="about.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Our Story</a></li>
+          </ul>
+        </div>
+        <div class="flex flex-col gap-6">
+          <p class="label" style="font-size:12px;letter-spacing:0.13em;color:#1b1c1c;font-weight:700;">Support</p>
+          <ul class="flex flex-col gap-3">
+            <li><a href="support.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Account</a></li>
+            <li><a href="support.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Order Status</a></li>
+            <li><a href="support.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Shipping &amp; Delivery</a></li>
+            <li><a href="support.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Returns &amp; Exchanges</a></li>
+            <li><a href="support.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Warranty</a></li>
+            <li><a href="support.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Authenticity</a></li>
+            <li><a href="support.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Size Guide</a></li>
+          </ul>
+        </div>
+        <div class="flex flex-col gap-6">
+          <p class="label" style="font-size:12px;letter-spacing:0.13em;color:#1b1c1c;font-weight:700;">Legal</p>
+          <ul class="flex flex-col gap-3">
+            <li><a href="legal.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Privacy Policy</a></li>
+            <li><a href="legal.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Terms &amp; Conditions</a></li>
+            <li><a href="legal.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Returns &amp; Exchanges</a></li>
+            <li><a href="legal.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Shipping Policy</a></li>
+            <li><a href="legal.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Warranty</a></li>
+            <li><a href="legal.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Cookies Policy</a></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="pt-10 flex flex-col sm:flex-row justify-between items-center gap-4"
+         style="border-top:0.5px solid rgba(193,199,203,0.3);">
+      <p class="label" style="font-size:11px;letter-spacing:0.13em;color:rgba(65,72,75,0.5);">© 2025 JWLZIFY Holdings. All Rights Reserved.</p>
+      <p class="label" style="font-size:11px;letter-spacing:0.13em;color:rgba(65,72,75,0.5);">Crafted with Precision in Toronto &amp; Antwerp</p>
+    </div>
+  </div>
+</footer>
+
+<script>
+  document.getElementById('siteHeader').classList.add('nav-visible');
+</script>
+<script src="firebase-auth.js"></script>
+
+<!-- ════════════════════════════
+     JAVASCRIPT
+════════════════════════════ -->
+<script>
+'use strict';
+
+/* ── State ───────────────────────────────────── */
+/* ── Claude API key (fill in to enable AI spec cards) ── */
+const CLAUDE_API_KEY = '';
+
+/* ── Display name maps ── */
+const MATERIAL_LABEL = {
+  '925silver':  '925 Sterling Silver',
+  '10ctgold':   '10ct Gold',
+  '14ctgold':   '14ct Gold',
+};
+const GEM_LABEL = {
+  'moissanite_vvs':    'Moissanite VVS',
+  'lab_diamond_vvs':   'Lab Diamond VVS',
+  'lab_diamond':       'Lab Diamond',
+  'real_diamond_vsvvs':'Real Diamond VS/VVS',
+};
+function matLabel(v) { return MATERIAL_LABEL[v] || v; }
+function gemLabel(v) { return GEM_LABEL[v] || v; }
+
+/* ── Metal → gem options ── */
+const GEM_OPTIONS = {
+  '925silver':  [['moissanite_vvs','Moissanite VVS'],['lab_diamond_vvs','Lab Diamond VVS']],
+  '10ctgold':   [['lab_diamond','Lab Diamond'],['real_diamond_vsvvs','Real Diamond VS/VVS']],
+  '14ctgold':   [['lab_diamond','Lab Diamond'],['real_diamond_vsvvs','Real Diamond VS/VVS']],
+};
+function updateGemOptions() {
+  const mat = document.getElementById('materialSelect').value;
+  const sel = document.getElementById('gemSelect');
+  const opts = GEM_OPTIONS[mat] || GEM_OPTIONS['925silver'];
+  sel.innerHTML = opts.map(([v,l]) => `<option value="${v}">${l}</option>`).join('');
+  LAB.material = mat;
+  LAB.gem = sel.value;
+}
+
+const LAB = {
+  step: 1,
+  type: 'ring',
+  material: '925silver',
+  gem: 'moissanite_vvs',
+  style: 'Art Deco',
+  prompt: '',
+  imageUrl: null,
+  processedImageUrl: null,
+  quote: null,
+  spec: null,
+  cameraStream: null,
+  _pendantRO: null,
+  _pendantInches: 1,
+  _sizePendant: null,
+  _dragACs: [],
+};
+
+/* ── Progress bar ────────────────────────────── */
+function updateProgress(n) {
+  for (let i = 1; i <= 5; i++) {
+    const dot = document.getElementById('dot' + i);
+    dot.className = 'prog-dot';
+    if (i < n)  dot.classList.add('done');
+    if (i === n) dot.classList.add('current');
+  }
+  for (let i = 1; i <= 4; i++) {
+    const line = document.getElementById('line' + i + (i+1));
+    if (line) line.className = 'prog-line' + (i < n ? ' done' : '');
+  }
+}
+
+/* ── Step navigation ─────────────────────────── */
+function goStep(n) {
+  // Kill camera and pendant ResizeObserver when leaving step 3
+  if (LAB.step === 3 && n !== 3) {
+    if (LAB.cameraStream) {
+      LAB.cameraStream.getTracks().forEach(t => t.stop());
+      LAB.cameraStream = null;
+    }
+    if (LAB._pendantRO) {
+      LAB._pendantRO.disconnect();
+      LAB._pendantRO = null;
+    }
+    LAB._dragACs.forEach(ac => ac.abort());
+    LAB._dragACs = [];
+  }
+  document.querySelectorAll('.sp').forEach(el => el.classList.remove('active'));
+  const el = document.getElementById('s' + n) || document.getElementById('sSuccess');
+  if (el) el.classList.add('active');
+  LAB.step = n;
+  updateProgress(n);
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  if (n === 3) setupTryOn();
+  if (n === 4) renderQuote();
+  if (n === 5) populateOrderSummary();
+}
+
+/* ── Jewelry type selector ───────────────────── */
+function setType(btn, type) {
+  document.querySelectorAll('.type-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  LAB.type = type;
+}
+
+/* ── Style chip selector ─────────────────────── */
+function setStyle(btn) {
+  document.querySelectorAll('.lab-chip').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  LAB.style = btn.dataset.style;
+}
+
+/* ── Inspiration prompts ─────────────────────── */
+function useInspiration(btn) {
+  document.getElementById('promptArea').value = btn.dataset.prompt;
+  document.getElementById('promptArea').focus();
+}
+
+/* ── Prompt building ─────────────────────────── */
+function buildPrompt(type, material, gem, style, desc) {
+  const typeMap = {
+    ring: 'ring band jewelry',
+    necklace: 'pendant necklace jewelry',
+    pendant: 'pendant drop necklace fine jewelry',
+    earrings: 'pair of earrings fine jewelry',
+    bracelet: 'cuff bracelet jewelry'
+  };
+  const piece   = typeMap[type] || type;
+  const mDisp   = matLabel(material);
+  const gDisp   = gemLabel(gem);
+  const gemPart = `${gDisp} center stone`;
+  const base    = desc.trim() ? desc.trim() + ', ' : '';
+  return `${base}luxury ${style} ${piece}, ${mDisp}, ${gemPart}, isolated fine jewelry product photograph, pure white seamless background, no shadows, no reflections on background, professional diffuse studio lighting, hyper realistic, 8K ultra high definition, macro lens, sharp focus, precious metal gleam, gemstone sparkle and brilliance, luxury brand catalog`;
+}
+
+/* ── Image generation ────────────────────────── */
+function startGeneration(isTweak) {
+  LAB.material = document.getElementById('materialSelect').value;
+  LAB.gem      = document.getElementById('gemSelect').value;
+  const basePrompt = document.getElementById('promptArea').value.trim();
+
+  if (!basePrompt && !isTweak) {
+    document.getElementById('promptArea').focus();
+    document.getElementById('promptArea').style.borderColor = '#ba1a1a';
+    setTimeout(() => { document.getElementById('promptArea').style.borderColor = ''; }, 2200);
+    return;
+  }
+
+  let desc = basePrompt;
+  if (isTweak) {
+    const tweak = document.getElementById('tweakPrompt').value.trim();
+    desc = (LAB.prompt || basePrompt) + (tweak ? '. Tweak: ' + tweak : '');
+  }
+  LAB.prompt = desc;
+
+  const fullPrompt = buildPrompt(LAB.type, LAB.material, LAB.gem, LAB.style, desc);
+  const seed = (Date.now() + Math.floor(Math.random() * 9999)) % 99999;
+  const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(fullPrompt)}?width=800&height=800&nologo=true&seed=${seed}&model=flux&enhance=true`;
+
+  LAB.imageUrl = url;
+  LAB.processedImageUrl = null; // reset so try-on re-processes the new image
+
+  if (isTweak) {
+    // Regenerate in place — blur current image, swap src, unblur on load
+    const ri = document.getElementById('refineImg');
+    ri.style.transition = 'filter 0.4s ease';
+    ri.style.filter = 'blur(14px) brightness(0.8)';
+    const clear = () => { ri.style.filter = 'none'; };
+    ri.addEventListener('load',  clear, { once: true });
+    ri.addEventListener('error', clear, { once: true });
+    ri.src = url;
+    document.getElementById('quoteImg').src = url;
+    const ot = document.getElementById('orderThumb');
+    if (ot) ot.src = url;
+  } else {
+    // Navigate immediately — image loads naturally in step 2
+    showRefineStep();
+  }
+}
+
+
+/* ── AI suggestions ──────────────────────────── */
+const SDATA = {
+  ring: {
+    'Art Deco': [
+      'A step-cut emerald center stone would amplify the geometric precision of this Art Deco composition.',
+      'Platinum prongs contrast beautifully with the yellow gold milgrain border — consider a two-tone setting.',
+      'Widening the band to 3.2mm would give this piece greater visual authority without losing elegance.'
+    ],
+    'Minimalist': [
+      'A tension-set stone with no visible prongs would push the minimalist architecture to its extreme.',
+      'Applying a brushed matte finish to 60% of the band adds tactile luxury without visual noise.',
+      'A single half-pavé row on one edge of the band preserves minimalism while catching light beautifully.'
+    ],
+    'Vintage': [
+      'Hand-engraved filigree on the shank shoulders would deepen the vintage character immensely.',
+      'An Old European cut diamond is historically authentic to this era and far rarer than modern cuts.',
+      'Rose gold reads as inherently romantic and complements antique aesthetics far better than white gold.'
+    ],
+    'Modern': [
+      'A bezel setting in place of prongs gives this a clean, modern architectural profile.',
+      'Consider a split shank to add visual complexity without cluttering the design.',
+      'Adding a subtle knife-edge on the band profile catches light and creates a floating illusion.'
+    ],
+    'Maximalist': [
+      'A cluster of princess-cut stones surrounding the center would elevate the drama significantly.',
+      'Full pavé coverage across the entire shank would make this piece unmissable.',
+      'Incorporating a second stone type (e.g. sapphire accents around a diamond center) creates rich contrast.'
+    ],
+    'Organic': [
+      'Free-form prong work that mimics roots or branches would reinforce the organic narrative.',
+      'Incorporating a rose-cut stone with visible natural inclusions embraces imperfection as beauty.',
+      'A textured, hammered band finish evokes raw geological forms and sets this apart from any mass piece.'
+    ]
+  },
+  necklace: {
+    'Art Deco': [
+      'Geometric platinum links with channel-set baguette diamonds would be quintessentially Art Deco.',
+      'A long sautoir length (36″) was the signature of the era — it changes how the whole piece moves.',
+      'Onyx or black enamel inlays create the bold contrast that defines the best Art Deco jewellery.'
+    ],
+    'Minimalist': [
+      'A single floating diamond on an ultra-fine 0.8mm chain is architectural simplicity at its finest.',
+      'A bar pendant in brushed white gold with a single flush-set stone reads as effortlessly modern.',
+      'Consider an asymmetric chain length — one side slightly longer — for a deliberate editorial tension.'
+    ],
+    'Vintage': [
+      'A graduated drop design with old-mine-cut diamonds mimics the great Victorian rivières.',
+      'Adding a cameo or portrait miniature as the centerpiece creates an heirloom narrative.',
+      'Elongated drop pendants with filigree cages around coloured stones are classically romantic.'
+    ],
+    'Modern': ['A floating open-circle pendant in polished gold is an enduring modern classic.', 'Incorporating a magnetic clasp allows the necklace to be worn at different lengths — deeply practical and modern.', 'A vertical bar set with a column of graduated diamonds reads as confidently contemporary.'],
+    'Maximalist': ['A statement bib necklace with multiple layers and mixed stones would command attention.', 'Incorporating turquoise, coral, and diamond in a wide collar is maximalism at its most luxurious.', 'A chandelier-style pendant with pavé and coloured stones is unapologetically opulent.'],
+    'Organic': ['A crescent-shaped pendant in oxidized gold with a raw crystal drop is strikingly modern-organic.', 'Incorporating carved bone or horn with diamonds creates a striking material tension.', 'A pebble-form pendant with irregular surface texture celebrates the beauty of natural forms.']
+  },
+  earrings: {
+    'Art Deco': ['Long drop earrings with geometric step-cut stones descending in graduating sizes are pure Art Deco.', 'Black onyx and diamond in an elongated lozenge silhouette is the defining Art Deco earring form.', 'A chandelier form with articulated sections that move independently adds kinetic energy.'],
+    'Minimalist': ['Tiny single-diamond studs in a bezel setting are the definitive minimalist earring.', 'A slim ear cuff in polished gold worn without a stud creates effortless, zero-piercing impact.', 'A micro-bar drop — just 8mm long — is subtle in scale but immaculate in proportion.'],
+    'Vintage': ['Long tassel earrings with pavé diamond caps and gemstone drops reference the great 1920s designs.', 'Cameo or portrait earrings with diamond surrounds are deeply romantic and collectible.', 'Floral cluster earrings with en tremblant petals that quiver on hidden springs are exceptionally fine.'],
+    'Modern': ['An angular drop in brushed titanium with a single brilliant diamond is boldly contemporary.', 'Convertible earrings that can be worn as studs or drops with a detachable jacket offer versatility.', 'An architectural sculptural form — almost wearable art — announces itself as a piece outside fashion.'],
+    'Maximalist': ['Dramatic floor-grazing chandeliers with hundreds of pavé diamonds are maximalism perfected.', 'Mixed coloured stone clusters — emeralds, rubies, sapphires — in a dome stud are richly excessive.', 'Ear jackets with three or four drop elements at different lengths create extraordinary movement.'],
+    'Organic': ['Free-form cast gold earrings that look like melted metal frozen mid-flow are genuinely unique.', 'Raw crystal druzy drops framed in fine gold wire are contemporary and natural at once.', 'A single large baroque pearl drop is the most organic of all luxury materials.']
+  },
+  bracelet: {
+    'Art Deco': ['A wide platinum and diamond flex bracelet with geometric repeating motifs is definitively Art Deco.', 'A link bracelet with alternating onyx and diamond rectangular links is high-impact and period-perfect.', 'Incorporating a hidden clasp that is indistinguishable from the links is a mark of true mastery.'],
+    'Minimalist': ['A single hammered gold bangle in 18k yellow gold is the most enduring minimalist bracelet.', 'A slim 2mm round diamond eternity bracelet is perfection in restraint.', 'A cuff with a single line of channel-set diamonds along the spine is elegantly understated.'],
+    'Vintage': ['A filigree mesh bracelet with diamond set bezels is deeply Victorian in its intricacy.', 'A wide hinged bangle with enamel inlay and diamond accents references the finest Edwardian jewellery.', 'A charm bracelet with fine hand-crafted charms in 18k gold is a personal and deeply romantic gesture.'],
+    'Modern': ['A sculptural open cuff in polished platinum with a single diamond in a tension setting is architectural.', 'A liquid-form bangle that appears to have been poured and set reads as almost magically modern.', 'A chain-link tennis bracelet redesigned with angular links instead of round is a bold update on a classic.'],
+    'Maximalist': ['A wide rivière bracelet with hundreds of pavé diamonds covering every surface is breathtaking.', 'Stacking five or six mismatched bangles — diamond, plain, enamel — creates an intentional maximalist stack.', 'A broad cuff with a tapestry of multicoloured precious stones and complex filigree work is wearable sculpture.'],
+    'Organic': ['A wraparound vine bracelet with tiny diamond set leaves and twisting gold stems is enchanting.', 'A free-form open cuff hammered to appear like a river stone in gold is modern and elemental.', 'Incorporating branches of coral into a gold setting creates something utterly one-of-a-kind.']
+  },
+  pendant: {
+    'Art Deco': ['A geometric platinum frame around a pear-cut stone with milgrain detailing is quintessentially Art Deco.', 'Adding calibré-cut sapphire accents around the center stone creates bold period contrast.', 'A hexagonal bail in contrasting black enamel connects this piece directly to the Art Deco tradition.'],
+    'Minimalist': ['A single bezel-set stone on a 0.8mm chain is the definitive minimalist pendant — nothing more, nothing less.', 'An asymmetric teardrop cut stone on an ultra-fine chain creates elegant tension at minimal scale.', 'A flat brushed-gold disc with a single flush-set diamond reads as quietly powerful.'],
+    'Vintage': ['A Victorian-era drop design with an old-mine-cut center and filigree surround is deeply romantic.', 'A locket-style pendant with engraved exterior and a portrait miniature inside is collectible and personal.', 'A cluster pendant with old-cut stones arranged in a floral motif is classically beautiful.'],
+    'Modern': ['A sculptural abstract form in polished platinum with a single floating diamond makes an architectural statement.', 'A geometric hexagon pendant in yellow gold with a bezel-set stone balances form and function.', 'An interlocking circle pendant in two-tone gold reads as deliberately contemporary.'],
+    'Maximalist': ['A multi-strand drop pendant with cascading pear-cut stones creates theatrical impact.', 'A large statement pendant with a cushion-cut center surrounded by three rows of pavé diamonds is unapologetically opulent.', 'Combining emerald, ruby, and diamond in a grand central pendant is maximalism at its most bold.'],
+    'Organic': ['A free-form cast gold pendant that mimics a raw crystal is strikingly elemental.', 'A raw uncut sapphire in a fine wire wrap setting celebrates natural beauty over artifice.', 'An asymmetric drop pendant inspired by water ripples in oxidized silver and gold makes a quiet statement.']
+  }
+};
+
+function getAISuggestions(type, style) {
+  const typeData = SDATA[type] || SDATA.ring;
+  return typeData[style] || typeData['Modern'] || typeData[Object.keys(typeData)[0]];
+}
+
+/* ── Show Refine step ────────────────────────── */
+function showRefineStep() {
+  // Populate images
+  document.getElementById('refineImg').src = LAB.imageUrl;
+  document.getElementById('quoteImg').src   = LAB.imageUrl;
+  const ot = document.getElementById('orderThumb');
+  if (ot) ot.src = LAB.imageUrl;
+
+  // Pre-process background removal in the background
+  LAB.processedImageUrl = null;
+  removeWhiteBackground(LAB.imageUrl).then(url => {
+    if (url) LAB.processedImageUrl = url;
+  });
+
+  // Badge
+  const badge = `${LAB.type.toUpperCase()} · ${matLabel(LAB.material).toUpperCase()} · ${LAB.style.toUpperCase()}`;
+  document.getElementById('refineBadge').textContent = badge;
+
+  // Detail fields (fallback card)
+  document.getElementById('detailType').textContent     = LAB.type.charAt(0).toUpperCase() + LAB.type.slice(1);
+  document.getElementById('detailMaterial').textContent = matLabel(LAB.material);
+  document.getElementById('detailGem').textContent      = gemLabel(LAB.gem);
+  document.getElementById('detailStyle').textContent    = LAB.style;
+
+  // AI suggestions
+  const sug = getAISuggestions(LAB.type, LAB.style);
+  const list = document.getElementById('suggestionList');
+  list.innerHTML = sug.map((s, i) => `
+    <div class="ai-sug" onclick="applySuggestion(this)" data-text="${s.replace(/"/g,'&quot;')}">
+      <span class="material-symbols-outlined text-[#3c6474] flex-shrink-0" style="font-size:18px;margin-top:1px;">tips_and_updates</span>
+      <p class="body-copy" style="font-size:13px;line-height:1.6;color:#41484b;">${s}</p>
+    </div>
+  `).join('');
+
+  goStep(2);
+  fetchSpecCard();
+}
+
+function applySuggestion(el) {
+  const text = el.dataset.text;
+  const ta = document.getElementById('tweakPrompt');
+  ta.value = text;
+  ta.focus();
+}
+
+/* ── Live spot prices (updated by fetchSpotPrices) ── */
+const SPOT = { silver: 0.97, gold10ct: 26.50, gold14ct: 37.10 };
+
+async function fetchSpotPrices() {
+  try {
+    const res = await fetch('https://api.metalpriceapi.com/v1/latest?api_key=demo&base=USD&currencies=XAU,XAG');
+    if (!res.ok) throw new Error('non-200');
+    const data = await res.json();
+    if (!data.rates) throw new Error('no rates');
+    const TROY = 31.1035;
+    if (data.rates.XAG) {
+      SPOT.silver = (1 / data.rates.XAG) / TROY;
+    }
+    if (data.rates.XAU) {
+      const goldPerGram = (1 / data.rates.XAU) / TROY;
+      SPOT.gold10ct = goldPerGram * (10 / 24);
+      SPOT.gold14ct = goldPerGram * (14 / 24);
+    }
+  } catch(e) { /* use fallback values */ }
+}
+
+/* ── Pricing engine ── */
+const METAL_GRAMS  = { ring:4, necklace:8, pendant:5, earrings:3, bracelet:12 };
+const STONE_CARATS = { ring:0.8, necklace:1.2, pendant:0.6, earrings:0.5, bracelet:1.5 };
+const STONE_RATE   = { moissanite_vvs:80, lab_diamond_vvs:150, lab_diamond:150, real_diamond_vsvvs:800 };
+const PROFIT_MULT  = {
+  '925silver|moissanite_vvs':    1.20 * 2.50,
+  '925silver|lab_diamond_vvs':   1.20 * 2.00,
+  '10ctgold|lab_diamond':        1.20 * 2.00,
+  '10ctgold|real_diamond_vsvvs': 1.20 * 1.70,
+  '14ctgold|lab_diamond':        1.20 * 2.00,
+  '14ctgold|real_diamond_vsvvs': 1.20 * 1.70,
+};
+function metalRate(mat) {
+  if (mat === '925silver') return SPOT.silver;
+  if (mat === '10ctgold')  return SPOT.gold10ct;
+  if (mat === '14ctgold')  return SPOT.gold14ct;
+  return SPOT.silver;
+}
+
+function calcQuote() {
+  const type   = LAB.type;
+  const mat    = LAB.material;
+  const gem    = LAB.gem;
+  const grams  = (LAB.spec && LAB.spec.totalWeightGrams)
+                   ? parseFloat(LAB.spec.totalWeightGrams) : (METAL_GRAMS[type]  || 4);
+  const carats = (LAB.spec && LAB.spec.totalCarats)
+                   ? parseFloat(LAB.spec.totalCarats)      : (STONE_CARATS[type] || 0.8);
+  const mult   = PROFIT_MULT[`${mat}|${gem}`] || (1.20 * 2.00);
+  const raw    = ((grams * metalRate(mat)) + (carats * (STONE_RATE[gem] || 80))) * mult;
+  const total  = Math.max(800, Math.round(raw / 50) * 50);
+  return { total };
+}
+
+function renderQuote() {
+  const q = calcQuote();
+  LAB.quote = q;
+
+  const typeName = LAB.type.charAt(0).toUpperCase() + LAB.type.slice(1);
+  document.getElementById('quoteHeading').textContent = `${LAB.style} ${typeName}`;
+
+  document.getElementById('priceRows').innerHTML = `
+    <div class="quote-row" style="padding:22px 0;">
+      <span class="body-copy" style="font-size:16px;color:#41484b;">Estimated Price</span>
+      <span style="font-family:'Playfair Display',serif;font-size:30px;font-weight:700;color:#3c6474;">$${q.total.toLocaleString()}</span>
+    </div>
+  `;
+  document.getElementById('quoteTotal').style.display = 'none';
+
+  const INCLUDES = [
+    { icon:'diamond',        label:'GIA Certified Stones' },
+    { icon:'verified',       label:'18-Month Craftsmanship Warranty' },
+    { icon:'image',          label:'Archival AI Design Render' },
+    { icon:'inventory_2',    label:'Premium Archival Packaging' },
+    { icon:'local_shipping', label:'White-Glove Insured Delivery' },
+  ];
+  document.getElementById('includesList').innerHTML = INCLUDES.map(i => `
+    <li class="flex items-center gap-3">
+      <span class="material-symbols-outlined text-[#3c6474]" style="font-size:17px;">${i.icon}</span>
+      <span class="body-copy" style="font-size:13px;color:#41484b;">${i.label}</span>
+    </li>
+  `).join('');
+}
+
+/* ── Order summary population ────────────────── */
+function populateOrderSummary() {
+  const q = LAB.quote || calcQuote();
+  const typeName = LAB.type.charAt(0).toUpperCase() + LAB.type.slice(1);
+  document.getElementById('orderSummaryTitle').textContent = `${LAB.style} ${typeName} · ${matLabel(LAB.material)}`;
+  document.getElementById('orderSummaryPrice').textContent = '$' + q.total.toLocaleString();
+}
+
+/* ── Order submission ────────────────────────── */
+function submitOrder(e) {
+  e.preventDefault();
+  const btn  = document.getElementById('orderSubmitBtn');
+  const text = document.getElementById('orderBtnText');
+  btn.disabled = true;
+  text.textContent = 'Placing order…';
+
+  setTimeout(() => {
+    const id = 'JWLZ-' + String(Date.now()).slice(-6);
+    document.getElementById('orderIdDisplay').textContent = 'ORDER #' + id;
+    document.querySelectorAll('.sp').forEach(el => el.classList.remove('active'));
+    document.getElementById('sSuccess').classList.add('active');
+    updateProgress(5);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, 1800);
+}
+
+/* ═══════════════════════════════════════════════
+   TRY-ON — live camera + transparent jewelry
+════════════════════════════════════════════════ */
+
+/* ── Canvas-based background removal — 4-pass pipeline ──────
+   Pass 1: aggressive pixel-level removal of all light/neutral bg.
+   Pass 2: flood fill from the ENTIRE perimeter (not just corners)
+           to catch any surviving background connected to an edge.
+   Pass 3: halo cleanup — zero any semi-transparent bright pixels
+           left by anti-aliased edges.
+   Pass 4: edge feathering to soften the jewelry silhouette. */
+function stripBackground(imgEl, callback) {
+  const cvs = document.createElement('canvas');
+  const ctx = cvs.getContext('2d');
+  cvs.width  = imgEl.naturalWidth  || imgEl.width  || 800;
+  cvs.height = imgEl.naturalHeight || imgEl.height || 800;
+  ctx.drawImage(imgEl, 0, 0, cvs.width, cvs.height);
+
+  const frame = ctx.getImageData(0, 0, cvs.width, cvs.height);
+  const px = frame.data;
+  const w = cvs.width;
+  const h = cvs.height;
+
+  // PASS 1: Remove near-white, grey, and light neutral pixels
+  for (let i = 0; i < px.length; i += 4) {
+    const r = px[i], g = px[i+1], b = px[i+2];
+    const spread = Math.max(r, g, b) - Math.min(r, g, b);
+    const brightness = (r + g + b) / 3;
+    if (brightness > 195 && spread < 40) { px[i+3] = 0; }
+    else if (brightness > 175 && spread < 25) { px[i+3] = 0; }
+    else if (r > 188 && g > 188 && b > 188) { px[i+3] = 0; }
+    else if (brightness > 155 && spread < 18) { px[i+3] = 0; }
+  }
+
+  // PASS 2: Flood fill from the entire perimeter
+  // Seeding from all 4 edges (not just corners) catches every
+  // background region reachable from any border pixel.
+  const visited = new Uint8Array(w * h);
+  const stack = [];
+  for (let x = 0; x < w; x++) { stack.push(x); stack.push(w * (h - 1) + x); }
+  for (let y = 1; y < h - 1; y++) { stack.push(y * w); stack.push(y * w + (w - 1)); }
+
+  while (stack.length > 0) {
+    const idx = stack.pop();
+    if (idx < 0 || idx >= w * h || visited[idx]) continue;
+    visited[idx] = 1;
+    const pi = idx * 4;
+    const brightness = (px[pi] + px[pi+1] + px[pi+2]) / 3;
+    const spread = Math.max(px[pi], px[pi+1], px[pi+2]) - Math.min(px[pi], px[pi+1], px[pi+2]);
+    if (brightness > 140 && spread < 55) {
+      px[pi+3] = 0;
+      stack.push(idx - 1, idx + 1, idx - w, idx + w);
+    }
+  }
+
+  // PASS 3: Halo cleanup — any surviving semi-transparent bright pixel
+  // is an anti-aliased edge relic; zero it completely
+  for (let i = 0; i < px.length; i += 4) {
+    if (px[i+3] > 0 && px[i+3] < 255) {
+      if ((px[i] + px[i+1] + px[i+2]) / 3 > 140) px[i+3] = 0;
+    }
+  }
+
+  // PASS 4: Edge feathering — soften the jewelry silhouette boundary
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      const idx = (y * w + x) * 4;
+      if (px[idx+3] === 255) {
+        const n = [
+          px[((y-1)*w+x)*4+3], px[((y+1)*w+x)*4+3],
+          px[(y*w+x-1)*4+3],   px[(y*w+x+1)*4+3]
+        ];
+        const t = n.filter(a => a === 0).length;
+        if (t >= 2) px[idx+3] = 128;
+        else if (t === 1) px[idx+3] = 200;
+      }
+    }
+  }
+
+  ctx.putImageData(frame, 0, 0);
+  cvs.toBlob(blob => callback(blob ? URL.createObjectURL(blob) : null), 'image/png');
+}
+
+function removeWhiteBackground(url) {
+  return new Promise(resolve => {
+    const imgEl = new Image();
+    imgEl.crossOrigin = 'anonymous';
+    imgEl.onload = () => {
+      try { stripBackground(imgEl, resolve); } catch(e) { resolve(null); }
+    };
+    imgEl.onerror = () => resolve(null);
+    imgEl.src = url;
+  });
+}
+
+/* ── Jewelry overlay positions ───────────────────────────────
+   Pendant/Necklace: anchorTop — `top` sets the TOP edge of the
+   image so the chain portion sits at the collar naturally.
+   All other types: center-point positioning (translate -50%,-50%). */
+const TRYON_CONFIG = {
+  ring: {
+    top:'65%', left:'58%', width:'12%',
+    guide:'HOLD YOUR LEFT HAND IN FRAME'
+  },
+  necklace: {
+    top:'15%', left:'50%', width:'28%',
+    anchorTop: true,
+    guide:'CENTER YOUR NECK & CHEST IN FRAME'
+  },
+  pendant: {
+    top:'15%', left:'50%', width:'28%',
+    anchorTop: true,
+    guide:'CENTER YOUR CHEST IN FRAME'
+  },
+  bracelet: {
+    top:'72%', left:'50%', width:'24%',
+    guide:'HOLD YOUR WRIST IN FRAME'
+  },
+  earrings: {
+    topL:'30%', leftL:'30%', width:'7%',
+    topR:'30%', leftR:'70%',
+    guide:'CENTER YOUR FACE IN FRAME'
+  },
+};
+
+async function placeJewelryOverlay() {
+  const cfg = TRYON_CONFIG[LAB.type] || TRYON_CONFIG.ring;
+  const el  = document.getElementById('jewelryOverlay');
+  const el2 = document.getElementById('jewelryOverlay2');
+
+  el2.style.display = 'none';
+
+  // Get or generate transparent-background image
+  const processed = LAB.processedImageUrl
+    || await removeWhiteBackground(LAB.imageUrl);
+  if (processed) LAB.processedImageUrl = processed;
+  const src = processed || LAB.imageUrl;
+
+  function applyOverlay(imgEl, top, left, width, anchorTop) {
+    imgEl.style.top              = top;
+    imgEl.style.left             = left;
+    imgEl.style.width            = width;
+    imgEl.style.height           = 'auto';
+    imgEl.style.transform        = anchorTop ? 'translateX(-50%)' : 'translate(-50%,-50%)';
+    imgEl.style.opacity          = '0';
+    imgEl.style.display          = 'block';
+    imgEl.style.background       = 'transparent';
+    imgEl.style.backgroundColor  = 'transparent';
+    imgEl.style.boxShadow        = 'none';
+    imgEl.style.border           = 'none';
+    imgEl.style.outline          = 'none';
+    imgEl.style.filter           = 'none';
+    imgEl.style.mixBlendMode     = 'normal';
+    imgEl.style.backdropFilter   = 'none';
+
+    imgEl.onload = () => {
+      if (imgEl.src.startsWith('blob:')) {
+        imgEl.style.opacity = '1';
+        return;
+      }
+      try {
+        stripBackground(imgEl, processedUrl => {
+          if (processedUrl) {
+            imgEl.src = processedUrl;
+          } else {
+            imgEl.style.opacity = '1';
+          }
+        });
+      } catch(e) { imgEl.style.opacity = '1'; }
+    };
+    imgEl.onerror = () => { imgEl.style.opacity = '1'; };
+    imgEl.src = src;
+  }
+
+  // Abort any previous drag listeners before re-attaching
+  LAB._dragACs.forEach(ac => ac.abort());
+  LAB._dragACs = [];
+
+  const camWrapEl = document.getElementById('camWrap');
+
+  if (LAB.type === 'earrings') {
+    applyOverlay(el,  cfg.topL, cfg.leftL, cfg.width, false);
+    applyOverlay(el2, cfg.topR, cfg.leftR, cfg.width, false);
+    LAB._dragACs.push(makeDraggable(el, camWrapEl), makeDraggable(el2, camWrapEl));
+  } else {
+    applyOverlay(el, cfg.top, cfg.left, cfg.width, cfg.anchorTop || false);
+    LAB._dragACs.push(makeDraggable(el, camWrapEl));
+  }
+
+  // Pendant/necklace: pixel-based sizing, recalculated on resize
+  if (LAB.type === 'pendant' || LAB.type === 'necklace') {
+    if (LAB._pendantRO) { LAB._pendantRO.disconnect(); LAB._pendantRO = null; }
+    const camWrap = document.getElementById('camWrap');
+    function sizePendant() {
+      const h = camWrap.offsetHeight;
+      el.style.width     = inchesToPx(LAB._pendantInches) + 'px';
+      el.style.top       = (h * 0.38) + 'px';
+      el.style.left      = '50%';
+      el.style.transform = 'translateX(-50%)';
+    }
+    sizePendant();
+    const ro = new ResizeObserver(sizePendant);
+    ro.observe(camWrap);
+    LAB._pendantRO = ro;
+    LAB._sizePendant = sizePendant;
+  }
+
+  document.getElementById('guideText').textContent    = cfg.guide;
+  document.getElementById('jewBadgeText').textContent = LAB.type.toUpperCase();
+  ['camGuide','jewBadge','camHint'].forEach(id =>
+    document.getElementById(id).classList.remove('hidden'));
+}
+
+async function startCamera() {
+  const loading = document.getElementById('camLoading');
+  const denied  = document.getElementById('camDenied');
+  loading.classList.remove('hidden');
+  denied.classList.add('hidden');
+
+  if (LAB.cameraStream) {
+    LAB.cameraStream.getTracks().forEach(t => t.stop());
+    LAB.cameraStream = null;
+  }
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: "user",
+        width: { ideal: 1920 },
+        height: { ideal: 1080 },
+        aspectRatio: { ideal: 16/9 },
+        zoom: 1
+      }
+    });
+    LAB.cameraStream = stream;
+    const video = document.getElementById('camVideo');
+    video.srcObject = stream;
+    await new Promise(res => { video.onloadedmetadata = res; });
+    await video.play();
+    loading.classList.add('hidden');
+    await placeJewelryOverlay();
+  } catch(err) {
+    loading.classList.add('hidden');
+    denied.classList.remove('hidden');
+  }
+}
+
+/* ── Draggable overlay ───────────────────────────────────
+   Returns an AbortController; caller stores it to cancel all
+   listeners when leaving step 3. Uses getBoundingClientRect
+   at drag start so initial transform offsets are absorbed. */
+function makeDraggable(imgEl, container) {
+  let isDragging = false;
+  let startX, startY, startLeft, startTop;
+
+  imgEl.style.userSelect  = 'none';
+  imgEl.style.touchAction = 'none';
+
+  const ac  = new AbortController();
+  const sig = ac.signal;
+
+  imgEl.addEventListener('mousedown', (e) => {
+    isDragging = true;
+    imgEl.style.cursor = 'grabbing';
+    startX = e.clientX;
+    startY = e.clientY;
+    // Resolve visual position (accounts for any CSS transform)
+    const rect = imgEl.getBoundingClientRect();
+    const cRect = container.getBoundingClientRect();
+    startLeft = rect.left - cRect.left;
+    startTop  = rect.top  - cRect.top;
+    imgEl.style.transform = 'none';
+    imgEl.style.left = startLeft + 'px';
+    imgEl.style.top  = startTop  + 'px';
+    e.preventDefault();
+  }, { signal: sig });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!isDragging) return;
+    let newLeft = startLeft + (e.clientX - startX);
+    let newTop  = startTop  + (e.clientY - startY);
+    newLeft = Math.max(0, Math.min(newLeft, container.offsetWidth  - imgEl.offsetWidth));
+    newTop  = Math.max(0, Math.min(newTop,  container.offsetHeight - imgEl.offsetHeight));
+    imgEl.style.left = newLeft + 'px';
+    imgEl.style.top  = newTop  + 'px';
+  }, { signal: sig });
+
+  document.addEventListener('mouseup', () => {
+    isDragging = false;
+    imgEl.style.cursor = 'grab';
+  }, { signal: sig });
+
+  imgEl.addEventListener('touchstart', (e) => {
+    isDragging = true;
+    const t = e.touches[0];
+    startX = t.clientX;
+    startY = t.clientY;
+    const rect = imgEl.getBoundingClientRect();
+    const cRect = container.getBoundingClientRect();
+    startLeft = rect.left - cRect.left;
+    startTop  = rect.top  - cRect.top;
+    imgEl.style.transform = 'none';
+    imgEl.style.left = startLeft + 'px';
+    imgEl.style.top  = startTop  + 'px';
+    e.preventDefault();
+  }, { passive: false, signal: sig });
+
+  document.addEventListener('touchmove', (e) => {
+    if (!isDragging) return;
+    const t = e.touches[0];
+    let newLeft = startLeft + (t.clientX - startX);
+    let newTop  = startTop  + (t.clientY - startY);
+    newLeft = Math.max(0, Math.min(newLeft, container.offsetWidth  - imgEl.offsetWidth));
+    newTop  = Math.max(0, Math.min(newTop,  container.offsetHeight - imgEl.offsetHeight));
+    imgEl.style.left = newLeft + 'px';
+    imgEl.style.top  = newTop  + 'px';
+    imgEl.style.transform = 'none';
+  }, { passive: false, signal: sig });
+
+  document.addEventListener('touchend', () => {
+    isDragging = false;
+  }, { signal: sig });
+
+  return ac;
+}
+
+/* ── Pendant size helpers ──────────────────────────────── */
+function inchesToPx(inches) {
+  const containerWidth = document.getElementById('camWrap').offsetWidth;
+  const pxPerInch = containerWidth / 24;
+  return inches * pxPerInch;
+}
+
+function applyPendantInches(inches) {
+  if (!inches || isNaN(inches) || inches <= 0) return;
+  LAB._pendantInches = inches;
+  if (LAB._sizePendant) LAB._sizePendant();
+}
+
+function setPendantSize(btn) {
+  document.querySelectorAll('.psize-btn').forEach(b => b.classList.remove('psize-active'));
+  btn.classList.add('psize-active');
+  const customInput = document.getElementById('pendantCustomIn');
+  if (btn.dataset.inches === 'custom') {
+    customInput.style.display = 'inline-block';
+    const val = parseFloat(customInput.value);
+    if (val > 0) applyPendantInches(val);
+  } else {
+    customInput.style.display = 'none';
+    applyPendantInches(parseFloat(btn.dataset.inches));
+  }
+}
+
+function setupTryOn() {
+  if (!LAB.imageUrl) { goStep(4); return; }
+  ['camGuide','jewBadge','camHint'].forEach(id =>
+    document.getElementById(id).classList.add('hidden'));
+  document.getElementById('jewelryOverlay').style.display  = 'none';
+  document.getElementById('jewelryOverlay2').style.display = 'none';
+  LAB.processedImageUrl = null; // force re-processing with current pipeline
+
+  // Show/hide size selector based on jewelry type
+  const isPendantType = LAB.type === 'pendant' || LAB.type === 'necklace';
+  document.getElementById('pendantSizeRow').style.display = isPendantType ? 'block' : 'none';
+
+  // Reset to default size (1 in) on each entry to step 3
+  if (isPendantType) {
+    LAB._pendantInches = 1;
+    document.querySelectorAll('.psize-btn').forEach(b => {
+      b.classList.toggle('psize-active', b.dataset.inches === '1');
+    });
+    document.getElementById('pendantCustomIn').style.display = 'none';
+  }
+
+  startCamera();
+}
+
+/* ═══════════════════════════════════════════════
+   AI SPEC CARD
+════════════════════════════════════════════════ */
+
+function showSpecFallback() {
+  document.getElementById('specSkeleton').classList.add('hidden');
+  document.getElementById('specContent').classList.add('hidden');
+  const fb = document.getElementById('specFallbackCard');
+  if (fb) fb.classList.remove('hidden');
+}
+
+function renderSpecCard(spec) {
+  const rows = [
+    ['Name',         spec.name],
+    ['Style',        spec.style],
+    ['Metal',        spec.metal],
+    ['Stone',        spec.stone],
+    ['Total Weight', spec.totalWeightGrams  ? spec.totalWeightGrams + 'g'  : null],
+    ['Size',         spec.sizeDescription],
+    ['No. of Stones',spec.numberOfStones],
+    ['Carat / Stone',spec.caratPerStone     ? spec.caratPerStone + 'ct'    : null],
+    ['Total Carats', spec.totalCarats       ? spec.totalCarats + 'ct'      : null],
+    ['Cut',          spec.cut],
+    ['Clarity',      spec.clarity],
+    ['Color',        spec.color],
+    ['Setting',      spec.settingType],
+    ['Finish',       spec.finish],
+  ].filter(([, v]) => v != null && v !== '' && v !== 'null' && v !== 'undefined');
+
+  const content = document.getElementById('specContent');
+  content.innerHTML =
+    `<p class="label mb-3" style="font-size:10px;letter-spacing:0.16em;color:#3c6474;">AI SPEC ANALYSIS</p>` +
+    rows.map(([k, v]) =>
+      `<div class="spec-row"><span class="spec-label">${k}</span><span class="spec-value">${v}</span></div>`
+    ).join('');
+
+  document.getElementById('specSkeleton').classList.add('hidden');
+  content.classList.remove('hidden');
+
+  // Hide fallback card since spec loaded
+  const fb = document.getElementById('specFallbackCard');
+  if (fb) fb.classList.add('hidden');
+}
+
+async function fetchSpecCard() {
+  LAB.spec = null;
+
+  // Hide fallback, show skeleton
+  const fb = document.getElementById('specFallbackCard');
+  if (fb) fb.classList.add('hidden');
+  document.getElementById('specContent').classList.add('hidden');
+  document.getElementById('specSkeleton').classList.remove('hidden');
+
+  if (!CLAUDE_API_KEY) { showSpecFallback(); return; }
+
+  const userMsg = [
+    'Type: ' + LAB.type,
+    'Metal: ' + matLabel(LAB.material),
+    'Stone: ' + gemLabel(LAB.gem),
+    'Style: ' + LAB.style,
+    'Description: ' + (LAB.prompt || 'Not provided'),
+  ].join('. ');
+
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': CLAUDE_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 600,
+        system: 'You are a master gemologist and jewelry designer. Generate a precise technical specification for a piece of jewelry. Respond ONLY in JSON, no markdown, no backticks. Format: {"name":"...","style":"...","metal":"...","stone":"...","totalWeightGrams":"...","sizeDescription":"...","numberOfStones":"...","caratPerStone":"...","totalCarats":"...","cut":"...","clarity":"...","color":"...","settingType":"...","finish":"..."}',
+        messages: [{ role: 'user', content: userMsg }],
+      }),
+    });
+    if (!res.ok) throw new Error('api-' + res.status);
+    const data = await res.json();
+    const spec = JSON.parse(data.content[0].text);
+    LAB.spec = spec;
+    renderSpecCard(spec);
+  } catch(e) {
+    showSpecFallback();
+  }
+}
+
+/* ── Initialise spot prices on load ── */
+fetchSpotPrices();
+</script>
+
+</body>
+</html>

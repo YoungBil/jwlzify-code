@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html class="light" lang="en">
+<head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>JWLZIFY — Legal</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;0,700;1,300;1,400;1,600;1,700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+<script>
+tailwind.config = {
+  darkMode:"class",
+  theme:{extend:{colors:{
+    "primary":"#3c6474","on-primary":"#ffffff",
+    "primary-container":"#b9e2f5","on-primary-container":"#3e6576",
+    "primary-fixed":"#c0e9fc","primary-fixed-dim":"#a4cddf",
+    "secondary":"#5e5e5b","on-secondary":"#ffffff",
+    "secondary-container":"#e1dfdb","on-secondary-container":"#63635f",
+    "surface":"#fbf9f9","surface-dim":"#dbdad9",
+    "surface-container-lowest":"#ffffff","surface-container-low":"#f5f3f3",
+    "surface-container":"#efeded","surface-container-high":"#e9e8e7",
+    "surface-container-highest":"#e3e2e2",
+    "on-surface":"#1b1c1c","on-surface-variant":"#41484b",
+    "outline":"#71787c","outline-variant":"#c1c7cb",
+    "background":"#fbf9f9",
+  }}}
+}
+</script>
+</head>
+<body class="bg-[#fbf9f9] text-[#1b1c1c] min-h-screen">
+
+<!-- ════════════════════════════
+     NAVIGATION
+════════════════════════════ -->
+<header id="siteHeader" class="sticky top-0 w-full z-50 nav-glass border-b border-[#c1c7cb]/20"
+        style="box-shadow:0 1px 18px rgba(0,0,0,0.04);">
+  <nav class="flex justify-between items-center w-full max-w-[1600px] mx-auto px-4 md:px-16 py-5">
+    <div class="flex items-center gap-10">
+      <a href="index.html" style="font-family:'Playfair Display',serif;font-size:22px;font-weight:600;letter-spacing:0.32em;color:#3c6474;text-transform:uppercase;">JWLZIFY</a>
+      <div class="hidden lg:flex items-center gap-8">
+        <a href="index.html"       class="nav-link">Home</a>
+        <a href="collections.html" class="nav-link">Collections</a>
+        <a href="ailab.html"       class="nav-link">AI Lab</a>
+        <a href="about.html"       class="nav-link">About Us</a>
+        <a href="support.html"     class="nav-link">Support</a>
+      </div>
+    </div>
+    <div class="flex items-center gap-5">
+      <div id="authBtnWrapper" class="hidden lg:flex items-center"></div>
+      <a href="ailab.html">
+        <button class="label text-white px-7 py-3 rounded-lg active:scale-95 transition-all hover:brightness-110 btn-glow"
+                style="background:#3c6474;font-size:11px;letter-spacing:0.16em;border:none;">GENERATE</button>
+      </a>
+      <button class="lg:hidden text-[#1b1c1c]" aria-label="Menu" style="background:none;border:none;">
+        <span class="material-symbols-outlined">menu</span>
+      </button>
+    </div>
+  </nav>
+</header>
+
+<main>
+
+<!-- ════════════════════════════
+     HERO
+════════════════════════════ -->
+<section class="py-24 md:py-32 bg-[#f5f3f3]">
+  <div class="max-w-[1600px] mx-auto px-4 md:px-16 text-center">
+    <span class="eyebrow">TRANSPARENCY &amp; TRUST</span>
+    <h1 class="h-section" style="font-size:clamp(40px,5vw,60px);">Legal</h1>
+  </div>
+</section>
+
+<!-- ════════════════════════════
+     LEGAL CARDS GRID
+════════════════════════════ -->
+<section class="py-24 md:py-32">
+  <div class="max-w-[1200px] mx-auto px-4 md:px-16">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+
+      <!-- Privacy Policy -->
+      <div class="bg-white rounded-[24px] p-10 border border-[#c1c7cb]/20 ambient flex flex-col gap-6 hover:-translate-y-1 transition-transform">
+        <div class="flex items-center justify-center rounded-full" style="width:48px;height:48px;background:rgba(60,100,116,0.08);">
+          <span class="material-symbols-outlined" style="color:#3c6474;font-size:24px;">privacy_tip</span>
+        </div>
+        <div>
+          <h3 class="h-sub mb-3">Privacy Policy</h3>
+          <p class="body-copy">How we collect, store, and protect your personal data. We never sell your information to third parties.</p>
+        </div>
+        <div>
+          <button class="btn-ghost" style="font-size:11px;">View</button>
+        </div>
+      </div>
+
+      <!-- Terms & Conditions -->
+      <div class="bg-white rounded-[24px] p-10 border border-[#c1c7cb]/20 ambient flex flex-col gap-6 hover:-translate-y-1 transition-transform">
+        <div class="flex items-center justify-center rounded-full" style="width:48px;height:48px;background:rgba(60,100,116,0.08);">
+          <span class="material-symbols-outlined" style="color:#3c6474;font-size:24px;">gavel</span>
+        </div>
+        <div>
+          <h3 class="h-sub mb-3">Terms &amp; Conditions</h3>
+          <p class="body-copy">The terms governing your use of JWLZIFY's platform, design tools, and purchase of custom jewelry.</p>
+        </div>
+        <div>
+          <button class="btn-ghost" style="font-size:11px;">View</button>
+        </div>
+      </div>
+
+      <!-- Returns & Exchanges -->
+      <div class="bg-white rounded-[24px] p-10 border border-[#c1c7cb]/20 ambient flex flex-col gap-6 hover:-translate-y-1 transition-transform">
+        <div class="flex items-center justify-center rounded-full" style="width:48px;height:48px;background:rgba(60,100,116,0.08);">
+          <span class="material-symbols-outlined" style="color:#3c6474;font-size:24px;">keyboard_return</span>
+        </div>
+        <div>
+          <h3 class="h-sub mb-3">Returns &amp; Exchanges</h3>
+          <p class="body-copy">Our policy on returns, refunds, and exchanges for custom-crafted pieces, including eligibility criteria.</p>
+        </div>
+        <div>
+          <button class="btn-ghost" style="font-size:11px;">View</button>
+        </div>
+      </div>
+
+      <!-- Shipping Policy -->
+      <div class="bg-white rounded-[24px] p-10 border border-[#c1c7cb]/20 ambient flex flex-col gap-6 hover:-translate-y-1 transition-transform">
+        <div class="flex items-center justify-center rounded-full" style="width:48px;height:48px;background:rgba(60,100,116,0.08);">
+          <span class="material-symbols-outlined" style="color:#3c6474;font-size:24px;">local_shipping</span>
+        </div>
+        <div>
+          <h3 class="h-sub mb-3">Shipping Policy</h3>
+          <p class="body-copy">Detailed information on how we ship, insure, and deliver your pieces domestically and internationally.</p>
+        </div>
+        <div>
+          <button class="btn-ghost" style="font-size:11px;">View</button>
+        </div>
+      </div>
+
+      <!-- Warranty -->
+      <div class="bg-white rounded-[24px] p-10 border border-[#c1c7cb]/20 ambient flex flex-col gap-6 hover:-translate-y-1 transition-transform">
+        <div class="flex items-center justify-center rounded-full" style="width:48px;height:48px;background:rgba(60,100,116,0.08);">
+          <span class="material-symbols-outlined" style="color:#3c6474;font-size:24px;">shield</span>
+        </div>
+        <div>
+          <h3 class="h-sub mb-3">Warranty</h3>
+          <p class="body-copy">The full terms of our lifetime craftsmanship warranty, including what is and isn't covered.</p>
+        </div>
+        <div>
+          <button class="btn-ghost" style="font-size:11px;">View</button>
+        </div>
+      </div>
+
+      <!-- Cookies Policy -->
+      <div class="bg-white rounded-[24px] p-10 border border-[#c1c7cb]/20 ambient flex flex-col gap-6 hover:-translate-y-1 transition-transform">
+        <div class="flex items-center justify-center rounded-full" style="width:48px;height:48px;background:rgba(60,100,116,0.08);">
+          <span class="material-symbols-outlined" style="color:#3c6474;font-size:24px;">cookie</span>
+        </div>
+        <div>
+          <h3 class="h-sub mb-3">Cookies Policy</h3>
+          <p class="body-copy">How we use cookies and similar tracking technologies on our website, and how to manage your preferences.</p>
+        </div>
+        <div>
+          <button class="btn-ghost" style="font-size:11px;">View</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+</main>
+
+<!-- ════════════════════════════
+     FOOTER
+════════════════════════════ -->
+<footer class="w-full py-24 bg-white border-t border-[#c1c7cb]/12">
+  <div class="max-w-[1600px] mx-auto px-4 md:px-16">
+    <div class="grid grid-cols-12 gap-16 mb-20">
+      <div class="col-span-12 lg:col-span-4 flex flex-col gap-8">
+        <span style="font-family:'Playfair Display',serif;font-size:24px;font-weight:600;letter-spacing:0.32em;color:#3c6474;text-transform:uppercase;">JWLZIFY</span>
+        <p class="body-copy" style="max-width:280px;color:rgba(65,72,75,0.72);">The future of high jewelry. Leading the global revolution in AI-driven bespoke craftsmanship and ethical luxury.</p>
+        <div class="flex gap-4">
+          <div class="w-10 h-10 rounded-full flex items-center justify-center cursor-pointer hover:bg-[#3c6474] hover:text-white transition-all" style="background:#efeded;border:1px solid rgba(193,199,203,0.3);"><span class="material-symbols-outlined" style="font-size:18px;">share</span></div>
+          <div class="w-10 h-10 rounded-full flex items-center justify-center cursor-pointer hover:bg-[#3c6474] hover:text-white transition-all" style="background:#efeded;border:1px solid rgba(193,199,203,0.3);"><span class="material-symbols-outlined" style="font-size:18px;">public</span></div>
+          <div class="w-10 h-10 rounded-full flex items-center justify-center cursor-pointer hover:bg-[#3c6474] hover:text-white transition-all" style="background:#efeded;border:1px solid rgba(193,199,203,0.3);"><span class="material-symbols-outlined" style="font-size:18px;">mail</span></div>
+        </div>
+      </div>
+      <div class="col-span-12 lg:col-span-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-10">
+        <div class="flex flex-col gap-6">
+          <p class="label" style="font-size:12px;letter-spacing:0.13em;color:#1b1c1c;font-weight:700;">Experience</p>
+          <ul class="flex flex-col gap-3">
+            <li><a href="ailab.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">The Lab</a></li>
+            <li><a href="about.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Expert Jewelers</a></li>
+            <li><a href="about.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Your Journey</a></li>
+            <li><a href="collections.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Collections</a></li>
+          </ul>
+        </div>
+        <div class="flex flex-col gap-6">
+          <p class="label" style="font-size:12px;letter-spacing:0.13em;color:#1b1c1c;font-weight:700;">Philosophy</p>
+          <ul class="flex flex-col gap-3">
+            <li><a href="about.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Ethical Sourcing</a></li>
+            <li><a href="about.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Sustainability</a></li>
+            <li><a href="about.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Blockchain Trust</a></li>
+            <li><a href="about.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Our Story</a></li>
+          </ul>
+        </div>
+        <div class="flex flex-col gap-6">
+          <p class="label" style="font-size:12px;letter-spacing:0.13em;color:#1b1c1c;font-weight:700;">Support</p>
+          <ul class="flex flex-col gap-3">
+            <li><a href="support.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Account</a></li>
+            <li><a href="support.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Order Status</a></li>
+            <li><a href="support.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Shipping &amp; Delivery</a></li>
+            <li><a href="support.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Returns &amp; Exchanges</a></li>
+            <li><a href="support.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Warranty</a></li>
+            <li><a href="support.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Authenticity</a></li>
+            <li><a href="support.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Size Guide</a></li>
+          </ul>
+        </div>
+        <div class="flex flex-col gap-6">
+          <p class="label" style="font-size:12px;letter-spacing:0.13em;color:#1b1c1c;font-weight:700;">Legal</p>
+          <ul class="flex flex-col gap-3">
+            <li><a href="legal.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Privacy Policy</a></li>
+            <li><a href="legal.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Terms &amp; Conditions</a></li>
+            <li><a href="legal.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Returns &amp; Exchanges</a></li>
+            <li><a href="legal.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Shipping Policy</a></li>
+            <li><a href="legal.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Warranty</a></li>
+            <li><a href="legal.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Cookies Policy</a></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="pt-10 flex flex-col sm:flex-row justify-between items-center gap-4"
+         style="border-top:0.5px solid rgba(193,199,203,0.3);">
+      <p class="label" style="font-size:11px;letter-spacing:0.13em;color:rgba(65,72,75,0.5);">© 2025 JWLZIFY Holdings. All Rights Reserved.</p>
+      <p class="label" style="font-size:11px;letter-spacing:0.13em;color:rgba(65,72,75,0.5);">Crafted with Precision in Toronto &amp; Antwerp</p>
+    </div>
+  </div>
+</footer>
+
+<script>
+  document.getElementById('siteHeader').classList.add('nav-visible');
+</script>
+<script src="firebase-auth.js"></script>
+</body>
+</html>

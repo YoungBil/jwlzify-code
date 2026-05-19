@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html class="light" lang="en">
+<head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>JWLZIFY — About Us</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+<script>
+tailwind.config = {
+  darkMode:"class",
+  theme:{extend:{colors:{
+    "primary":"#3c6474","on-primary":"#ffffff",
+    "primary-container":"#b9e2f5","on-primary-container":"#3e6576",
+    "primary-fixed":"#c0e9fc","primary-fixed-dim":"#a4cddf",
+    "secondary":"#5e5e5b","on-secondary":"#ffffff",
+    "secondary-container":"#e1dfdb","on-secondary-container":"#63635f",
+    "surface":"#fbf9f9","surface-dim":"#dbdad9",
+    "surface-container-lowest":"#ffffff","surface-container-low":"#f5f3f3",
+    "surface-container":"#efeded","surface-container-high":"#e9e8e7",
+    "surface-container-highest":"#e3e2e2",
+    "on-surface":"#1b1c1c","on-surface-variant":"#41484b",
+    "outline":"#71787c","outline-variant":"#c1c7cb",
+    "background":"#fbf9f9",
+  }}}
+}
+</script>
+<style>
+.about-hero-bg {
+  background: linear-gradient(180deg, #8bb4c8 0%, #aac5d6 25%, #c8dce8 55%, #ddeaf1 80%, #f4f9fb 100%);
+}
+.about-hero-img {
+  position:absolute;inset:0;width:100%;height:100%;object-fit:cover;
+  transition: transform 1.2s ease;
+}
+.about-hero-wrap:hover .about-hero-img { transform: scale(1.03); }
+.modern-overlay {
+  background: linear-gradient(to top, rgba(27,28,28,0.88) 0%, rgba(27,28,28,0.55) 45%, rgba(27,28,28,0.25) 100%);
+}
+</style>
+</head>
+<body class="bg-[#fbf9f9] text-[#1b1c1c]">
+
+<!-- ════════════════════════════
+     NAVIGATION
+════════════════════════════ -->
+<header id="siteHeader" class="sticky top-0 w-full z-50 nav-glass border-b border-[#c1c7cb]/20"
+        style="box-shadow:0 1px 18px rgba(0,0,0,0.04);">
+  <nav class="flex justify-between items-center w-full max-w-[1600px] mx-auto px-4 md:px-16 py-5">
+    <div class="flex items-center gap-10">
+      <a href="index.html" style="font-family:'Playfair Display',serif;font-size:22px;font-weight:600;letter-spacing:0.32em;color:#3c6474;text-transform:uppercase;">JWLZIFY</a>
+      <div class="hidden lg:flex items-center gap-8">
+        <a href="index.html"       class="nav-link">Home</a>
+        <a href="collections.html" class="nav-link">Collections</a>
+        <a href="ailab.html"       class="nav-link">AI Lab</a>
+        <a href="about.html"       class="nav-link nav-active">About Us</a>
+        <a href="support.html"     class="nav-link">Support</a>
+      </div>
+    </div>
+    <div class="flex items-center gap-5">
+      <div id="authBtnWrapper" class="hidden lg:flex items-center"></div>
+      <a href="ailab.html">
+        <button class="label text-white px-7 py-3 rounded-lg active:scale-95 transition-all hover:brightness-110 btn-glow"
+                style="background:#3c6474;font-size:11px;letter-spacing:0.16em;border:none;">GENERATE</button>
+      </a>
+      <button class="lg:hidden text-[#1b1c1c]" aria-label="Menu" style="background:none;border:none;">
+        <span class="material-symbols-outlined">menu</span>
+      </button>
+    </div>
+  </nav>
+</header>
+
+<main>
+
+<!-- ════════════════════════════
+     HERO — THE FOUNDERS
+════════════════════════════ -->
+<section class="relative overflow-hidden about-hero-wrap" style="height:clamp(560px,78vh,920px);">
+  <!-- Background -->
+  <div class="absolute inset-0 about-hero-bg"></div>
+  <img
+    class="about-hero-img"
+    src="https://lh3.googleusercontent.com/aida/ADBb0uhWrOlUT3ziCz6GD00JtxZfFvGkBIby7eykt7kcBAyIOKqW5oqQspFVSi2m2MY9W3VZyYxHygVXchZpCq7chMMJJNjTaYnskmd3RX--VyjdbbbHkFBB7DaRTKy1jtGUoxS1-eqDV_FuNjeXzYBFetVCLkBlzQmJFhecxQ5_srFpHOANYPsgR9ZFC4pS9LM9PLMUgwYL8iV9VaFP_CoEsLqrcp1xeqBz4vKu5-heWduRVRMMRVVTT2wA7GBhqR-veL1CzpCcSxFGJw"
+    alt="The Founders — JWLZIFY"
+    onerror="this.style.display='none'">
+  <!-- Gradient overlays -->
+  <div class="absolute inset-0 modern-overlay"></div>
+  <div class="absolute inset-0" style="background:radial-gradient(ellipse 80% 60% at 30% 70%, rgba(60,100,116,0.08) 0%, transparent 70%);"></div>
+
+  <!-- Content -->
+  <div class="absolute inset-0 flex flex-col justify-end px-4 md:px-16 pb-20 max-w-[1600px] mx-auto">
+    <div class="max-w-2xl">
+      <span class="eyebrow" style="color:rgba(185,226,245,0.82);margin-bottom:20px;">Our Story</span>
+      <h1 style="font-family:'Playfair Display',serif;font-size:clamp(42px,6.5vw,76px);font-weight:600;line-height:1.06;letter-spacing:-0.02em;color:#ffffff;margin-bottom:24px;">
+        The Future of<br>High Jewelry.
+      </h1>
+      <p class="body-lg" style="color:rgba(255,255,255,0.76);max-width:540px;">
+        We're Arman and Aryan — two 19-year-olds from Toronto who got tired of waiting for someone else to build the future of jewelry.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════════════
+     SECTION 1 — THE VISION
+════════════════════════════ -->
+<section class="py-24 md:py-32 bg-[#f5f3f3]">
+  <div class="max-w-[1600px] mx-auto px-4 md:px-16 grid md:grid-cols-2 gap-16 md:gap-24 items-center">
+    <!-- Image -->
+    <div class="about-img-wrap rounded-lg overflow-hidden shadow-lg" style="border:1px solid rgba(193,199,203,0.3);">
+      <img
+        class="w-full object-cover"
+        style="aspect-ratio:4/5;"
+        src="https://lh3.googleusercontent.com/aida-public/AB6AXuBWOVYYU4KDivFd0rH2oFLsehrkizFqOJUZe0qYsbYyFg27A_u-7aAVVzyEpUzmht_2P6V-krPk__uYV-RfxWExOxRd3ZE_yQ67LYCgczxtaxTntasayGYUTtnwMhKwiu7vRO8ewF8ALYvaKkDYBI6Lrjy4q34FvdeeePWrr8t7wFawf3CJJva-r0ypBLmpXc_i6J2IcoNbwC9Lzs-3d9F2JNGU6ciC0WGr3GFWVKxOILSt15c_RTix7_LsGmTO_fnMHwQ20yCkSlk"
+        alt="Crystalline Vision"
+        onerror="this.parentElement.style.background='linear-gradient(135deg,#d0e8f2 0%,#eef7fa 100%)';this.style.display='none'">
+    </div>
+    <!-- Copy -->
+    <div>
+      <span class="eyebrow">The Vision</span>
+      <h2 class="h-section mb-8" style="font-size:clamp(32px,3.5vw,44px);">No compromises,<br>no settling.</h2>
+      <p class="body-lg mb-8" style="color:#5e5e5b;">
+        If you can picture your dream piece, we can build it. Exactly as you imagined it — no compromises, no settling for what's already on the shelf.
+      </p>
+      <p class="body-lg" style="color:#5e5e5b;">
+        We believe luxury should be personal, precise, and profoundly yours. That conviction is the reason JWLZIFY exists.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════════════
+     SECTION — GIA CERTIFIED STONES
+════════════════════════════ -->
+<section class="py-24 md:py-28 bg-[#fbf9f9]">
+  <div class="max-w-[1600px] mx-auto px-4 md:px-16">
+    <div class="max-w-[860px] mx-auto text-center">
+      <span class="eyebrow">Certified Excellence</span>
+      <h2 class="h-section mb-8" style="font-size:clamp(32px,3.5vw,44px);">GIA Certified Stones.</h2>
+      <p class="body-lg mb-4" style="color:#5e5e5b;max-width:600px;margin-left:auto;margin-right:auto;">
+        Every stone we use is GIA certified. No exceptions. You get documentation, provenance, and proof — not just a promise.
+      </p>
+    </div>
+    <div class="grid md:grid-cols-3 gap-8 mt-14 max-w-[1100px] mx-auto">
+      <div class="flex flex-col items-center gap-4 text-center p-8 rounded-2xl bg-white border border-[#c1c7cb]/20 ambient">
+        <div class="w-14 h-14 rounded-full flex items-center justify-center" style="background:#b9e2f5;">
+          <span class="material-symbols-outlined" style="color:#3c6474;font-size:24px;">verified</span>
+        </div>
+        <p class="label" style="font-size:11px;letter-spacing:0.18em;color:#1b1c1c;">Documentation</p>
+        <p class="body-copy" style="font-size:14px;color:#71787c;">Every stone ships with its GIA grading certificate. Full documentation, on record, for life.</p>
+      </div>
+      <div class="flex flex-col items-center gap-4 text-center p-8 rounded-2xl bg-white border border-[#c1c7cb]/20 ambient">
+        <div class="w-14 h-14 rounded-full flex items-center justify-center" style="background:#b9e2f5;">
+          <span class="material-symbols-outlined" style="color:#3c6474;font-size:24px;">route</span>
+        </div>
+        <p class="label" style="font-size:11px;letter-spacing:0.18em;color:#1b1c1c;">Provenance</p>
+        <p class="body-copy" style="font-size:14px;color:#71787c;">You know exactly where your stone came from. Ethical sourcing, fully traceable, zero ambiguity.</p>
+      </div>
+      <div class="flex flex-col items-center gap-4 text-center p-8 rounded-2xl bg-white border border-[#c1c7cb]/20 ambient">
+        <div class="w-14 h-14 rounded-full flex items-center justify-center" style="background:#b9e2f5;">
+          <span class="material-symbols-outlined" style="color:#3c6474;font-size:24px;">shield</span>
+        </div>
+        <p class="label" style="font-size:11px;letter-spacing:0.18em;color:#1b1c1c;">Proof</p>
+        <p class="body-copy" style="font-size:14px;color:#71787c;">Not a promise — documentation you can hold. A guarantee backed by the world's most trusted gemological lab.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════════════
+     SECTION 2 — MODERNIZING LUXURY (full-bleed)
+════════════════════════════ -->
+<section class="relative flex items-center justify-center text-center overflow-hidden" style="min-height:580px;">
+  <!-- Background image -->
+  <div class="absolute inset-0">
+    <div class="absolute inset-0" style="background:linear-gradient(135deg,#0f2832 0%,#1b3a47 45%,#0f2832 100%);"></div>
+    <img
+      class="absolute inset-0 w-full h-full object-cover"
+      style="filter:grayscale(100%) brightness(0.38);mix-blend-mode:luminosity;"
+      src="https://lh3.googleusercontent.com/aida-public/AB6AXuD-Ka49d7Mo7PfDa4P1cS6oqaUXTU--TNOL13SFRBZawGdzzhW5ZP2cLitslV_2GNmWVDHRijOFqhpJokNuK3VhiWthqytBBkeKMzndQSdudBSTYboCOQf3rrb6OK0xv1jsBR3btRxhARcoQprhO3lrBKi_cIR42E7filHgRuaNoxu2fzv2WhdPe1IvVbsUbQw8I8MOCMW1mnjrHSxpJY7NP2d8V34I8tzs_egFtH8o5TAVxIQkOJn3FLyQkjRYBB_-rarq9HTSYwU"
+      alt="Modern Craft"
+      onerror="this.style.display='none'">
+    <div class="absolute inset-0" style="background:rgba(60,100,116,0.08);mix-blend-mode:overlay;"></div>
+  </div>
+  <!-- Content -->
+  <div class="relative z-10 max-w-4xl px-4 md:px-16 py-28">
+    <span class="eyebrow" style="color:rgba(185,226,245,0.7);display:block;margin-bottom:24px;">The Disruption</span>
+    <h2 style="font-family:'Playfair Display',serif;font-size:clamp(40px,6vw,72px);font-weight:600;line-height:1.08;letter-spacing:-0.02em;color:#ffffff;margin-bottom:28px;">
+      Modernizing Luxury
+    </h2>
+    <p class="body-lg mx-auto" style="color:rgba(185,226,245,0.78);max-width:600px;line-height:1.75;">
+      We're using AI and lab-grown stones to do what luxury jewelry brands haven't bothered to do in a hundred years. Modernize.
+    </p>
+  </div>
+</section>
+
+<!-- ════════════════════════════
+     SECTION 3 — OUR MANDATE
+════════════════════════════ -->
+<section class="py-24 md:py-32 bg-[#fbf9f9]">
+  <div class="max-w-[1600px] mx-auto px-4 md:px-16">
+    <div class="rounded-xl overflow-hidden flex flex-col md:flex-row items-center gap-0"
+         style="border:1px solid #b9e2f5;background:linear-gradient(135deg,rgba(185,226,245,0.12) 0%,rgba(255,255,255,0.7) 100%);">
+      <!-- Copy side -->
+      <div class="flex-1 p-12 md:p-20">
+        <span class="eyebrow">Our Mandate</span>
+        <h2 class="h-section mb-8" style="font-size:clamp(30px,3.2vw,42px);font-style:italic;">
+          "JWLZIFY is not a passion project."
+        </h2>
+        <p class="body-lg mb-6" style="color:#5e5e5b;max-width:520px;">
+          This is a business we intend to scale into a billion-dollar brand. We're 19. We're just getting started.
+        </p>
+        <p class="body-lg" style="color:#5e5e5b;max-width:520px;">
+          We are here to redefine the very fabric of the industry — not from the outside, but from the inside.
+        </p>
+      </div>
+      <!-- 19 badge -->
+      <div class="flex-shrink-0 flex items-center justify-center p-12 md:p-20">
+        <div class="flex flex-col items-center justify-center rounded-full text-center"
+             style="width:200px;height:200px;background:#fbf9f9;border:1px solid rgba(193,199,203,0.4);box-shadow:0 20px 60px rgba(60,100,116,0.1);">
+          <span style="font-family:'Playfair Display',serif;font-size:72px;font-weight:600;line-height:1;color:#3c6474;">19</span>
+          <span class="label" style="font-size:10px;letter-spacing:0.2em;color:#71787c;margin-top:6px;">YEARS OLD</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════════════
+     SECTION 4 — HOW IT WORKS
+════════════════════════════ -->
+<section class="py-24 md:py-32 bg-[#e9e8e7]">
+  <div class="max-w-[1600px] mx-auto px-4 md:px-16">
+    <div class="text-center mb-20">
+      <span class="eyebrow" style="display:block;margin-bottom:12px;">The Process</span>
+      <h2 class="h-section">How It Works</h2>
+      <div style="width:48px;height:2px;background:#3c6474;margin:20px auto 0;"></div>
+    </div>
+    <div class="grid md:grid-cols-3 gap-8">
+
+      <!-- Step 1 -->
+      <div class="step-card bg-white rounded-xl p-10 border border-[#c1c7cb]/20 ambient">
+        <div class="step-icon w-14 h-14 rounded-full flex items-center justify-center mb-8"
+             style="background:#b9e2f5;">
+          <span class="material-symbols-outlined" style="color:#3e6576;font-size:22px;">auto_fix_high</span>
+        </div>
+        <div class="label mb-3" style="font-size:10px;letter-spacing:0.2em;color:#3c6474;">Step One</div>
+        <h3 class="h-sub mb-4">Imagine.</h3>
+        <p class="body-copy">Describe your dream piece, and our AI generates high-fidelity visual concepts in seconds. Any material, any form, any era.</p>
+      </div>
+
+      <!-- Step 2 -->
+      <div class="step-card bg-white rounded-xl p-10 border border-[#c1c7cb]/20 ambient">
+        <div class="step-icon w-14 h-14 rounded-full flex items-center justify-center mb-8"
+             style="background:#b9e2f5;">
+          <span class="material-symbols-outlined" style="color:#3e6576;font-size:22px;">edit_document</span>
+        </div>
+        <div class="label mb-3" style="font-size:10px;letter-spacing:0.2em;color:#3c6474;">Step Two</div>
+        <h3 class="h-sub mb-4">Perfect.</h3>
+        <p class="body-copy">See it before it's built. Tweak the geometry and stones until it is absolutely, uncompromisingly perfect.</p>
+      </div>
+
+      <!-- Step 3 -->
+      <div class="step-card bg-white rounded-xl p-10 border border-[#c1c7cb]/20 ambient">
+        <div class="step-icon w-14 h-14 rounded-full flex items-center justify-center mb-8"
+             style="background:#b9e2f5;">
+          <span class="material-symbols-outlined" style="color:#3e6576;font-size:22px;">verified</span>
+        </div>
+        <div class="label mb-3" style="font-size:10px;letter-spacing:0.2em;color:#3c6474;">Step Three</div>
+        <h3 class="h-sub mb-4">Realize.</h3>
+        <p class="body-copy">We craft it with 18k gold and GIA-certified lab-grown stones, then ship it securely to your door.</p>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════════════
+     SECTION — YOUR JOURNEY AT JWLZIFY
+════════════════════════════ -->
+<section class="py-24 md:py-32 bg-[#fbf9f9]">
+  <div class="max-w-[1600px] mx-auto px-4 md:px-16">
+    <div class="text-center mb-20">
+      <span class="eyebrow">End-to-End</span>
+      <h2 class="h-section">Your Journey at JWLZIFY</h2>
+      <div style="width:48px;height:2px;background:#3c6474;margin:20px auto 0;"></div>
+    </div>
+
+    <div class="relative">
+      <!-- Connector line (desktop) -->
+      <div class="hidden md:block absolute top-8 left-0 right-0 h-px bg-[#b9e2f5]/70" style="margin:0 9%;"></div>
+
+      <div class="grid md:grid-cols-5 gap-10 relative">
+
+        <!-- 01 Imagine -->
+        <div class="flex flex-col items-center text-center">
+          <div class="w-16 h-16 rounded-full flex items-center justify-center mb-6 relative z-10"
+               style="background:#fff;border:2px solid #b9e2f5;box-shadow:0 4px 20px rgba(60,100,116,0.1);">
+            <span class="material-symbols-outlined" style="color:#3c6474;font-size:24px;">lightbulb</span>
+          </div>
+          <p class="label mb-3" style="font-size:10px;letter-spacing:0.22em;color:#3c6474;">01</p>
+          <h3 class="h-sub mb-3" style="font-size:18px;">Imagine</h3>
+          <p class="body-copy" style="font-size:14px;color:#71787c;">Picture the piece. Describe it in your own words — no design language required.</p>
+        </div>
+
+        <!-- 02 Generate -->
+        <div class="flex flex-col items-center text-center">
+          <div class="w-16 h-16 rounded-full flex items-center justify-center mb-6 relative z-10"
+               style="background:#fff;border:2px solid #b9e2f5;box-shadow:0 4px 20px rgba(60,100,116,0.1);">
+            <span class="material-symbols-outlined" style="color:#3c6474;font-size:24px;">auto_awesome</span>
+          </div>
+          <p class="label mb-3" style="font-size:10px;letter-spacing:0.22em;color:#3c6474;">02</p>
+          <h3 class="h-sub mb-3" style="font-size:18px;">Generate</h3>
+          <p class="body-copy" style="font-size:14px;color:#71787c;">Our AI renders your vision instantly — hyper-realistic, production-quality, entirely yours.</p>
+        </div>
+
+        <!-- 03 Refine -->
+        <div class="flex flex-col items-center text-center">
+          <div class="w-16 h-16 rounded-full flex items-center justify-center mb-6 relative z-10"
+               style="background:#fff;border:2px solid #b9e2f5;box-shadow:0 4px 20px rgba(60,100,116,0.1);">
+            <span class="material-symbols-outlined" style="color:#3c6474;font-size:24px;">edit</span>
+          </div>
+          <p class="label mb-3" style="font-size:10px;letter-spacing:0.22em;color:#3c6474;">03</p>
+          <h3 class="h-sub mb-3" style="font-size:18px;">Refine</h3>
+          <p class="body-copy" style="font-size:14px;color:#71787c;">Tweak the design until it's exactly right. Change stones, metals, proportions — iterate freely.</p>
+        </div>
+
+        <!-- 04 Certified -->
+        <div class="flex flex-col items-center text-center">
+          <div class="w-16 h-16 rounded-full flex items-center justify-center mb-6 relative z-10"
+               style="background:#fff;border:2px solid #b9e2f5;box-shadow:0 4px 20px rgba(60,100,116,0.1);">
+            <span class="material-symbols-outlined" style="color:#3c6474;font-size:24px;">diamond</span>
+          </div>
+          <p class="label mb-3" style="font-size:10px;letter-spacing:0.22em;color:#3c6474;">04</p>
+          <h3 class="h-sub mb-3" style="font-size:18px;">Certified</h3>
+          <p class="body-copy" style="font-size:14px;color:#71787c;">Every stone is GIA certified. Documentation, provenance, and proof — before we build a thing.</p>
+        </div>
+
+        <!-- 05 Delivered -->
+        <div class="flex flex-col items-center text-center">
+          <div class="w-16 h-16 rounded-full flex items-center justify-center mb-6 relative z-10"
+               style="background:#3c6474;border:2px solid #3c6474;box-shadow:0 4px 20px rgba(60,100,116,0.22);">
+            <span class="material-symbols-outlined text-white" style="font-size:24px;">local_shipping</span>
+          </div>
+          <p class="label mb-3" style="font-size:10px;letter-spacing:0.22em;color:#3c6474;">05</p>
+          <h3 class="h-sub mb-3" style="font-size:18px;">Delivered</h3>
+          <p class="body-copy" style="font-size:14px;color:#71787c;">White-glove, insured delivery. Your masterpiece, in archival packaging, exactly as you designed it.</p>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="text-center mt-16">
+      <a href="ailab.html">
+        <button class="btn-primary btn-glow" style="font-size:12px;letter-spacing:0.18em;padding:16px 44px;">Begin Your Journey</button>
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════════════
+     CTA STRIP
+════════════════════════════ -->
+<section class="py-24 bg-[#fbf9f9] text-center">
+  <div class="max-w-[800px] mx-auto px-4 md:px-16">
+    <span class="eyebrow">Begin Now</span>
+    <h2 class="h-section mb-8">Ready to create<br><span style="font-style:italic;">something timeless?</span></h2>
+    <p class="body-lg mb-12" style="color:#5e5e5b;max-width:480px;margin-left:auto;margin-right:auto;">
+      Step into the AI Design Lab and bring your vision to life in minutes.
+    </p>
+    <div class="flex flex-col sm:flex-row gap-4 justify-center">
+      <a href="ailab.html"><button class="btn-primary btn-glow">Start Creating</button></a>
+      <a href="collections.html"><button class="btn-outline">Explore Gallery</button></a>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<!-- ════════════════════════════
+     FOOTER
+════════════════════════════ -->
+<footer class="w-full py-24 bg-white border-t border-[#c1c7cb]/12">
+  <div class="max-w-[1600px] mx-auto px-4 md:px-16">
+    <div class="grid grid-cols-12 gap-16 mb-20">
+      <div class="col-span-12 lg:col-span-4 flex flex-col gap-8">
+        <span style="font-family:'Playfair Display',serif;font-size:24px;font-weight:600;letter-spacing:0.32em;color:#3c6474;text-transform:uppercase;">JWLZIFY</span>
+        <p class="body-copy" style="max-width:280px;color:rgba(65,72,75,0.72);">The future of high jewelry. Leading the global revolution in AI-driven bespoke craftsmanship and ethical luxury.</p>
+        <div class="flex gap-4">
+          <div class="w-10 h-10 rounded-full flex items-center justify-center cursor-pointer hover:bg-[#3c6474] hover:text-white transition-all" style="background:#efeded;border:1px solid rgba(193,199,203,0.3);"><span class="material-symbols-outlined" style="font-size:18px;">share</span></div>
+          <div class="w-10 h-10 rounded-full flex items-center justify-center cursor-pointer hover:bg-[#3c6474] hover:text-white transition-all" style="background:#efeded;border:1px solid rgba(193,199,203,0.3);"><span class="material-symbols-outlined" style="font-size:18px;">public</span></div>
+          <div class="w-10 h-10 rounded-full flex items-center justify-center cursor-pointer hover:bg-[#3c6474] hover:text-white transition-all" style="background:#efeded;border:1px solid rgba(193,199,203,0.3);"><span class="material-symbols-outlined" style="font-size:18px;">mail</span></div>
+        </div>
+      </div>
+      <div class="col-span-12 lg:col-span-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-10">
+        <div class="flex flex-col gap-6">
+          <p class="label" style="font-size:12px;letter-spacing:0.13em;color:#1b1c1c;font-weight:700;">Experience</p>
+          <ul class="flex flex-col gap-3">
+            <li><a href="ailab.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">The Lab</a></li>
+            <li><a href="about.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Expert Jewelers</a></li>
+            <li><a href="about.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Your Journey</a></li>
+            <li><a href="collections.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Collections</a></li>
+          </ul>
+        </div>
+        <div class="flex flex-col gap-6">
+          <p class="label" style="font-size:12px;letter-spacing:0.13em;color:#1b1c1c;font-weight:700;">Philosophy</p>
+          <ul class="flex flex-col gap-3">
+            <li><a href="about.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Ethical Sourcing</a></li>
+            <li><a href="about.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Sustainability</a></li>
+            <li><a href="about.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Blockchain Trust</a></li>
+            <li><a href="about.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Our Story</a></li>
+          </ul>
+        </div>
+        <div class="flex flex-col gap-6">
+          <p class="label" style="font-size:12px;letter-spacing:0.13em;color:#1b1c1c;font-weight:700;">Support</p>
+          <ul class="flex flex-col gap-3">
+            <li><a href="support.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Account</a></li>
+            <li><a href="support.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Order Status</a></li>
+            <li><a href="support.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Shipping &amp; Delivery</a></li>
+            <li><a href="support.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Returns &amp; Exchanges</a></li>
+            <li><a href="support.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Warranty</a></li>
+            <li><a href="support.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Authenticity</a></li>
+            <li><a href="support.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Size Guide</a></li>
+          </ul>
+        </div>
+        <div class="flex flex-col gap-6">
+          <p class="label" style="font-size:12px;letter-spacing:0.13em;color:#1b1c1c;font-weight:700;">Legal</p>
+          <ul class="flex flex-col gap-3">
+            <li><a href="legal.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Privacy Policy</a></li>
+            <li><a href="legal.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Terms &amp; Conditions</a></li>
+            <li><a href="legal.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Returns &amp; Exchanges</a></li>
+            <li><a href="legal.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Shipping Policy</a></li>
+            <li><a href="legal.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Warranty</a></li>
+            <li><a href="legal.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Cookies Policy</a></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="pt-10 flex flex-col sm:flex-row justify-between items-center gap-4"
+         style="border-top:0.5px solid rgba(193,199,203,0.3);">
+      <p class="label" style="font-size:11px;letter-spacing:0.13em;color:rgba(65,72,75,0.5);">© 2025 JWLZIFY Holdings. All Rights Reserved.</p>
+      <p class="label" style="font-size:11px;letter-spacing:0.13em;color:rgba(65,72,75,0.5);">Crafted with Precision in Toronto &amp; Antwerp</p>
+    </div>
+  </div>
+</footer>
+
+<script>
+  document.getElementById('siteHeader').classList.add('nav-visible');
+</script>
+<script src="firebase-auth.js"></script>
+</body>
+</html>
