@@ -1402,18 +1402,16 @@ function submitOrder(e) {
    TRY-ON — live camera + transparent jewelry
 ════════════════════════════════════════════════ */
 
-/* ── Canvas-based background removal — 4-pass pipeline ──────
-   Pass 1: aggressive pixel-level removal of all light/neutral bg.
-   Pass 2: flood fill from the ENTIRE perimeter (not just corners)
-           to catch any surviving background connected to an edge.
-   Pass 3: halo cleanup — zero any semi-transparent bright pixels
-           left by anti-aliased edges.
-   Pass 4: edge feathering to soften the jewelry silhouette. */
+/* ── Canvas-based background removal ────────────────────────
+   Edge-only flood fill: seeds from all 4 perimeter edges but
+   only removes pixels that are clearly background (brightness
+   > 240 && spread < 15). Never touches the jewelry center.
+   All non-background pixels are forced to full opacity. */
 function stripBackground(imgEl, callback) {
   const cvs = document.createElement('canvas');
   const ctx = cvs.getContext('2d');
-  cvs.width  = imgEl.naturalWidth  || imgEl.width  || 800;
-  cvs.height = imgEl.naturalHeight || imgEl.height || 800;
+  cvs.width  = imgEl.naturalWidth  || imgEl.width;
+  cvs.height = imgEl.naturalHeight || imgEl.height;
   ctx.drawImage(imgEl, 0, 0, cvs.width, cvs.height);
 
   const frame = ctx.getImageData(0, 0, cvs.width, cvs.height);
@@ -1421,64 +1419,57 @@ function stripBackground(imgEl, callback) {
   const w = cvs.width;
   const h = cvs.height;
 
-  // PASS 1: Remove near-white, grey, and light neutral pixels
-  for (let i = 0; i < px.length; i += 4) {
+  // STEP 1: Flood fill ONLY from the 4 edges outward
+  const transparent = new Uint8Array(w * h);
+
+  function shouldRemove(idx) {
+    const i = idx * 4;
     const r = px[i], g = px[i+1], b = px[i+2];
-    const spread = Math.max(r, g, b) - Math.min(r, g, b);
     const brightness = (r + g + b) / 3;
-    if (brightness > 195 && spread < 40) { px[i+3] = 0; }
-    else if (brightness > 175 && spread < 25) { px[i+3] = 0; }
-    else if (r > 188 && g > 188 && b > 188) { px[i+3] = 0; }
-    else if (brightness > 155 && spread < 18) { px[i+3] = 0; }
+    const spread = Math.max(r, g, b) - Math.min(r, g, b);
+    return brightness > 240 && spread < 15;
   }
 
-  // PASS 2: Flood fill from the entire perimeter
-  // Seeding from all 4 edges (not just corners) catches every
-  // background region reachable from any border pixel.
-  const visited = new Uint8Array(w * h);
   const stack = [];
-  for (let x = 0; x < w; x++) { stack.push(x); stack.push(w * (h - 1) + x); }
-  for (let y = 1; y < h - 1; y++) { stack.push(y * w); stack.push(y * w + (w - 1)); }
+  for (let x = 0; x < w; x++) {
+    stack.push(x);              // top row
+    stack.push((h - 1) * w + x); // bottom row
+  }
+  for (let y = 0; y < h; y++) {
+    stack.push(y * w);          // left col
+    stack.push(y * w + w - 1);  // right col
+  }
 
   while (stack.length > 0) {
     const idx = stack.pop();
-    if (idx < 0 || idx >= w * h || visited[idx]) continue;
-    visited[idx] = 1;
-    const pi = idx * 4;
-    const brightness = (px[pi] + px[pi+1] + px[pi+2]) / 3;
-    const spread = Math.max(px[pi], px[pi+1], px[pi+2]) - Math.min(px[pi], px[pi+1], px[pi+2]);
-    if (brightness > 140 && spread < 55) {
-      px[pi+3] = 0;
-      stack.push(idx - 1, idx + 1, idx - w, idx + w);
-    }
+    if (idx < 0 || idx >= w * h) continue;
+    if (transparent[idx]) continue;
+    if (!shouldRemove(idx)) continue;
+    transparent[idx] = 1;
+    stack.push(idx - 1, idx + 1, idx - w, idx + w);
   }
 
-  // PASS 3: Halo cleanup — any surviving semi-transparent bright pixel
-  // is an anti-aliased edge relic; zero it completely
-  for (let i = 0; i < px.length; i += 4) {
-    if (px[i+3] > 0 && px[i+3] < 255) {
-      if ((px[i] + px[i+1] + px[i+2]) / 3 > 140) px[i+3] = 0;
-    }
+  // STEP 2: Apply transparency only to flood-filled pixels;
+  // all others are forced to alpha 255 — fully opaque
+  for (let i = 0; i < w * h; i++) {
+    px[i * 4 + 3] = transparent[i] ? 0 : 255;
   }
 
-  // PASS 4: Edge feathering — soften the jewelry silhouette boundary
+  // STEP 3: 1px soft edge between transparent and opaque
   for (let y = 1; y < h - 1; y++) {
     for (let x = 1; x < w - 1; x++) {
-      const idx = (y * w + x) * 4;
-      if (px[idx+3] === 255) {
-        const n = [
-          px[((y-1)*w+x)*4+3], px[((y+1)*w+x)*4+3],
-          px[(y*w+x-1)*4+3],   px[(y*w+x+1)*4+3]
-        ];
-        const t = n.filter(a => a === 0).length;
-        if (t >= 2) px[idx+3] = 128;
-        else if (t === 1) px[idx+3] = 200;
-      }
+      const idx = y * w + x;
+      if (transparent[idx]) continue;
+      const neighbors = [
+        transparent[idx - 1], transparent[idx + 1],
+        transparent[idx - w], transparent[idx + w]
+      ];
+      if (neighbors.filter(Boolean).length > 0) px[idx * 4 + 3] = 180;
     }
   }
 
   ctx.putImageData(frame, 0, 0);
-  cvs.toBlob(blob => callback(blob ? URL.createObjectURL(blob) : null), 'image/png');
+  cvs.toBlob(blob => callback(URL.createObjectURL(blob)), 'image/png');
 }
 
 function removeWhiteBackground(url) {
