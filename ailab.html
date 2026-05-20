@@ -138,8 +138,7 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
 #jewelryImg, #jewelryImg2 {
   display:block; flex-shrink:0;
   background:transparent; border:none; outline:none;
-  box-shadow:none; filter:none;
-  mix-blend-mode:normal; opacity:1;
+  box-shadow:none; filter:none; opacity:1;
 }
 /* ── Pendant size buttons ── */
 .psize-btn {
@@ -1389,66 +1388,77 @@ function submitOrder(e) {
 ════════════════════════════════════════════════ */
 
 /* ── removeWhiteBackground ───────────────────────────────────
-   Adaptive BFS removal. Samples ~20 border points, filters out
-   jewelry-dark/saturated samples, averages the rest to get the
-   true bg colour. Tolerance auto-scales with border variance so
-   uniform bg = tight, gradient bg = wider. Shadow pass expands
-   1px into fringe adjacent to removed area. */
+   Multi-strategy BFS. Samples 40 border points, takes brightest
+   60% to estimate bg color, adapts tolerance to light vs dark bg.
+   Gradient pass expands at 1.55× tolerance but guards against
+   eating dark jewelry. Binary alpha output. */
 async function removeWhiteBackground(imageUrl) {
-  return new Promise(resolve => {
+  return new Promise((resolve) => {
     const img = new Image();
     img.crossOrigin = 'anonymous';
 
     img.onload = () => {
-      const c = document.createElement('canvas');
-      c.width  = img.naturalWidth;
-      c.height = img.naturalHeight;
+      const c   = document.createElement('canvas');
+      c.width   = img.naturalWidth  || 512;
+      c.height  = img.naturalHeight || 512;
       const ctx = c.getContext('2d');
       ctx.drawImage(img, 0, 0);
 
-      const f  = ctx.getImageData(0, 0, c.width, c.height);
-      const px = f.data;
-      const W = c.width, H = c.height, N = W * H;
+      const frame = ctx.getImageData(0, 0, c.width, c.height);
+      const px    = frame.data;
+      const W     = c.width;
+      const H     = c.height;
+      const N     = W * H;
 
-      // Collect ~20 border sample indices
-      const rawSamples = [];
-      const step = Math.floor(W / 5);
-      for (let x = 0; x < W; x += step) {
-        rawSamples.push(x, (H-1)*W + x);
+      // STEP 1: Sample 40 points across all 4 borders
+      const allBorderSamples = [];
+      const bStep = Math.max(1, Math.floor(Math.min(W, H) / 10));
+      for (let x = 0; x < W; x += bStep) {
+        allBorderSamples.push(x);
+        allBorderSamples.push((H-1)*W + x);
       }
-      const stepY = Math.floor(H / 5);
-      for (let y = 0; y < H; y += stepY) {
-        rawSamples.push(y*W, y*W + W-1);
-      }
-
-      // Filter: keep only light, low-saturation samples (bg, not jewelry)
-      const bgSamples = rawSamples.filter(idx => {
-        const r = px[idx*4], g = px[idx*4+1], b = px[idx*4+2];
-        const lum = r*0.299 + g*0.587 + b*0.114;
-        const sat = Math.max(r,g,b) - Math.min(r,g,b);
-        return lum > 140 && sat < 60;
-      });
-
-      const src = bgSamples.length ? bgSamples : rawSamples;
-      const bgR = src.reduce((s,i) => s + px[i*4],   0) / src.length;
-      const bgG = src.reduce((s,i) => s + px[i*4+1], 0) / src.length;
-      const bgB = src.reduce((s,i) => s + px[i*4+2], 0) / src.length;
-
-      // Adaptive tolerance: tighter for uniform bg, wider for gradient
-      const variance = src.reduce((s, idx) => {
-        const r = px[idx*4], g = px[idx*4+1], b = px[idx*4+2];
-        return s + Math.abs(r-bgR) + Math.abs(g-bgG) + Math.abs(b-bgB);
-      }, 0) / src.length;
-      const TOLERANCE = Math.min(65, Math.max(32, variance * 1.4));
-
-      function isBg(idx) {
-        const r = px[idx*4]-bgR, g = px[idx*4+1]-bgG, b = px[idx*4+2]-bgB;
-        return Math.sqrt(r*r + g*g + b*b) < TOLERANCE;
+      for (let y = 1; y < H-1; y += bStep) {
+        allBorderSamples.push(y*W);
+        allBorderSamples.push(y*W + W-1);
       }
 
-      // BFS flood fill from all 4 perimeter edges
+      // Take brightest 60% — these are definitely background
+      const lumsAndIdx = allBorderSamples.map(i => ({
+        i,
+        lum: px[i*4]*0.299 + px[i*4+1]*0.587 + px[i*4+2]*0.114
+      }));
+      lumsAndIdx.sort((a, b) => b.lum - a.lum);
+      const topSamples = lumsAndIdx
+        .slice(0, Math.ceil(lumsAndIdx.length * 0.6))
+        .map(s => s.i);
+
+      const bgR   = topSamples.reduce((s,i) => s + px[i*4],   0) / topSamples.length;
+      const bgG   = topSamples.reduce((s,i) => s + px[i*4+1], 0) / topSamples.length;
+      const bgB   = topSamples.reduce((s,i) => s + px[i*4+2], 0) / topSamples.length;
+      const bgLum = bgR*0.299 + bgG*0.587 + bgB*0.114;
+
+      // STEP 2: Light vs dark bg detection
+      const bgIsLight = bgLum > 160;
+
+      // STEP 3: Adaptive tolerance
+      const spread = topSamples.reduce((s, i) => {
+        const r = px[i*4], g = px[i*4+1], b = px[i*4+2];
+        return s + Math.sqrt((r-bgR)**2 + (g-bgG)**2 + (b-bgB)**2);
+      }, 0) / topSamples.length;
+
+      const TOLERANCE = bgIsLight
+        ? Math.min(55, Math.max(30, spread * 1.3))
+        : Math.min(40, Math.max(20, spread * 1.1));
+
+      // STEP 4: Color-distance predicate
+      function isBg(i) {
+        const r = px[i*4], g = px[i*4+1], b = px[i*4+2];
+        return Math.sqrt((r-bgR)**2 + (g-bgG)**2 + (b-bgB)**2) < TOLERANCE;
+      }
+
+      // STEP 5: Edge-seeded flood fill
       const gone  = new Uint8Array(N);
-      const queue = new Int32Array(N);
+      const queue = new Int32Array(N * 2);
       let head = 0, tail = 0;
 
       function seed(i) {
@@ -1465,23 +1475,37 @@ async function removeWhiteBackground(imageUrl) {
         seed(i-1); seed(i+1); seed(i-W); seed(i+W);
       }
 
-      // Fringe expansion: 2 passes to catch semi-transparent border pixels
-      for (let pass = 0; pass < 2; pass++) {
-        for (let y = 1; y < H-1; y++) {
-          for (let x = 1; x < W-1; x++) {
-            const i = y*W + x;
-            if (gone[i]) continue;
-            if (!(gone[i-1]||gone[i+1]||gone[i-W]||gone[i+W])) continue;
-            const r = px[i*4]-bgR, g = px[i*4+1]-bgG, b = px[i*4+2]-bgB;
-            if (Math.sqrt(r*r + g*g + b*b) < TOLERANCE * 1.8) gone[i] = 1;
+      // STEP 6: Gradient bg cleanup — wider tolerance, seeded from gone pixels
+      const GRADIENT_TOL = TOLERANCE * 1.55;
+      const gone2 = new Uint8Array(gone);
+      const q2    = new Int32Array(N);
+      let h2 = 0, t2 = 0;
+
+      for (let i = 0; i < N; i++) { if (gone[i]) q2[t2++] = i; }
+
+      while (h2 < t2) {
+        const i = q2[h2++];
+        for (const n of [i-1, i+1, i-W, i+W]) {
+          if (n < 0 || n >= N || gone2[n]) continue;
+          const r = px[n*4], g = px[n*4+1], b = px[n*4+2];
+          if (Math.sqrt((r-bgR)**2 + (g-bgG)**2 + (b-bgB)**2) < GRADIENT_TOL) {
+            gone2[n] = 1; q2[t2++] = n;
           }
         }
       }
 
-      // Hard edges: removed = 0, kept = 255
+      // STEP 7: Merge — only accept gradient removals on pixels bright enough to be bg
+      for (let i = 0; i < N; i++) {
+        if (gone2[i] && !gone[i]) {
+          const lum = px[i*4]*0.299 + px[i*4+1]*0.587 + px[i*4+2]*0.114;
+          if (lum > bgLum * 0.72) gone[i] = 1;
+        }
+      }
+
+      // STEP 8: Binary alpha — no partial transparency
       for (let i = 0; i < N; i++) { px[i*4+3] = gone[i] ? 0 : 255; }
 
-      ctx.putImageData(f, 0, 0);
+      ctx.putImageData(frame, 0, 0);
       c.toBlob(blob => resolve(URL.createObjectURL(blob)), 'image/png');
     };
 
@@ -1697,6 +1721,16 @@ async function placeJewelryOverlay() {
     const croppedUrl = isPendant ? await cropChainStub(cleanUrl || LAB.imageUrl)
                                  : (cleanUrl || LAB.imageUrl);
     img.src = croppedUrl;
+    [img, unit].forEach(el => {
+      el.style.background      = 'transparent';
+      el.style.backgroundColor = 'transparent';
+      el.style.boxShadow       = 'none';
+      el.style.border          = 'none';
+      el.style.outline         = 'none';
+      el.style.filter          = 'none';
+      el.style.mixBlendMode    = 'normal';
+      el.style.opacity         = '1';
+    });
 
     if (isPendant) {
       function center() {
