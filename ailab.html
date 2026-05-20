@@ -1343,7 +1343,8 @@ function validateCutout(px, W, H) {
 let _imglyMod = null;
 async function _getImglyLib() {
   if (_imglyMod) return _imglyMod;
-  _imglyMod = await import('https://esm.sh/@imgly/background-removal');
+  // Use jsdelivr for both JS and binary assets so versions always match
+  _imglyMod = await import('https://cdn.jsdelivr.net/npm/@imgly/background-removal/+esm');
   return _imglyMod;
 }
 
@@ -1352,15 +1353,19 @@ async function isolatePendantSubject(pollinationsUrl) {
   if (!PENDANT_IMGLY_ENABLED) return null;
   if (_birefnetCache.has(pollinationsUrl)) return _birefnetCache.get(pollinationsUrl);
   try {
-    const { removeBackground } = await _getImglyLib();
+    const mod = await _getImglyLib();
+    // Handle both named export (v1) and default export (v2+)
+    const removeBackground = mod.removeBackground ?? mod.default?.removeBackground;
+    if (typeof removeBackground !== 'function') throw new Error('removeBackground not found in module');
 
-    // Fetch source image as Blob to avoid CORS issues with URL strings
-    const srcResp = await fetch(pollinationsUrl);
+    // Fetch as blob ourselves so we control CORS; pass blob to avoid worker fetch CORS issues
+    const srcResp = await fetch(pollinationsUrl, { mode: 'cors', credentials: 'omit' });
     if (!srcResp.ok) throw new Error('source-fetch-' + srcResp.status);
     const srcBlob = await srcResp.blob();
 
+    // publicPath must match the CDN serving the JS so model file names align
     const cutoutBlob = await removeBackground(srcBlob, {
-      publicPath: 'https://cdn.jsdelivr.net/npm/@imgly/background-removal@latest/dist/',
+      publicPath: 'https://cdn.jsdelivr.net/npm/@imgly/background-removal/dist/',
       model: 'isnet',
       output: { format: 'image/png', quality: 1.0 },
     });
@@ -1400,7 +1405,7 @@ async function isolatePendantSubject(pollinationsUrl) {
     _birefnetCache.set(pollinationsUrl, result);
     return result;  // { blobUrl, bailNormX }
   } catch (e) {
-    console.warn('[JWLZIFY] background removal failed, using original:', e.message);
+    console.error('[JWLZIFY] background removal failed:', e);
     return null;
   }
 }
