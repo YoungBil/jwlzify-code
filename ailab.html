@@ -1705,8 +1705,10 @@ async function placeJewelryOverlay() {
         const pW  = inchesToPx(inches);
         const cPW = inchesToPx(1.5);
         const cH  = Math.round(cPW * 1.4);
-        img.style.width  = pW + 'px';
-        img.style.height = 'auto';
+        img.style.width    = pW + 'px';
+        img.style.height   = 'auto';
+        img.style.position = 'relative';
+        img.style.left     = (cPW - pW / 2) + 'px';
         unit.style.width = pW + 'px';
         chainCvs.width         = Math.round(cPW * 3);
         chainCvs.height        = cH;
@@ -1719,8 +1721,8 @@ async function placeJewelryOverlay() {
       }
 
       sizeTo(LAB._selectedInches);
-      const pW0 = inchesToPx(LAB._selectedInches);
-      unit.style.left    = (camWrap.offsetWidth  * 0.5 - pW0 / 2) + 'px';
+      const cPW0 = inchesToPx(1.5);
+      unit.style.left    = (camWrap.offsetWidth  * 0.5 - cPW0) + 'px';
       unit.style.top     = (camWrap.offsetHeight * 0.32) + 'px';
       unit.style.transform = 'none';
       unit.style.display = 'block';
