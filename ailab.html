@@ -1114,25 +1114,24 @@ function useInspiration(btn) {
 /* ── Prompt building ─────────────────────────── */
 function buildPrompt(type, material, gem, style, desc) {
   const isPendantType = (type === 'pendant' || type === 'necklace');
-  const typeMap = {
-    ring:     'ring band jewelry',
-    necklace: 'isolated pendant charm, bail visible at top',
-    pendant:  'isolated pendant charm, bail visible at top',
-    earrings: 'pair of earrings fine jewelry',
-    bracelet: 'cuff bracelet jewelry'
-  };
-  const piece   = typeMap[type] || type;
   const mDisp   = matLabel(material);
   const gDisp   = gemLabel(gem);
   const gemPart = `${gDisp} center stone`;
   const base    = desc.trim() ? desc.trim() + ', ' : '';
-  const sceneFraming = isPendantType
-    ? 'floating pendant product photograph, flat-lay display, pure white seamless background'
-    : 'isolated fine jewelry product photograph, pure white seamless background';
-  const pendantExclusions = isPendantType
-    ? ', isolated pendant only, bail connector visible at top, no chain, no necklace, no cord, no string, no links, no clasp, no rope, no neck, no model, pendant piece alone'
-    : '';
-  return `${base}luxury ${style} ${piece}, ${mDisp}, ${gemPart}, ${sceneFraming}, no shadows, no reflections on background, professional diffuse studio lighting, hyper realistic, 8K ultra high definition, macro lens, sharp focus, precious metal gleam, gemstone sparkle and brilliance, luxury brand catalog${pendantExclusions}`;
+
+  if (isPendantType) {
+    // Front-load isolation framing — Flux weights earlier tokens more heavily.
+    // enhance=false is set at the URL level to prevent Pollinations from rewriting this.
+    return `isolated pendant charm only, no chain, no cord, no necklace, ${base}luxury ${style} pendant charm with bail connector at top, ${mDisp}, ${gemPart}, overhead flat-lay on pure white seamless background, professional studio lighting, hyper realistic, 8K ultra high definition, macro lens, sharp focus, precious metal gleam, gemstone sparkle and brilliance`;
+  }
+
+  const typeMap = {
+    ring:     'ring band jewelry',
+    earrings: 'pair of earrings fine jewelry',
+    bracelet: 'cuff bracelet jewelry'
+  };
+  const piece = typeMap[type] || type;
+  return `${base}luxury ${style} ${piece}, ${mDisp}, ${gemPart}, isolated fine jewelry product photograph, pure white seamless background, no shadows, no reflections on background, professional diffuse studio lighting, hyper realistic, 8K ultra high definition, macro lens, sharp focus, precious metal gleam, gemstone sparkle and brilliance, luxury brand catalog`;
 }
 
 /* ── Image generation ────────────────────────── */
@@ -1162,7 +1161,13 @@ function startGeneration(isTweak) {
 
   const fullPrompt = buildPrompt(LAB.type, LAB.material, LAB.gem, LAB.style, desc);
   const seed = (Date.now() + Math.floor(Math.random() * 9999)) % 99999;
-  const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(fullPrompt)}?width=800&height=800&nologo=true&seed=${seed}&model=flux&enhance=true`;
+  const isPendantGen = (LAB.type === 'pendant' || LAB.type === 'necklace');
+  // Pendants: disable enhance (it rewrites prompts and adds chain context back),
+  // and pass a proper negative_prompt so Flux explicitly suppresses chains.
+  const negParam = isPendantGen
+    ? `&negative_prompt=${encodeURIComponent('chain,necklace,cord,string,rope,clasp,links,neck,person,model,hanging,worn')}`
+    : '';
+  const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(fullPrompt)}?width=800&height=800&nologo=true&seed=${seed}&model=flux&enhance=${isPendantGen ? 'false' : 'true'}${negParam}`;
 
   LAB.imageUrl = url;
 
