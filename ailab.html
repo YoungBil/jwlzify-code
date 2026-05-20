@@ -1388,39 +1388,56 @@ function submitOrder(e) {
 ════════════════════════════════════════════════ */
 
 /* ── removeWhiteBackground ───────────────────────────────────
-   BFS flood fill seeded from all 4 perimeter edges. Only pixels
-   that are bright (lum > 230) AND achromatic (sat < 20) are
-   treated as background — safely excludes all jewelry pixels.
-   Alpha 220 on 1-px boundary softens anti-aliased fringe. */
+   Adaptive BFS background removal.
+   Step 1: sample background colour from 6 border points.
+   Step 2: flood fill from all 4 edges using colour-distance
+           tolerance=38 — handles off-white, gradients, tints.
+   Step 3: shadow pass (tolerance×1.6) expands 1px into soft
+           cast-shadows adjacent to already-removed pixels.
+   Step 4: alpha 0 on removed, 255 on jewelry, 215 on 1px edge. */
 async function removeWhiteBackground(imageUrl) {
   return new Promise(resolve => {
     const img = new Image();
     img.crossOrigin = 'anonymous';
+
     img.onload = () => {
-      const canvas  = document.createElement('canvas');
+      const canvas = document.createElement('canvas');
       canvas.width  = img.naturalWidth;
       canvas.height = img.naturalHeight;
       const ctx = canvas.getContext('2d');
       ctx.drawImage(img, 0, 0);
 
       const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const pixels  = imgData.data;
-      const W = canvas.width, H = canvas.height;
-      const total   = W * H;
-      const visited = new Uint8Array(total);
+      const px = imgData.data;
+      const W = canvas.width, H = canvas.height, N = W * H;
 
-      function isBackground(idx) {
-        const r = pixels[idx*4], g = pixels[idx*4+1], b = pixels[idx*4+2];
-        const lum = r * 0.299 + g * 0.587 + b * 0.114;
-        const sat = Math.max(r,g,b) - Math.min(r,g,b);
-        return lum > 230 && sat < 20;
+      // Sample background colour from 6 border positions
+      function rgb(idx) {
+        return [px[idx*4], px[idx*4+1], px[idx*4+2]];
+      }
+      const samples = [
+        rgb(0), rgb(W-1), rgb((H-1)*W), rgb(H*W-1),
+        rgb(Math.floor(W/2)), rgb((H-1)*W + Math.floor(W/2)),
+      ];
+      const bgR = samples.reduce((s,c) => s+c[0], 0) / samples.length;
+      const bgG = samples.reduce((s,c) => s+c[1], 0) / samples.length;
+      const bgB = samples.reduce((s,c) => s+c[2], 0) / samples.length;
+
+      const TOLERANCE = 38;
+      const SHADOW_TOL = TOLERANCE * 1.6;
+
+      function dist(idx) {
+        const r = px[idx*4]-bgR, g = px[idx*4+1]-bgG, b = px[idx*4+2]-bgB;
+        return Math.sqrt(r*r + g*g + b*b);
       }
 
-      const queue = new Int32Array(total);
+      // BFS flood fill from all 4 perimeter edges
+      const visited = new Uint8Array(N);
+      const queue   = new Int32Array(N);
       let head = 0, tail = 0;
 
       function seed(idx) {
-        if (idx >= 0 && idx < total && !visited[idx] && isBackground(idx)) {
+        if (idx >= 0 && idx < N && !visited[idx] && dist(idx) < TOLERANCE) {
           visited[idx] = 1; queue[tail++] = idx;
         }
       }
@@ -1429,18 +1446,32 @@ async function removeWhiteBackground(imageUrl) {
       for (let y = 1; y < H-1; y++) { seed(y*W); seed(y*W + W-1); }
 
       while (head < tail) {
-        const idx = queue[head++];
-        seed(idx-1); seed(idx+1); seed(idx-W); seed(idx+W);
+        const i = queue[head++];
+        seed(i-1); seed(i+1); seed(i-W); seed(i+W);
       }
 
-      for (let i = 0; i < total; i++) { pixels[i*4+3] = visited[i] ? 0 : 255; }
+      // Shadow pass: expand 1px into near-bg pixels adjacent to removed area
+      for (let y = 1; y < H-1; y++) {
+        for (let x = 1; x < W-1; x++) {
+          const i = y*W + x;
+          if (visited[i]) continue;
+          if ((visited[i-1]||visited[i+1]||visited[i-W]||visited[i+W]) &&
+              dist(i) < SHADOW_TOL) {
+            visited[i] = 1;
+          }
+        }
+      }
 
+      // Alpha pass
+      for (let i = 0; i < N; i++) { px[i*4+3] = visited[i] ? 0 : 255; }
+
+      // 1px boundary feather
       for (let y = 1; y < H-1; y++) {
         for (let x = 1; x < W-1; x++) {
           const i = y*W + x;
           if (visited[i]) continue;
           if (visited[i-1]||visited[i+1]||visited[i-W]||visited[i+W]) {
-            pixels[i*4+3] = 220;
+            px[i*4+3] = 215;
           }
         }
       }
@@ -1448,6 +1479,7 @@ async function removeWhiteBackground(imageUrl) {
       ctx.putImageData(imgData, 0, 0);
       canvas.toBlob(blob => resolve(URL.createObjectURL(blob)), 'image/png');
     };
+
     img.onerror = () => resolve(null);
     img.src = imageUrl;
   });
