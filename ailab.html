@@ -984,10 +984,8 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
 /* ── Claude API key (fill in to enable AI spec cards) ── */
 const CLAUDE_API_KEY = '';
 
-/* ── fal.ai key — fill in to enable BiRefNet pendant isolation ── */
-const FAL_API_KEY = '';
-/* Set false to skip post-processing without changing code (instant rollback) */
-const PENDANT_BIREFNET_ENABLED = true;
+/* Set false to skip background removal without changing code (instant rollback) */
+const PENDANT_IMGLY_ENABLED = true;
 
 /* ── Display name maps ── */
 const MATERIAL_LABEL = {
@@ -1341,34 +1339,37 @@ function validateCutout(px, W, H) {
   return { ok: true, opaqueRatio: (opaque / N).toFixed(3) };
 }
 
-/* ── BiRefNet pendant isolation (fal.ai) ─────── */
+/* ── @imgly/background-removal lazy loader ─────── */
+let _imglyMod = null;
+async function _getImglyLib() {
+  if (_imglyMod) return _imglyMod;
+  _imglyMod = await import('https://esm.sh/@imgly/background-removal');
+  return _imglyMod;
+}
+
+/* ── Pendant subject isolation (@imgly/background-removal) ─────── */
 async function isolatePendantSubject(pollinationsUrl) {
-  if (!PENDANT_BIREFNET_ENABLED || !FAL_API_KEY) return null;
+  if (!PENDANT_IMGLY_ENABLED) return null;
   if (_birefnetCache.has(pollinationsUrl)) return _birefnetCache.get(pollinationsUrl);
   try {
-    const res = await fetch('https://fal.run/fal-ai/birefnet', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Key ${FAL_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        image_url:         pollinationsUrl,
-        model:             'General Use (Heavy)',
-        output_format:     'png',
-        refine_foreground: true,
-      }),
-    });
-    if (!res.ok) throw new Error('birefnet-http-' + res.status);
-    const data = await res.json();
-    const cutoutUrl = data?.image?.url;
-    if (!cutoutUrl) throw new Error('no cutout url in response');
+    const { removeBackground } = await _getImglyLib();
 
+    // Fetch source image as Blob to avoid CORS issues with URL strings
+    const srcResp = await fetch(pollinationsUrl);
+    if (!srcResp.ok) throw new Error('source-fetch-' + srcResp.status);
+    const srcBlob = await srcResp.blob();
+
+    const cutoutBlob = await removeBackground(srcBlob, {
+      publicPath: 'https://cdn.jsdelivr.net/npm/@imgly/background-removal@latest/dist/',
+      model: 'isnet',
+      output: { format: 'image/png', quality: 1.0 },
+    });
+
+    const cutoutUrl = URL.createObjectURL(cutoutBlob);
     const cutoutImg = await new Promise((resolve, reject) => {
       const img = new Image();
-      img.crossOrigin = 'anonymous';
-      img.onload  = () => resolve(img);
-      img.onerror = () => reject(new Error('cutout load failed'));
+      img.onload  = () => { URL.revokeObjectURL(cutoutUrl); resolve(img); };
+      img.onerror = () => { URL.revokeObjectURL(cutoutUrl); reject(new Error('cutout load failed')); };
       img.src = cutoutUrl;
     });
     const W = cutoutImg.naturalWidth, H = cutoutImg.naturalHeight;
@@ -1379,19 +1380,18 @@ async function isolatePendantSubject(pollinationsUrl) {
     const frame = ctx.getImageData(0, 0, W, H);
     const px    = frame.data;
 
-    // Pass 2 — universal alpha cleanup, applied identically to every pendant.
-    // Order matters: threshold first (kills halos before component analysis),
-    // then cleanup (component labels are now clean), then decontaminate, then feather.
+    // Alpha cleanup pipeline — order matters: threshold first (kills halos before
+    // component analysis), then cleanup, then decontaminate, then feather.
     sweepAlphaThreshold(px, W * H);       // <15% → 0, >95% → 255; kills grayish halos
     cleanupComponents(px, W, H);          // remove stray fragments outside main subject
     decontaminateWhiteEdges(px, W, H);    // strip white-bg color from edge pixels
-    featherAlpha(px, W, H);              // soften step-edges left by threshold
+    featherAlpha(px, W, H);               // soften step-edges left by threshold
 
     const bailNormX = computeBailNormX(px, W, H);  // where the chain attaches
 
     const v = validateCutout(px, W, H);
     if (!v.ok) console.warn('[JWLZIFY] cutout validation:', v);
-    else       console.log('[JWLZIFY] BiRefNet complete', { ...v, bailNormX: bailNormX.toFixed(3) });
+    else       console.log('[JWLZIFY] imgly bg-removal complete', { ...v, bailNormX: bailNormX.toFixed(3) });
 
     ctx.putImageData(frame, 0, 0);
     // Crop to bounding box + re-pad to 1024×1024 centered. Returns {blobUrl, bailNormX}
@@ -1400,7 +1400,7 @@ async function isolatePendantSubject(pollinationsUrl) {
     _birefnetCache.set(pollinationsUrl, result);
     return result;  // { blobUrl, bailNormX }
   } catch (e) {
-    console.warn('[JWLZIFY] BiRefNet isolation failed, using original:', e.message);
+    console.warn('[JWLZIFY] background removal failed, using original:', e.message);
     return null;
   }
 }
@@ -2155,8 +2155,8 @@ async function placeJewelryOverlay() {
     // BiRefNet-processed pendants arrive as transparent blob URLs.
     // Preserve the ML alpha matte — skip BFS removeWhiteBackground entirely.
     // Fallback (raw Pollinations URL) still goes through removeWhiteBackground.
-    const isBiRefNetCutout = isPendant && LAB.imageUrl.startsWith('blob:');
-    const cleanUrl = isBiRefNetCutout
+    const isManagedCutout = isPendant && LAB.imageUrl.startsWith('blob:');
+    const cleanUrl = isManagedCutout
       ? LAB.imageUrl
       : await removeWhiteBackground(LAB.imageUrl);
     if (thisGen !== generationId) return;
@@ -2164,7 +2164,7 @@ async function placeJewelryOverlay() {
     let croppedUrl;
     if (!isPendant) {
       croppedUrl = cleanUrl || LAB.imageUrl;
-    } else if (isBiRefNetCutout) {
+    } else if (isManagedCutout) {
       croppedUrl = cleanUrl;  // already 1024×1024 standardized by padToStandardCanvas — no further crop
     } else {
       croppedUrl = await cropPendantOnly(cleanUrl || LAB.imageUrl);  // fallback: chain-stub crop
@@ -2401,6 +2401,11 @@ async function fetchSpecCard() {
 
 /* ── Initialise spot prices on load ── */
 fetchSpotPrices();
+
+/* ── Prefetch @imgly/background-removal model weights non-blocking ── */
+if (PENDANT_IMGLY_ENABLED) {
+  setTimeout(() => _getImglyLib().catch(() => {}), 1000);
+}
 </script>
 
 </body>
