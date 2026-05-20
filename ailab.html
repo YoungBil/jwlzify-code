@@ -155,6 +155,10 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
   box-shadow:0 4px 14px rgba(185,226,245,0.45);
 }
 
+@keyframes jwlz-spin { to { transform:rotate(360deg); } }
+#generateBtn[disabled] { opacity:0.65; cursor:not-allowed; }
+#generateBtn[disabled] #genIcon { display:inline-block; animation:jwlz-spin 1.1s linear infinite; }
+
 /* ── Quote card ── */
 .quote-row {
   display:flex; justify-content:space-between; align-items:center;
@@ -1027,6 +1031,19 @@ const LAB = {
   _applyPendantSize: null,
 };
 
+let generationId   = 0;
+let isTryOnActive  = false;
+
+function setGenLoading(on) {
+  const btn  = document.getElementById('generateBtn');
+  const icon = document.getElementById('genIcon');
+  const text = document.getElementById('genText');
+  if (!btn) return;
+  btn.disabled       = on;
+  icon.textContent   = on ? 'refresh'             : 'auto_awesome';
+  text.textContent   = on ? 'Generating…'   : 'Generate Masterpiece';
+}
+
 /* ── Progress bar ────────────────────────────── */
 function updateProgress(n) {
   for (let i = 1; i <= 5; i++) {
@@ -1045,6 +1062,7 @@ function updateProgress(n) {
 function goStep(n) {
   // Kill camera and pendant ResizeObserver when leaving step 3
   if (LAB.step === 3 && n !== 3) {
+    isTryOnActive = false;
     if (LAB.cameraStream) {
       LAB.cameraStream.getTracks().forEach(t => t.stop());
       LAB.cameraStream = null;
@@ -1101,16 +1119,24 @@ function buildPrompt(type, material, gem, style, desc) {
   const gDisp   = gemLabel(gem);
   const gemPart = `${gDisp} center stone`;
   const base    = desc.trim() ? desc.trim() + ', ' : '';
-  return `${base}luxury ${style} ${piece}, ${mDisp}, ${gemPart}, isolated fine jewelry product photograph, pure white seamless background, no shadows, no reflections on background, professional diffuse studio lighting, hyper realistic, 8K ultra high definition, macro lens, sharp focus, precious metal gleam, gemstone sparkle and brilliance, luxury brand catalog`;
+  const pendantSuffix = (type === 'pendant' || type === 'necklace')
+    ? ', show ONLY the pendant charm itself isolated on a clean background, do NOT include any chain necklace or cord, just the pendant piece alone with its bail connector at the top, clean studio shot'
+    : '';
+  return `${base}luxury ${style} ${piece}, ${mDisp}, ${gemPart}, isolated fine jewelry product photograph, pure white seamless background, no shadows, no reflections on background, professional diffuse studio lighting, hyper realistic, 8K ultra high definition, macro lens, sharp focus, precious metal gleam, gemstone sparkle and brilliance, luxury brand catalog${pendantSuffix}`;
 }
 
 /* ── Image generation ────────────────────────── */
 function startGeneration(isTweak) {
+  generationId++;
+  const thisGen = generationId;
+  setGenLoading(true);
+
   LAB.material = document.getElementById('materialSelect').value;
   LAB.gem      = document.getElementById('gemSelect').value;
   const basePrompt = document.getElementById('promptArea').value.trim();
 
   if (!basePrompt && !isTweak) {
+    setGenLoading(false);
     document.getElementById('promptArea').focus();
     document.getElementById('promptArea').style.borderColor = '#ba1a1a';
     setTimeout(() => { document.getElementById('promptArea').style.borderColor = ''; }, 2200);
@@ -1135,15 +1161,23 @@ function startGeneration(isTweak) {
     const ri = document.getElementById('refineImg');
     ri.style.transition = 'filter 0.4s ease';
     ri.style.filter = 'blur(14px) brightness(0.8)';
-    const clear = () => { ri.style.filter = 'none'; };
+    const clear = () => {
+      if (thisGen !== generationId) return;
+      ri.style.filter = 'none';
+      setGenLoading(false);
+    };
     ri.addEventListener('load',  clear, { once: true });
-    ri.addEventListener('error', clear, { once: true });
+    ri.addEventListener('error', () => setGenLoading(false), { once: true });
     ri.src = url;
     document.getElementById('quoteImg').src = url;
     const ot = document.getElementById('orderThumb');
     if (ot) ot.src = url;
   } else {
     // Navigate immediately — image loads naturally in step 2
+    const ri = document.getElementById('refineImg');
+    const done = () => { if (thisGen === generationId) setGenLoading(false); };
+    ri.addEventListener('load',  done, { once: true });
+    ri.addEventListener('error', done, { once: true });
     showRefineStep();
   }
 }
@@ -1561,6 +1595,51 @@ async function cropChainStub(blobUrl) {
 }
 
 
+/* ── cropChainStubAggressive ─────────────────────────────────
+   More aggressive variant for pendant/necklace. Scans the center
+   60% of width, uses 18% body threshold, stops at 40% image height. */
+async function cropChainStubAggressive(blobUrl) {
+  return new Promise(resolve => {
+    const img = new Image();
+    img.onload = () => {
+      const c = document.createElement('canvas');
+      c.width  = img.naturalWidth;
+      c.height = img.naturalHeight;
+      const ctx = c.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+
+      const { data: px, width: W, height: H } =
+        ctx.getImageData(0, 0, c.width, c.height);
+
+      const xStart = Math.floor(W * 0.2);
+      const xEnd   = Math.floor(W * 0.8);
+      const BODY_THRESHOLD = (xEnd - xStart) * 0.18;
+      let cropTop = 0;
+
+      for (let y = 0; y < H * 0.4; y++) {
+        let opaque = 0;
+        for (let x = xStart; x < xEnd; x++) {
+          if (px[(y * W + x) * 4 + 3] > 100) opaque++;
+        }
+        if (opaque >= BODY_THRESHOLD) {
+          cropTop = Math.max(0, y - 2);
+          break;
+        }
+      }
+
+      if (cropTop === 0) { resolve(blobUrl); return; }
+
+      const croppedH = H - cropTop;
+      const out = document.createElement('canvas');
+      out.width  = W;
+      out.height = croppedH;
+      out.getContext('2d').drawImage(img, 0, cropTop, W, croppedH, 0, 0, W, croppedH);
+      out.toBlob(blob => resolve(URL.createObjectURL(blob)), 'image/png');
+    };
+    img.src = blobUrl;
+  });
+}
+
 const TRYON_CONFIG = {
   ring:     { top:'65%', left:'58%',  width:'12%', guide:'HOLD YOUR LEFT HAND IN FRAME' },
   necklace: { top:'20%', left:'50%',  width:'28%', guide:'CENTER YOUR NECK & CHEST IN FRAME' },
@@ -1631,6 +1710,7 @@ function setPendantSize(btn) {
 }
 
 async function placeJewelryOverlay() {
+  const thisGen   = generationId;           // stale-check snapshot
   const cfg       = TRYON_CONFIG[LAB.type] || TRYON_CONFIG.ring;
   const unit      = document.getElementById('jewelryUnit');
   const unit2     = document.getElementById('jewelryUnit2');
@@ -1702,6 +1782,9 @@ async function placeJewelryOverlay() {
       removeWhiteBackground(LAB.imageUrl),
       removeWhiteBackground(LAB.imageUrl),
     ]);
+    if (thisGen !== generationId) return;
+    if (img.src.startsWith('blob:')) URL.revokeObjectURL(img.src);
+    if (img2.src.startsWith('blob:')) URL.revokeObjectURL(img2.src);
     img.src  = url1 || LAB.imageUrl;
     img2.src = url2 || LAB.imageUrl;
     const wPx = parseFloat(cfg.width) / 100 * camWrap.offsetWidth;
@@ -1718,8 +1801,12 @@ async function placeJewelryOverlay() {
 
   } else {
     const cleanUrl   = await removeWhiteBackground(LAB.imageUrl);
-    const croppedUrl = isPendant ? await cropChainStub(cleanUrl || LAB.imageUrl)
-                                 : (cleanUrl || LAB.imageUrl);
+    if (thisGen !== generationId) return;
+    const croppedUrl = isPendant
+      ? await cropChainStubAggressive(cleanUrl || LAB.imageUrl)
+      : (cleanUrl || LAB.imageUrl);
+    if (thisGen !== generationId) return;
+    if (img.src.startsWith('blob:')) URL.revokeObjectURL(img.src);
     img.src = croppedUrl;
     [img, unit].forEach(el => {
       el.style.background      = 'transparent';
@@ -1830,6 +1917,7 @@ async function startCamera() {
 }
 
 function setupTryOn() {
+  isTryOnActive = true;
   if (!LAB.imageUrl) { goStep(4); return; }
   ['camGuide','jewBadge','camHint'].forEach(id =>
     document.getElementById(id).classList.add('hidden'));
