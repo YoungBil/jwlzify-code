@@ -1439,8 +1439,7 @@ async function removeWhiteBackground(imageUrl) {
         const r = px[idx*4], g = px[idx*4+1], b = px[idx*4+2];
         return s + Math.abs(r-bgR) + Math.abs(g-bgG) + Math.abs(b-bgB);
       }, 0) / src.length;
-      const TOLERANCE  = Math.min(65, Math.max(32, variance * 1.4));
-      const SHADOW_TOL = TOLERANCE * 1.5;
+      const TOLERANCE = Math.min(65, Math.max(32, variance * 1.4));
 
       function isBg(idx) {
         const r = px[idx*4]-bgR, g = px[idx*4+1]-bgG, b = px[idx*4+2]-bgB;
@@ -1466,27 +1465,21 @@ async function removeWhiteBackground(imageUrl) {
         seed(i-1); seed(i+1); seed(i-W); seed(i+W);
       }
 
-      // Shadow pass: 1-px expansion into fringe adjacent to removed pixels
-      for (let y = 1; y < H-1; y++) {
-        for (let x = 1; x < W-1; x++) {
-          const i = y*W + x;
-          if (gone[i]) continue;
-          if (!(gone[i-1]||gone[i+1]||gone[i-W]||gone[i+W])) continue;
-          const r = px[i*4]-bgR, g = px[i*4+1]-bgG, b = px[i*4+2]-bgB;
-          if (Math.sqrt(r*r + g*g + b*b) < SHADOW_TOL) gone[i] = 1;
-        }
-      }
-
-      // Alpha: removed = 0, jewelry = 255, 1px edge = 218
-      for (let i = 0; i < N; i++) { px[i*4+3] = gone[i] ? 0 : 255; }
-      for (let y = 1; y < H-1; y++) {
-        for (let x = 1; x < W-1; x++) {
-          const i = y*W + x;
-          if (!gone[i] && (gone[i-1]||gone[i+1]||gone[i-W]||gone[i+W])) {
-            px[i*4+3] = 218;
+      // Fringe expansion: 2 passes to catch semi-transparent border pixels
+      for (let pass = 0; pass < 2; pass++) {
+        for (let y = 1; y < H-1; y++) {
+          for (let x = 1; x < W-1; x++) {
+            const i = y*W + x;
+            if (gone[i]) continue;
+            if (!(gone[i-1]||gone[i+1]||gone[i-W]||gone[i+W])) continue;
+            const r = px[i*4]-bgR, g = px[i*4+1]-bgG, b = px[i*4+2]-bgB;
+            if (Math.sqrt(r*r + g*g + b*b) < TOLERANCE * 1.8) gone[i] = 1;
           }
         }
       }
+
+      // Hard edges: removed = 0, kept = 255
+      for (let i = 0; i < N; i++) { px[i*4+3] = gone[i] ? 0 : 255; }
 
       ctx.putImageData(f, 0, 0);
       c.toBlob(blob => resolve(URL.createObjectURL(blob)), 'image/png');
@@ -1706,7 +1699,13 @@ async function placeJewelryOverlay() {
     img.src = croppedUrl;
 
     if (isPendant) {
-      // Build a function that resizes chain+img to a given inch value
+      function center() {
+        const uW = unit.offsetWidth,  uH = unit.offsetHeight;
+        const cW = camWrap.offsetWidth, cH = camWrap.offsetHeight;
+        unit.style.left = Math.max(0, cW / 2 - uW / 2) + 'px';
+        unit.style.top  = Math.max(0, cH * 0.38 - uH / 2) + 'px';
+      }
+
       function sizeTo(inches) {
         const pW  = inchesToPx(inches);
         const cPW = inchesToPx(1.5);
@@ -1720,15 +1719,14 @@ async function placeJewelryOverlay() {
         chainCvs.style.top      = '';
         chainCvs.style.display  = 'block';
         drawChain(cPW);
+        requestAnimationFrame(center);
       }
 
-      sizeTo(LAB._selectedInches);
-      const cPW0 = inchesToPx(1.5);
-      const cW0  = Math.round(cPW0 * 3);
-      unit.style.left    = (camWrap.offsetWidth  * 0.5 - cW0 / 2) + 'px';
-      unit.style.top     = (camWrap.offsetHeight * 0.32) + 'px';
       unit.style.transform = 'none';
-      unit.style.display = 'flex';
+      unit.style.display   = 'flex';
+      sizeTo(LAB._selectedInches);
+
+      img.onload = () => requestAnimationFrame(center);
 
       // Store for size buttons
       LAB._applyPendantSize = sizeTo;
