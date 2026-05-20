@@ -1033,6 +1033,8 @@ const LAB = {
 
 let generationId   = 0;
 let isTryOnActive  = false;
+let isProcessing   = false;
+let previousBlobUrl = null;
 
 function setGenLoading(on) {
   const btn  = document.getElementById('generateBtn');
@@ -1063,6 +1065,7 @@ function goStep(n) {
   // Kill camera and pendant ResizeObserver when leaving step 3
   if (LAB.step === 3 && n !== 3) {
     isTryOnActive = false;
+    isProcessing  = false;
     if (LAB.cameraStream) {
       LAB.cameraStream.getTracks().forEach(t => t.stop());
       LAB.cameraStream = null;
@@ -1073,6 +1076,9 @@ function goStep(n) {
     }
     LAB._dragACs.forEach(ac => ac.abort());
     LAB._dragACs = [];
+    document.getElementById('chainCanvas').style.display  = 'none';
+    document.getElementById('jewelryUnit').style.display  = 'none';
+    document.getElementById('jewelryUnit2').style.display = 'none';
   }
   document.querySelectorAll('.sp').forEach(el => el.classList.remove('active'));
   const el = document.getElementById('s' + n) || document.getElementById('sSuccess');
@@ -1595,10 +1601,12 @@ async function cropChainStub(blobUrl) {
 }
 
 
-/* ── cropChainStubAggressive ─────────────────────────────────
-   More aggressive variant for pendant/necklace. Scans the center
-   60% of width, uses 18% body threshold, stops at 40% image height. */
-async function cropChainStubAggressive(blobUrl) {
+/* ── cropPendantOnly ─────────────────────────────────────────
+   Crops the chain stub from top and excess transparent space from
+   sides of a pendant image. Scans center 60% of width; first row
+   where ≥20% of that center span is opaque = pendant body start.
+   Also trims transparent left/right columns. */
+async function cropPendantOnly(blobUrl) {
   return new Promise(resolve => {
     const img = new Image();
     img.onload = () => {
@@ -1611,29 +1619,39 @@ async function cropChainStubAggressive(blobUrl) {
       const { data: px, width: W, height: H } =
         ctx.getImageData(0, 0, c.width, c.height);
 
-      const xStart = Math.floor(W * 0.2);
-      const xEnd   = Math.floor(W * 0.8);
-      const BODY_THRESHOLD = (xEnd - xStart) * 0.18;
+      const cx1 = Math.floor(W * 0.2);
+      const cx2 = Math.floor(W * 0.8);
+      const THRESHOLD = (cx2 - cx1) * 0.20;
       let cropTop = 0;
 
-      for (let y = 0; y < H * 0.4; y++) {
-        let opaque = 0;
-        for (let x = xStart; x < xEnd; x++) {
-          if (px[(y * W + x) * 4 + 3] > 100) opaque++;
+      for (let y = 0; y < Math.floor(H * 0.5); y++) {
+        let count = 0;
+        for (let x = cx1; x < cx2; x++) {
+          if (px[(y * W + x) * 4 + 3] > 128) count++;
         }
-        if (opaque >= BODY_THRESHOLD) {
-          cropTop = Math.max(0, y - 2);
-          break;
-        }
+        if (count >= THRESHOLD) { cropTop = Math.max(0, y - 4); break; }
       }
 
-      if (cropTop === 0) { resolve(blobUrl); return; }
+      let cropLeft = 0, cropRight = W;
+      for (let x = 0; x < W; x++) {
+        let found = false;
+        for (let y = cropTop; y < H; y++) { if (px[(y*W+x)*4+3] > 128) { found=true; break; } }
+        if (found) { cropLeft = Math.max(0, x - 4); break; }
+      }
+      for (let x = W-1; x >= 0; x--) {
+        let found = false;
+        for (let y = cropTop; y < H; y++) { if (px[(y*W+x)*4+3] > 128) { found=true; break; } }
+        if (found) { cropRight = Math.min(W, x + 4); break; }
+      }
 
-      const croppedH = H - cropTop;
-      const out = document.createElement('canvas');
-      out.width  = W;
-      out.height = croppedH;
-      out.getContext('2d').drawImage(img, 0, cropTop, W, croppedH, 0, 0, W, croppedH);
+      if (cropTop === 0 && cropLeft === 0 && cropRight === W) { resolve(blobUrl); return; }
+
+      const outW = cropRight - cropLeft;
+      const outH = H - cropTop;
+      const out  = document.createElement('canvas');
+      out.width  = outW;
+      out.height = outH;
+      out.getContext('2d').drawImage(img, cropLeft, cropTop, outW, outH, 0, 0, outW, outH);
       out.toBlob(blob => resolve(URL.createObjectURL(blob)), 'image/png');
     };
     img.src = blobUrl;
@@ -1710,6 +1728,9 @@ function setPendantSize(btn) {
 }
 
 async function placeJewelryOverlay() {
+  if (isProcessing) return;
+  isProcessing = true;
+  try {
   const thisGen   = generationId;           // stale-check snapshot
   const cfg       = TRYON_CONFIG[LAB.type] || TRYON_CONFIG.ring;
   const unit      = document.getElementById('jewelryUnit');
@@ -1803,11 +1824,9 @@ async function placeJewelryOverlay() {
     const cleanUrl   = await removeWhiteBackground(LAB.imageUrl);
     if (thisGen !== generationId) return;
     const croppedUrl = isPendant
-      ? await cropChainStubAggressive(cleanUrl || LAB.imageUrl)
+      ? await cropPendantOnly(cleanUrl || LAB.imageUrl)
       : (cleanUrl || LAB.imageUrl);
     if (thisGen !== generationId) return;
-    if (img.src.startsWith('blob:')) URL.revokeObjectURL(img.src);
-    img.src = croppedUrl;
     [img, unit].forEach(el => {
       el.style.background      = 'transparent';
       el.style.backgroundColor = 'transparent';
@@ -1843,16 +1862,20 @@ async function placeJewelryOverlay() {
         chainCvs.style.top      = '';
         chainCvs.style.display  = 'block';
         drawChain(cPW);
-        console.log('chainW:', cW, '| pendantPx:', pW, '| pendantLeft:', pendantLeft,
-                    '| center match:', pendantLeft + pW/2, '===', cW/2);
         requestAnimationFrame(center);
       }
 
       unit.style.transform = 'none';
       unit.style.display   = 'flex';
-      sizeTo(LAB._selectedInches);
 
-      img.onload = () => requestAnimationFrame(center);
+      const prevUrl = previousBlobUrl;
+      img.onload = () => {
+        if (prevUrl && prevUrl.startsWith('blob:')) URL.revokeObjectURL(prevUrl);
+        previousBlobUrl = croppedUrl.startsWith('blob:') ? croppedUrl : null;
+        requestAnimationFrame(center);
+      };
+      img.src = croppedUrl;
+      sizeTo(LAB._selectedInches);
 
       // Store for size buttons
       LAB._applyPendantSize = sizeTo;
@@ -1880,6 +1903,9 @@ async function placeJewelryOverlay() {
   document.getElementById('jewBadgeText').textContent = LAB.type.toUpperCase();
   ['camGuide','jewBadge','camHint'].forEach(id =>
     document.getElementById(id).classList.remove('hidden'));
+  } finally {
+    isProcessing = false;
+  }
 }
 
 async function startCamera() {
