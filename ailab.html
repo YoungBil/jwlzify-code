@@ -127,18 +127,19 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
 #camWrap video { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; transform:scaleX(-1); }
 #jewelryUnit, #jewelryUnit2 {
   position:absolute; cursor:grab;
+  display:flex; flex-direction:column; align-items:center;
   touch-action:none; user-select:none;
   background:transparent; border:none; box-shadow:none;
 }
 #chainCanvas {
-  position:absolute; pointer-events:none;
+  pointer-events:none; flex-shrink:0;
   background:transparent; border:none; box-shadow:none;
 }
 #jewelryImg, #jewelryImg2 {
-  position:relative; display:block;
+  display:block; flex-shrink:0;
   background:transparent; border:none; outline:none;
   box-shadow:none; filter:none;
-  mix-blend-mode:normal; opacity:1; z-index:2;
+  mix-blend-mode:normal; opacity:1;
 }
 /* ── Pendant size buttons ── */
 .psize-btn {
@@ -1556,15 +1557,20 @@ function inchesToPx(inches) {
   return (document.getElementById('camWrap').offsetWidth / 24) * inches;
 }
 
-function drawChain(pendantPxW) {
+function drawChain(chainPx) {
   const chainCvs = document.getElementById('chainCanvas');
-  const cw = chainCvs.width, ch = chainCvs.height;
+  const cW = Math.round(chainPx * 3);
+  const cH = Math.round(chainPx * 1.4);
+  chainCvs.width        = cW;
+  chainCvs.height       = cH;
+  chainCvs.style.width  = cW + 'px';
+  chainCvs.style.height = cH + 'px';
   const ctx = chainCvs.getContext('2d');
-  ctx.clearRect(0, 0, cw, ch);
+  ctx.clearRect(0, 0, cW, cH);
 
-  const bottomCX = cw / 2, bottomCY = ch;
-  const spread   = pendantPxW * 1.1;
-  const topY     = ch * 0.08;
+  const bottomCX = cW / 2, bottomCY = cH;
+  const spread   = chainPx * 1.1;
+  const topY     = cH * 0.08;
 
   const metal = LAB.material;
   const color = metal === '14ctgold' ? '#d4af65'
@@ -1576,12 +1582,12 @@ function drawChain(pendantPxW) {
 
   ctx.beginPath();
   ctx.moveTo(bottomCX - spread, topY);
-  ctx.quadraticCurveTo(bottomCX - spread * 0.5, ch * 0.7, bottomCX, bottomCY);
+  ctx.quadraticCurveTo(bottomCX - spread * 0.5, cH * 0.7, bottomCX, bottomCY);
   ctx.stroke();
 
   ctx.beginPath();
   ctx.moveTo(bottomCX + spread, topY);
-  ctx.quadraticCurveTo(bottomCX + spread * 0.5, ch * 0.7, bottomCX, bottomCY);
+  ctx.quadraticCurveTo(bottomCX + spread * 0.5, cH * 0.7, bottomCX, bottomCY);
   ctx.stroke();
 
   ctx.setLineDash([]); ctx.globalAlpha = 1;
@@ -1704,28 +1710,25 @@ async function placeJewelryOverlay() {
       function sizeTo(inches) {
         const pW  = inchesToPx(inches);
         const cPW = inchesToPx(1.5);
-        const cH  = Math.round(cPW * 1.4);
         img.style.width    = pW + 'px';
         img.style.height   = 'auto';
-        img.style.position = 'relative';
-        img.style.left     = (cPW - pW / 2) + 'px';
-        unit.style.width = pW + 'px';
-        chainCvs.width         = Math.round(cPW * 3);
-        chainCvs.height        = cH;
-        chainCvs.style.width   = Math.round(cPW * 3) + 'px';
-        chainCvs.style.height  = cH + 'px';
-        chainCvs.style.left    = (-cPW) + 'px';
-        chainCvs.style.top     = (-cH) + 'px';
-        chainCvs.style.display = 'block';
+        img.style.position = '';
+        img.style.left     = '';
+        unit.style.width        = '';
+        chainCvs.style.position = '';
+        chainCvs.style.left     = '';
+        chainCvs.style.top      = '';
+        chainCvs.style.display  = 'block';
         drawChain(cPW);
       }
 
       sizeTo(LAB._selectedInches);
       const cPW0 = inchesToPx(1.5);
-      unit.style.left    = (camWrap.offsetWidth  * 0.5 - cPW0) + 'px';
+      const cW0  = Math.round(cPW0 * 3);
+      unit.style.left    = (camWrap.offsetWidth  * 0.5 - cW0 / 2) + 'px';
       unit.style.top     = (camWrap.offsetHeight * 0.32) + 'px';
       unit.style.transform = 'none';
-      unit.style.display = 'block';
+      unit.style.display = 'flex';
 
       // Store for size buttons
       LAB._applyPendantSize = sizeTo;
