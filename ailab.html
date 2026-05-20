@@ -1388,57 +1388,72 @@ function submitOrder(e) {
 ════════════════════════════════════════════════ */
 
 /* ── removeWhiteBackground ───────────────────────────────────
-   Adaptive BFS background removal.
-   Step 1: sample background colour from 6 border points.
-   Step 2: flood fill from all 4 edges using colour-distance
-           tolerance=38 — handles off-white, gradients, tints.
-   Step 3: shadow pass (tolerance×1.6) expands 1px into soft
-           cast-shadows adjacent to already-removed pixels.
-   Step 4: alpha 0 on removed, 255 on jewelry, 215 on 1px edge. */
+   Adaptive BFS removal. Samples ~20 border points, filters out
+   jewelry-dark/saturated samples, averages the rest to get the
+   true bg colour. Tolerance auto-scales with border variance so
+   uniform bg = tight, gradient bg = wider. Shadow pass expands
+   1px into fringe adjacent to removed area. */
 async function removeWhiteBackground(imageUrl) {
   return new Promise(resolve => {
     const img = new Image();
     img.crossOrigin = 'anonymous';
 
     img.onload = () => {
-      const canvas = document.createElement('canvas');
-      canvas.width  = img.naturalWidth;
-      canvas.height = img.naturalHeight;
-      const ctx = canvas.getContext('2d');
+      const c = document.createElement('canvas');
+      c.width  = img.naturalWidth;
+      c.height = img.naturalHeight;
+      const ctx = c.getContext('2d');
       ctx.drawImage(img, 0, 0);
 
-      const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const px = imgData.data;
-      const W = canvas.width, H = canvas.height, N = W * H;
+      const f  = ctx.getImageData(0, 0, c.width, c.height);
+      const px = f.data;
+      const W = c.width, H = c.height, N = W * H;
 
-      // Sample background colour from 6 border positions
-      function rgb(idx) {
-        return [px[idx*4], px[idx*4+1], px[idx*4+2]];
+      // Collect ~20 border sample indices
+      const rawSamples = [];
+      const step = Math.floor(W / 5);
+      for (let x = 0; x < W; x += step) {
+        rawSamples.push(x, (H-1)*W + x);
       }
-      const samples = [
-        rgb(0), rgb(W-1), rgb((H-1)*W), rgb(H*W-1),
-        rgb(Math.floor(W/2)), rgb((H-1)*W + Math.floor(W/2)),
-      ];
-      const bgR = samples.reduce((s,c) => s+c[0], 0) / samples.length;
-      const bgG = samples.reduce((s,c) => s+c[1], 0) / samples.length;
-      const bgB = samples.reduce((s,c) => s+c[2], 0) / samples.length;
+      const stepY = Math.floor(H / 5);
+      for (let y = 0; y < H; y += stepY) {
+        rawSamples.push(y*W, y*W + W-1);
+      }
 
-      const TOLERANCE = 38;
-      const SHADOW_TOL = TOLERANCE * 1.6;
+      // Filter: keep only light, low-saturation samples (bg, not jewelry)
+      const bgSamples = rawSamples.filter(idx => {
+        const r = px[idx*4], g = px[idx*4+1], b = px[idx*4+2];
+        const lum = r*0.299 + g*0.587 + b*0.114;
+        const sat = Math.max(r,g,b) - Math.min(r,g,b);
+        return lum > 140 && sat < 60;
+      });
 
-      function dist(idx) {
+      const src = bgSamples.length ? bgSamples : rawSamples;
+      const bgR = src.reduce((s,i) => s + px[i*4],   0) / src.length;
+      const bgG = src.reduce((s,i) => s + px[i*4+1], 0) / src.length;
+      const bgB = src.reduce((s,i) => s + px[i*4+2], 0) / src.length;
+
+      // Adaptive tolerance: tighter for uniform bg, wider for gradient
+      const variance = src.reduce((s, idx) => {
+        const r = px[idx*4], g = px[idx*4+1], b = px[idx*4+2];
+        return s + Math.abs(r-bgR) + Math.abs(g-bgG) + Math.abs(b-bgB);
+      }, 0) / src.length;
+      const TOLERANCE  = Math.min(65, Math.max(32, variance * 1.4));
+      const SHADOW_TOL = TOLERANCE * 1.5;
+
+      function isBg(idx) {
         const r = px[idx*4]-bgR, g = px[idx*4+1]-bgG, b = px[idx*4+2]-bgB;
-        return Math.sqrt(r*r + g*g + b*b);
+        return Math.sqrt(r*r + g*g + b*b) < TOLERANCE;
       }
 
       // BFS flood fill from all 4 perimeter edges
-      const visited = new Uint8Array(N);
-      const queue   = new Int32Array(N);
+      const gone  = new Uint8Array(N);
+      const queue = new Int32Array(N);
       let head = 0, tail = 0;
 
-      function seed(idx) {
-        if (idx >= 0 && idx < N && !visited[idx] && dist(idx) < TOLERANCE) {
-          visited[idx] = 1; queue[tail++] = idx;
+      function seed(i) {
+        if (i >= 0 && i < N && !gone[i] && isBg(i)) {
+          gone[i] = 1; queue[tail++] = i;
         }
       }
 
@@ -1450,38 +1465,80 @@ async function removeWhiteBackground(imageUrl) {
         seed(i-1); seed(i+1); seed(i-W); seed(i+W);
       }
 
-      // Shadow pass: expand 1px into near-bg pixels adjacent to removed area
+      // Shadow pass: 1-px expansion into fringe adjacent to removed pixels
       for (let y = 1; y < H-1; y++) {
         for (let x = 1; x < W-1; x++) {
           const i = y*W + x;
-          if (visited[i]) continue;
-          if ((visited[i-1]||visited[i+1]||visited[i-W]||visited[i+W]) &&
-              dist(i) < SHADOW_TOL) {
-            visited[i] = 1;
+          if (gone[i]) continue;
+          if (!(gone[i-1]||gone[i+1]||gone[i-W]||gone[i+W])) continue;
+          const r = px[i*4]-bgR, g = px[i*4+1]-bgG, b = px[i*4+2]-bgB;
+          if (Math.sqrt(r*r + g*g + b*b) < SHADOW_TOL) gone[i] = 1;
+        }
+      }
+
+      // Alpha: removed = 0, jewelry = 255, 1px edge = 218
+      for (let i = 0; i < N; i++) { px[i*4+3] = gone[i] ? 0 : 255; }
+      for (let y = 1; y < H-1; y++) {
+        for (let x = 1; x < W-1; x++) {
+          const i = y*W + x;
+          if (!gone[i] && (gone[i-1]||gone[i+1]||gone[i-W]||gone[i+W])) {
+            px[i*4+3] = 218;
           }
         }
       }
 
-      // Alpha pass
-      for (let i = 0; i < N; i++) { px[i*4+3] = visited[i] ? 0 : 255; }
-
-      // 1px boundary feather
-      for (let y = 1; y < H-1; y++) {
-        for (let x = 1; x < W-1; x++) {
-          const i = y*W + x;
-          if (visited[i]) continue;
-          if (visited[i-1]||visited[i+1]||visited[i-W]||visited[i+W]) {
-            px[i*4+3] = 215;
-          }
-        }
-      }
-
-      ctx.putImageData(imgData, 0, 0);
-      canvas.toBlob(blob => resolve(URL.createObjectURL(blob)), 'image/png');
+      ctx.putImageData(f, 0, 0);
+      c.toBlob(blob => resolve(URL.createObjectURL(blob)), 'image/png');
     };
 
     img.onerror = () => resolve(null);
     img.src = imageUrl;
+  });
+}
+
+/* ── cropChainStub ───────────────────────────────────────────
+   Scans from the top of the (already bg-removed) image
+   downward. Rows with fewer than 12% of width in opaque pixels
+   are the thin chain stub. Crops from the first "body" row
+   (≥12% opaque) minus a 4px buffer. No-ops if stub not found. */
+async function cropChainStub(blobUrl) {
+  return new Promise(resolve => {
+    const img = new Image();
+    img.onload = () => {
+      const c = document.createElement('canvas');
+      c.width  = img.naturalWidth;
+      c.height = img.naturalHeight;
+      const ctx = c.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+
+      const { data: px, width: W, height: H } =
+        ctx.getImageData(0, 0, c.width, c.height);
+
+      const BODY_THRESHOLD = W * 0.12;
+      let cropTop = 0;
+
+      for (let y = 0; y < H; y++) {
+        let opaque = 0;
+        for (let x = 0; x < W; x++) {
+          if (px[(y * W + x) * 4 + 3] > 128) opaque++;
+        }
+        if (opaque >= BODY_THRESHOLD) {
+          cropTop = Math.max(0, y - 4);
+          break;
+        }
+      }
+
+      if (cropTop === 0) { resolve(blobUrl); return; }
+
+      const croppedH = H - cropTop;
+      const out = document.createElement('canvas');
+      out.width  = W;
+      out.height = croppedH;
+      out.getContext('2d').drawImage(img, 0, cropTop, W, croppedH,
+                                         0, 0,       W, croppedH);
+      out.toBlob(blob => resolve(URL.createObjectURL(blob)), 'image/png');
+    };
+    img.src = blobUrl;
   });
 }
 
@@ -1637,8 +1694,10 @@ async function placeJewelryOverlay() {
     LAB._dragACs.push(attachDrag(unit), attachDrag(unit2));
 
   } else {
-    const cleanUrl = await removeWhiteBackground(LAB.imageUrl);
-    img.src = cleanUrl || LAB.imageUrl;
+    const cleanUrl   = await removeWhiteBackground(LAB.imageUrl);
+    const croppedUrl = isPendant ? await cropChainStub(cleanUrl || LAB.imageUrl)
+                                 : (cleanUrl || LAB.imageUrl);
+    img.src = croppedUrl;
 
     if (isPendant) {
       // Build a function that resizes chain+img to a given inch value
