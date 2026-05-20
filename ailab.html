@@ -984,6 +984,11 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
 /* ── Claude API key (fill in to enable AI spec cards) ── */
 const CLAUDE_API_KEY = '';
 
+/* ── fal.ai key — fill in to enable BiRefNet pendant isolation ── */
+const FAL_API_KEY = '';
+/* Set false to skip post-processing without changing code (instant rollback) */
+const PENDANT_BIREFNET_ENABLED = true;
+
 /* ── Display name maps ── */
 const MATERIAL_LABEL = {
   '925silver':  '925 Sterling Silver',
@@ -1031,10 +1036,11 @@ const LAB = {
   _applyPendantSize: null,
 };
 
-let generationId   = 0;
-let isTryOnActive  = false;
-let isProcessing   = false;
+let generationId    = 0;
+let isTryOnActive   = false;
+let isProcessing    = false;
 let previousBlobUrl = null;
+const _birefnetCache = new Map(); // pollinationsUrl → processed blob URL (session-scoped)
 
 function setGenLoading(on) {
   const btn  = document.getElementById('generateBtn');
@@ -1120,9 +1126,9 @@ function buildPrompt(type, material, gem, style, desc) {
   const base    = desc.trim() ? desc.trim() + ', ' : '';
 
   if (isPendantType) {
-    // Front-load isolation framing — Flux weights earlier tokens more heavily.
-    // enhance=false is set at the URL level to prevent Pollinations from rewriting this.
-    return `isolated pendant charm only, no chain, no cord, no necklace, ${base}luxury ${style} pendant charm with bail connector at top, ${mDisp}, ${gemPart}, overhead flat-lay on pure white seamless background, professional studio lighting, hyper realistic, 8K ultra high definition, macro lens, sharp focus, precious metal gleam, gemstone sparkle and brilliance`;
+    // BiRefNet post-processes chain removal universally — prompt only needs the
+    // pendant to be the unambiguous main subject (macro, centered, clean bg).
+    return `${base}luxury ${style} pendant charm, bail connector at top, ${mDisp}, ${gemPart}, close-up macro product photograph, pendant centered filling the frame, soft even studio lighting, pure white seamless background, sharp focus throughout, hyper realistic, 8K ultra high definition, precious metal gleam, gemstone sparkle and brilliance`;
   }
 
   const typeMap = {
@@ -1134,46 +1140,53 @@ function buildPrompt(type, material, gem, style, desc) {
   return `${base}luxury ${style} ${piece}, ${mDisp}, ${gemPart}, isolated fine jewelry product photograph, pure white seamless background, no shadows, no reflections on background, professional diffuse studio lighting, hyper realistic, 8K ultra high definition, macro lens, sharp focus, precious metal gleam, gemstone sparkle and brilliance, luxury brand catalog`;
 }
 
-/* ── Post-generation chain detection ─────────── */
-async function checkForChain(imageUrl) {
-  if (!CLAUDE_API_KEY) return false;
+/* ── BiRefNet pendant isolation (fal.ai) ─────── */
+async function isolatePendantSubject(pollinationsUrl) {
+  if (!PENDANT_BIREFNET_ENABLED || !FAL_API_KEY) return null;
+  if (_birefnetCache.has(pollinationsUrl)) return _birefnetCache.get(pollinationsUrl);
   try {
-    const resp = await fetch(imageUrl);
-    if (!resp.ok) return false;
-    const blob = await resp.blob();
-    const base64 = await new Promise(res => {
-      const r = new FileReader();
-      r.onload = () => res(r.result.split(',')[1]);
-      r.readAsDataURL(blob);
-    });
-    const apiRes = await fetch('https://api.anthropic.com/v1/messages', {
+    // fal.ai fetches the image server-side — we pass the URL, not the bytes
+    const res = await fetch('https://fal.run/fal-ai/birefnet', {
       method: 'POST',
       headers: {
+        'Authorization': `Key ${FAL_API_KEY}`,
         'Content-Type': 'application/json',
-        'x-api-key': CLAUDE_API_KEY,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true',
       },
       body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 5,
-        messages: [{
-          role: 'user',
-          content: [
-            { type: 'image', source: { type: 'base64', media_type: 'image/png', data: base64 } },
-            { type: 'text', text: 'Does this image show a chain, cord, or necklace string attached to or surrounding the pendant? Answer only YES or NO.' }
-          ]
-        }]
-      })
+        image_url: pollinationsUrl,
+        model: 'General Use (Light)',
+        output_format: 'png',
+      }),
     });
-    if (!apiRes.ok) return false;
-    const data = await apiRes.json();
-    const answer = (data.content?.[0]?.text || '').trim().toUpperCase();
-    console.log('[JWLZIFY] chain-check:', answer);
-    return answer.startsWith('YES');
+    if (!res.ok) throw new Error('birefnet-http-' + res.status);
+    const data = await res.json();
+    const cutoutUrl = data?.image?.url;
+    if (!cutoutUrl) throw new Error('no cutout url in response');
+
+    // Composite transparent cutout onto white background for consistent display
+    const cutoutImg = await new Promise((resolve, reject) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload  = () => resolve(img);
+      img.onerror = () => reject(new Error('cutout load failed'));
+      img.src = cutoutUrl;
+    });
+    const canvas = document.createElement('canvas');
+    canvas.width  = cutoutImg.naturalWidth;
+    canvas.height = cutoutImg.naturalHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(cutoutImg, 0, 0);
+    const blobUrl = await new Promise(res =>
+      canvas.toBlob(b => res(URL.createObjectURL(b)), 'image/png')
+    );
+    _birefnetCache.set(pollinationsUrl, blobUrl);
+    console.log('[JWLZIFY] BiRefNet isolation complete');
+    return blobUrl;
   } catch (e) {
-    console.warn('[JWLZIFY] chain-check failed, skipping:', e.message);
-    return false;
+    console.warn('[JWLZIFY] BiRefNet isolation failed, using original:', e.message);
+    return null;
   }
 }
 
@@ -1204,29 +1217,22 @@ async function startGeneration(isTweak) {
 
   const fullPrompt = buildPrompt(LAB.type, LAB.material, LAB.gem, LAB.style, desc);
   const isPendantGen = (LAB.type === 'pendant' || LAB.type === 'necklace');
-  // Pendants: disable enhance (it rewrites prompts and adds chain context back),
-  // and pass a proper negative_prompt so Flux explicitly suppresses chains.
+  // Pendants: disable enhance (Pollinations enhancer adds chain context back)
+  // and keep a negative_prompt as a belt-and-suspenders prompt guard.
   const negParam = isPendantGen
     ? `&negative_prompt=${encodeURIComponent('chain,necklace,cord,string,rope,clasp,links,neck,person,model,hanging,worn')}`
     : '';
-  const makeUrl = s =>
-    `https://image.pollinations.ai/prompt/${encodeURIComponent(fullPrompt)}?width=800&height=800&nologo=true&seed=${s}&model=flux&enhance=${isPendantGen ? 'false' : 'true'}${negParam}`;
+  const seed = (Date.now() + Math.floor(Math.random() * 9999)) % 99999;
+  let url =
+    `https://image.pollinations.ai/prompt/${encodeURIComponent(fullPrompt)}?width=800&height=800&nologo=true&seed=${seed}&model=flux&enhance=${isPendantGen ? 'false' : 'true'}${negParam}`;
 
-  let seed = (Date.now() + Math.floor(Math.random() * 9999)) % 99999;
-  let url  = makeUrl(seed);
-
-  // Post-generation safety net: vision-verify pendant images, retry up to 2x.
-  // Silently skipped when CLAUDE_API_KEY is not configured.
-  if (isPendantGen && CLAUDE_API_KEY) {
-    for (let attempt = 0; attempt < 2; attempt++) {
-      if (thisGen !== generationId) { setGenLoading(false); return; }
-      const hasChain = await checkForChain(url);
-      if (!hasChain) break;
-      console.warn(`[JWLZIFY] chain detected on attempt ${attempt + 1} — retrying`);
-      seed = (Date.now() + Math.floor(Math.random() * 9999)) % 99999;
-      url  = makeUrl(seed);
-    }
+  // BiRefNet post-processing: subject-isolates the pendant, removing any chain
+  // that slipped through. Runs for ALL pendant types universally.
+  // Falls back to raw Pollinations URL on any error.
+  if (isPendantGen) {
+    const isolated = await isolatePendantSubject(url);
     if (thisGen !== generationId) { setGenLoading(false); return; }
+    if (isolated) url = isolated;
   }
 
   LAB.imageUrl = url;
