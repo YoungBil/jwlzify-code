@@ -1403,10 +1403,11 @@ function submitOrder(e) {
 ════════════════════════════════════════════════ */
 
 /* ── Canvas-based background removal ────────────────────────
-   Edge-only flood fill: seeds from all 4 perimeter edges but
-   only removes pixels that are clearly background (brightness
-   > 240 && spread < 15). Never touches the jewelry center.
-   All non-background pixels are forced to full opacity. */
+   Edge-only flood fill seeded from all 4 perimeter edges.
+   Threshold catches near-white/off-white AI backgrounds while
+   never touching colored jewelry pixels. Smart feathering fades
+   only the anti-aliased white fringe — colored jewelry edges
+   stay at full opacity, exactly like a high-quality PNG cutout. */
 function stripBackground(imgEl, callback) {
   const cvs = document.createElement('canvas');
   const ctx = cvs.getContext('2d');
@@ -1419,52 +1420,55 @@ function stripBackground(imgEl, callback) {
   const w = cvs.width;
   const h = cvs.height;
 
-  // STEP 1: Flood fill ONLY from the 4 edges outward
-  const transparent = new Uint8Array(w * h);
+  // STEP 1: Flood fill from all 4 edges
+  // Threshold: brightness > 232 catches off-white/cream AI backgrounds;
+  // spread < 18 ensures we only remove achromatic (non-jewelry) pixels.
+  const bg = new Uint8Array(w * h);
 
-  function shouldRemove(idx) {
+  function isBackground(idx) {
     const i = idx * 4;
     const r = px[i], g = px[i+1], b = px[i+2];
     const brightness = (r + g + b) / 3;
     const spread = Math.max(r, g, b) - Math.min(r, g, b);
-    return brightness > 240 && spread < 15;
+    return brightness > 232 && spread < 18;
   }
 
   const stack = [];
-  for (let x = 0; x < w; x++) {
-    stack.push(x);              // top row
-    stack.push((h - 1) * w + x); // bottom row
-  }
-  for (let y = 0; y < h; y++) {
-    stack.push(y * w);          // left col
-    stack.push(y * w + w - 1);  // right col
-  }
+  for (let x = 0; x < w; x++) { stack.push(x); stack.push((h-1)*w + x); }
+  for (let y = 0; y < h; y++) { stack.push(y*w); stack.push(y*w + w - 1); }
 
   while (stack.length > 0) {
     const idx = stack.pop();
-    if (idx < 0 || idx >= w * h) continue;
-    if (transparent[idx]) continue;
-    if (!shouldRemove(idx)) continue;
-    transparent[idx] = 1;
+    if (idx < 0 || idx >= w * h || bg[idx]) continue;
+    if (!isBackground(idx)) continue;
+    bg[idx] = 1;
     stack.push(idx - 1, idx + 1, idx - w, idx + w);
   }
 
-  // STEP 2: Apply transparency only to flood-filled pixels;
-  // all others are forced to alpha 255 — fully opaque
+  // STEP 2: Background pixels → alpha 0; all jewelry pixels → alpha 255
   for (let i = 0; i < w * h; i++) {
-    px[i * 4 + 3] = transparent[i] ? 0 : 255;
+    px[i * 4 + 3] = bg[i] ? 0 : 255;
   }
 
-  // STEP 3: 1px soft edge between transparent and opaque
+  // STEP 3: Smart 1px boundary feather
+  // Near-white boundary pixels are anti-aliased bg fringe → fade them
+  // proportionally to how far they are from pure white.
+  // Colorful boundary pixels are jewelry edge → leave at full 255.
   for (let y = 1; y < h - 1; y++) {
     for (let x = 1; x < w - 1; x++) {
       const idx = y * w + x;
-      if (transparent[idx]) continue;
-      const neighbors = [
-        transparent[idx - 1], transparent[idx + 1],
-        transparent[idx - w], transparent[idx + w]
-      ];
-      if (neighbors.filter(Boolean).length > 0) px[idx * 4 + 3] = 180;
+      if (bg[idx]) continue;
+      if (!(bg[idx-1] || bg[idx+1] || bg[idx-w] || bg[idx+w])) continue;
+      const r = px[idx*4], g = px[idx*4+1], b = px[idx*4+2];
+      const brightness = (r + g + b) / 3;
+      const spread = Math.max(r, g, b) - Math.min(r, g, b);
+      // Only fade pixels that are near-white with little color —
+      // these are the anti-aliased fringe, not jewelry.
+      if (brightness > 210 && spread < 25) {
+        // alpha scales from 0 (pure white) → ~180 (brightness≈210)
+        px[idx*4+3] = Math.round(((255 - brightness) / 45) * 180);
+      }
+      // else: jewelry-colored edge pixel — stays at alpha 255
     }
   }
 
