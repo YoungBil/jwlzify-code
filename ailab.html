@@ -125,31 +125,16 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
 /* ── Try-on camera view ── */
 #camWrap { position:relative; overflow:hidden; background:#0d1215; }
 #camWrap video { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; transform:scaleX(-1); }
-#jewelryOverlay, #jewelryOverlay2 {
+#chainCanvas, #jewelryCanvas, #jewelryCanvas2 {
   position:absolute;
-  background:transparent !important;
-  background-color:transparent !important;
-  border:none !important;
-  outline:none !important;
-  box-shadow:none !important;
-  -webkit-box-shadow:none !important;
-  filter:none !important;
-  -webkit-filter:none !important;
-  mix-blend-mode:normal !important;
-  backdrop-filter:none !important;
-  -webkit-backdrop-filter:none !important;
-  transition:opacity 0.4s ease;
-  cursor:grab;
+  background:transparent;
+  border:none;
+  outline:none;
+  box-shadow:none;
 }
-.tryon-overlay {
-  background:transparent !important;
-  background-color:transparent !important;
-  box-shadow:none !important;
-  border:none !important;
-  filter:none !important;
-  mix-blend-mode:normal !important;
-  backdrop-filter:none !important;
-  outline:none !important;
+#jewelryCanvas, #jewelryCanvas2 {
+  cursor:grab;
+  transition:opacity 0.4s ease;
 }
 
 /* ── Quote card ── */
@@ -561,11 +546,10 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
         <video id="camVideo" autoplay playsinline muted
                style="width:100%;height:100%;object-fit:cover;transform:scaleX(-1);"></video>
 
-        <!-- Jewelry overlays — bg removed via canvas, transparent PNG only -->
-        <img id="jewelryOverlay"  src="" alt="" class="tryon-overlay"
-             style="position:absolute;display:none;background:transparent;border:none;box-shadow:none;filter:none;">
-        <img id="jewelryOverlay2" src="" alt="" class="tryon-overlay"
-             style="position:absolute;display:none;background:transparent;border:none;box-shadow:none;filter:none;">
+        <!-- Chain + jewelry overlays (canvas-based, inherently transparent) -->
+        <canvas id="chainCanvas"    style="position:absolute;display:none;pointer-events:none;"></canvas>
+        <canvas id="jewelryCanvas"  style="position:absolute;display:none;"></canvas>
+        <canvas id="jewelryCanvas2" style="position:absolute;display:none;"></canvas>
 
         <!-- ── Loading state ── -->
         <div id="camLoading" class="absolute inset-0 flex flex-col items-center justify-center gap-5">
@@ -1025,7 +1009,6 @@ const LAB = {
   style: 'Art Deco',
   prompt: '',
   imageUrl: null,
-  processedImageUrl: null,
   quote: null,
   spec: null,
   cameraStream: null,
@@ -1137,7 +1120,6 @@ function startGeneration(isTweak) {
   const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(fullPrompt)}?width=800&height=800&nologo=true&seed=${seed}&model=flux&enhance=true`;
 
   LAB.imageUrl = url;
-  LAB.processedImageUrl = null; // reset so try-on re-processes the new image
 
   if (isTweak) {
     // Regenerate in place — blur current image, swap src, unblur on load
@@ -1250,12 +1232,6 @@ function showRefineStep() {
   document.getElementById('quoteImg').src   = LAB.imageUrl;
   const ot = document.getElementById('orderThumb');
   if (ot) ot.src = LAB.imageUrl;
-
-  // Pre-process background removal in the background
-  LAB.processedImageUrl = null;
-  removeWhiteBackground(LAB.imageUrl).then(url => {
-    if (url) LAB.processedImageUrl = url;
-  });
 
   // Badge
   const badge = `${LAB.type.toUpperCase()} · ${matLabel(LAB.material).toUpperCase()} · ${LAB.style.toUpperCase()}`;
@@ -1402,90 +1378,124 @@ function submitOrder(e) {
    TRY-ON — live camera + transparent jewelry
 ════════════════════════════════════════════════ */
 
-/* ── Canvas-based background removal ────────────────────────
-   Edge-only flood fill seeded from all 4 perimeter edges.
-   Threshold catches near-white/off-white AI backgrounds while
-   never touching colored jewelry pixels. Smart feathering fades
-   only the anti-aliased white fringe — colored jewelry edges
-   stay at full opacity, exactly like a high-quality PNG cutout. */
-function stripBackground(imgEl, callback) {
-  const cvs = document.createElement('canvas');
-  const ctx = cvs.getContext('2d');
-  cvs.width  = imgEl.naturalWidth  || imgEl.width;
-  cvs.height = imgEl.naturalHeight || imgEl.height;
-  ctx.drawImage(imgEl, 0, 0, cvs.width, cvs.height);
+/* ── processJewelryImage ─────────────────────────────────────
+   Draws srcImg → outputCanvas with background removed.
+   Edge-seeded BFS flood fill (luma-weighted brightness) erases
+   near-white/off-white AI backgrounds. Smart feathering fades
+   only the anti-aliased white fringe at jewelry edges. */
+function processJewelryImage(srcImg, outputCanvas, done) {
+  const off    = document.createElement('canvas');
+  off.width    = srcImg.naturalWidth  || srcImg.width  || 512;
+  off.height   = srcImg.naturalHeight || srcImg.height || 512;
+  const offCtx = off.getContext('2d');
+  offCtx.drawImage(srcImg, 0, 0, off.width, off.height);
 
-  const frame = ctx.getImageData(0, 0, cvs.width, cvs.height);
-  const px = frame.data;
-  const w = cvs.width;
-  const h = cvs.height;
+  const { data: px, width: W, height: H } = offCtx.getImageData(0, 0, off.width, off.height);
+  const mask = new Uint8Array(W * H);
 
-  // STEP 1: Flood fill from all 4 edges
-  // Threshold: brightness > 232 catches off-white/cream AI backgrounds;
-  // spread < 18 ensures we only remove achromatic (non-jewelry) pixels.
-  const bg = new Uint8Array(w * h);
-
-  function isBackground(idx) {
+  function isBg(idx) {
     const i = idx * 4;
     const r = px[i], g = px[i+1], b = px[i+2];
-    const brightness = (r + g + b) / 3;
-    const spread = Math.max(r, g, b) - Math.min(r, g, b);
-    return brightness > 232 && spread < 18;
+    const brightness  = (r * 299 + g * 587 + b * 114) / 1000;
+    const saturation  = Math.max(r, g, b) - Math.min(r, g, b);
+    return brightness > 232 && saturation < 18;
   }
 
-  const stack = [];
-  for (let x = 0; x < w; x++) { stack.push(x); stack.push((h-1)*w + x); }
-  for (let y = 0; y < h; y++) { stack.push(y*w); stack.push(y*w + w - 1); }
-
-  while (stack.length > 0) {
-    const idx = stack.pop();
-    if (idx < 0 || idx >= w * h || bg[idx]) continue;
-    if (!isBackground(idx)) continue;
-    bg[idx] = 1;
-    stack.push(idx - 1, idx + 1, idx - w, idx + w);
+  // BFS from all four perimeter edges (head-pointer queue = no shift overhead)
+  const queue = [];
+  for (let x = 0; x < W; x++) { queue.push(x, (H - 1) * W + x); }
+  for (let y = 1; y < H - 1; y++) { queue.push(y * W, y * W + W - 1); }
+  let head = 0;
+  while (head < queue.length) {
+    const idx = queue[head++];
+    if (idx < 0 || idx >= W * H || mask[idx]) continue;
+    if (!isBg(idx)) continue;
+    mask[idx] = 1;
+    queue.push(idx - 1, idx + 1, idx - W, idx + W);
   }
 
-  // STEP 2: Background pixels → alpha 0; all jewelry pixels → alpha 255
-  for (let i = 0; i < w * h; i++) {
-    px[i * 4 + 3] = bg[i] ? 0 : 255;
-  }
+  // Alpha pass: bg → 0, jewelry → 255
+  for (let i = 0; i < W * H; i++) { px[i * 4 + 3] = mask[i] ? 0 : 255; }
 
-  // STEP 3: Smart 1px boundary feather
-  // Near-white boundary pixels are anti-aliased bg fringe → fade them
-  // proportionally to how far they are from pure white.
-  // Colorful boundary pixels are jewelry edge → leave at full 255.
-  for (let y = 1; y < h - 1; y++) {
-    for (let x = 1; x < w - 1; x++) {
-      const idx = y * w + x;
-      if (bg[idx]) continue;
-      if (!(bg[idx-1] || bg[idx+1] || bg[idx-w] || bg[idx+w])) continue;
-      const r = px[idx*4], g = px[idx*4+1], b = px[idx*4+2];
-      const brightness = (r + g + b) / 3;
-      const spread = Math.max(r, g, b) - Math.min(r, g, b);
-      // Only fade pixels that are near-white with little color —
-      // these are the anti-aliased fringe, not jewelry.
+  // Smart 1-px boundary feather: near-white fringe only; colored edges stay at 255
+  for (let y = 1; y < H - 1; y++) {
+    for (let x = 1; x < W - 1; x++) {
+      const i = y * W + x;
+      if (mask[i]) continue;
+      if (!(mask[i-1] || mask[i+1] || mask[i-W] || mask[i+W])) continue;
+      const r = px[i*4], g = px[i*4+1], b = px[i*4+2];
+      const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+      const spread     = Math.max(r, g, b) - Math.min(r, g, b);
       if (brightness > 210 && spread < 25) {
-        // alpha scales from 0 (pure white) → ~180 (brightness≈210)
-        px[idx*4+3] = Math.round(((255 - brightness) / 45) * 180);
+        px[i * 4 + 3] = Math.round(((255 - brightness) / 45) * 180);
       }
-      // else: jewelry-colored edge pixel — stays at alpha 255
     }
   }
 
-  ctx.putImageData(frame, 0, 0);
-  cvs.toBlob(blob => callback(URL.createObjectURL(blob)), 'image/png');
+  offCtx.putImageData(new ImageData(px, W, H), 0, 0);
+  outputCanvas.width  = W;
+  outputCanvas.height = H;
+  const outCtx = outputCanvas.getContext('2d');
+  outCtx.clearRect(0, 0, W, H);
+  outCtx.drawImage(off, 0, 0);
+  if (done) done();
 }
 
-function removeWhiteBackground(url) {
-  return new Promise(resolve => {
-    const imgEl = new Image();
-    imgEl.crossOrigin = 'anonymous';
-    imgEl.onload = () => {
-      try { stripBackground(imgEl, resolve); } catch(e) { resolve(null); }
-    };
-    imgEl.onerror = () => resolve(null);
-    imgEl.src = url;
-  });
+/* ── drawChain ───────────────────────────────────────────────
+   Draws a dashed bezier necklace chain on chainCvs, running
+   from shoulder anchors (28 %/72 % width, 26 % height) to the
+   top-centre of the jewelry canvas. Redrawn on every drag move,
+   size change, and ResizeObserver tick. */
+function drawChain(chainCvs, jewelryCvs, container, metal) {
+  const vw = container.offsetWidth;
+  const vh = container.offsetHeight;
+
+  chainCvs.width        = vw;
+  chainCvs.height       = vh;
+  chainCvs.style.width  = vw + 'px';
+  chainCvs.style.height = vh + 'px';
+  chainCvs.style.left   = '0px';
+  chainCvs.style.top    = '0px';
+
+  const cRect = container.getBoundingClientRect();
+  const jRect = jewelryCvs.getBoundingClientRect();
+  const pendantCenterX = jRect.left - cRect.left + jRect.width  / 2;
+  const chainEndY      = jRect.top  - cRect.top  + 18;
+  const jW             = jRect.width;
+
+  const colors = { '925silver':'#b8c0c8', '10ctgold':'#c9a96e', '14ctgold':'#d4af65' };
+  const strokeColor = colors[metal] || '#b8c0c8';
+
+  const ctx = chainCvs.getContext('2d');
+  ctx.clearRect(0, 0, vw, vh);
+  ctx.strokeStyle  = strokeColor;
+  ctx.lineWidth    = 1.6;
+  ctx.lineCap      = 'round';
+  ctx.setLineDash([3, 2]);
+  ctx.globalAlpha  = 0.75;
+
+  const lx = vw * 0.28, ly = vh * 0.26;
+  ctx.beginPath();
+  ctx.moveTo(lx, ly);
+  ctx.bezierCurveTo(
+    lx + (pendantCenterX - lx) * 0.35, ly - vh * 0.02,
+    pendantCenterX - jW * 0.15,        chainEndY - vh * 0.04,
+    pendantCenterX, chainEndY
+  );
+  ctx.stroke();
+
+  const rx = vw * 0.72, ry = vh * 0.26;
+  ctx.beginPath();
+  ctx.moveTo(rx, ry);
+  ctx.bezierCurveTo(
+    rx - (rx - pendantCenterX) * 0.35, ry - vh * 0.02,
+    pendantCenterX + jW * 0.15,        chainEndY - vh * 0.04,
+    pendantCenterX, chainEndY
+  );
+  ctx.stroke();
+
+  ctx.globalAlpha = 1.0;
+  ctx.setLineDash([]);
 }
 
 /* ── Jewelry overlay positions ───────────────────────────────
@@ -1519,85 +1529,84 @@ const TRYON_CONFIG = {
 };
 
 async function placeJewelryOverlay() {
-  const cfg = TRYON_CONFIG[LAB.type] || TRYON_CONFIG.ring;
-  const el  = document.getElementById('jewelryOverlay');
-  const el2 = document.getElementById('jewelryOverlay2');
+  const cfg       = TRYON_CONFIG[LAB.type] || TRYON_CONFIG.ring;
+  const cvs       = document.getElementById('jewelryCanvas');
+  const cvs2      = document.getElementById('jewelryCanvas2');
+  const chainCvs  = document.getElementById('chainCanvas');
+  const camWrapEl = document.getElementById('camWrap');
+  const isPendant = LAB.type === 'pendant' || LAB.type === 'necklace';
 
-  el2.style.display = 'none';
+  cvs2.style.display     = 'none';
+  chainCvs.style.display = 'none';
 
-  // Get or generate transparent-background image
-  const processed = LAB.processedImageUrl
-    || await removeWhiteBackground(LAB.imageUrl);
-  if (processed) LAB.processedImageUrl = processed;
-  const src = processed || LAB.imageUrl;
-
-  function applyOverlay(imgEl, top, left, width, anchorTop) {
-    imgEl.style.top              = top;
-    imgEl.style.left             = left;
-    imgEl.style.width            = width;
-    imgEl.style.height           = 'auto';
-    imgEl.style.transform        = anchorTop ? 'translateX(-50%)' : 'translate(-50%,-50%)';
-    imgEl.style.opacity          = '0';
-    imgEl.style.display          = 'block';
-    imgEl.style.background       = 'transparent';
-    imgEl.style.backgroundColor  = 'transparent';
-    imgEl.style.boxShadow        = 'none';
-    imgEl.style.border           = 'none';
-    imgEl.style.outline          = 'none';
-    imgEl.style.filter           = 'none';
-    imgEl.style.mixBlendMode     = 'normal';
-    imgEl.style.backdropFilter   = 'none';
-
-    imgEl.onload = () => {
-      if (imgEl.src.startsWith('blob:')) {
-        imgEl.style.opacity = '1';
-        return;
-      }
-      try {
-        stripBackground(imgEl, processedUrl => {
-          if (processedUrl) {
-            imgEl.src = processedUrl;
-          } else {
-            imgEl.style.opacity = '1';
-          }
-        });
-      } catch(e) { imgEl.style.opacity = '1'; }
-    };
-    imgEl.onerror = () => { imgEl.style.opacity = '1'; };
-    imgEl.src = src;
-  }
-
-  // Abort any previous drag listeners before re-attaching
   LAB._dragACs.forEach(ac => ac.abort());
   LAB._dragACs = [];
+  if (LAB._pendantRO) { LAB._pendantRO.disconnect(); LAB._pendantRO = null; }
 
-  const camWrapEl = document.getElementById('camWrap');
+  // Load source image once, then render into canvas(es)
+  await new Promise(resolve => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      if (LAB.type === 'earrings') {
+        let n = 0;
+        const check = () => { if (++n === 2) resolve(); };
+        processJewelryImage(img, cvs,  check);
+        processJewelryImage(img, cvs2, check);
+      } else {
+        processJewelryImage(img, cvs, resolve);
+      }
+    };
+    img.onerror = resolve;
+    img.src = LAB.imageUrl;
+  });
 
-  if (LAB.type === 'earrings') {
-    applyOverlay(el,  cfg.topL, cfg.leftL, cfg.width, false);
-    applyOverlay(el2, cfg.topR, cfg.leftR, cfg.width, false);
-    LAB._dragACs.push(makeDraggable(el, camWrapEl), makeDraggable(el2, camWrapEl));
-  } else {
-    applyOverlay(el, cfg.top, cfg.left, cfg.width, cfg.anchorTop || false);
-    LAB._dragACs.push(makeDraggable(el, camWrapEl));
+  // Apply CSS display dimensions and position to a canvas element
+  function positionCanvas(el, top, left, widthFraction, anchorTop) {
+    const displayW = widthFraction * camWrapEl.offsetWidth;
+    const displayH = el.width ? displayW * el.height / el.width : displayW;
+    el.style.width     = displayW + 'px';
+    el.style.height    = displayH + 'px';
+    el.style.top       = top;
+    el.style.left      = left;
+    el.style.transform = anchorTop ? 'translateX(-50%)' : 'translate(-50%,-50%)';
+    el.style.opacity   = '1';
+    el.style.display   = 'block';
+    el.style.position  = 'absolute';
   }
 
-  // Pendant/necklace: pixel-based sizing, recalculated on resize
-  if (LAB.type === 'pendant' || LAB.type === 'necklace') {
-    if (LAB._pendantRO) { LAB._pendantRO.disconnect(); LAB._pendantRO = null; }
-    const camWrap = document.getElementById('camWrap');
+  if (LAB.type === 'earrings') {
+    const f = parseFloat(cfg.width) / 100;
+    positionCanvas(cvs,  cfg.topL, cfg.leftL, f, false);
+    positionCanvas(cvs2, cfg.topR, cfg.leftR, f, false);
+    cvs2.style.display = 'block';
+    LAB._dragACs.push(makeDraggable(cvs, camWrapEl), makeDraggable(cvs2, camWrapEl));
+  } else {
+    positionCanvas(cvs, cfg.top, cfg.left, parseFloat(cfg.width) / 100, cfg.anchorTop || false);
+    const onMove = isPendant
+      ? () => drawChain(chainCvs, cvs, camWrapEl, LAB.material)
+      : null;
+    LAB._dragACs.push(makeDraggable(cvs, camWrapEl, onMove));
+  }
+
+  // Pendant/necklace: pixel-accurate sizing + chain, recalculated on resize
+  if (isPendant) {
     function sizePendant() {
-      const h = camWrap.offsetHeight;
-      el.style.width     = inchesToPx(LAB._pendantInches) + 'px';
-      el.style.top       = (h * 0.38) + 'px';
-      el.style.left      = '50%';
-      el.style.transform = 'translateX(-50%)';
+      const displayW = inchesToPx(LAB._pendantInches);
+      const displayH = cvs.width ? displayW * cvs.height / cvs.width : displayW;
+      cvs.style.width     = displayW + 'px';
+      cvs.style.height    = displayH + 'px';
+      cvs.style.top       = (camWrapEl.offsetHeight * 0.38) + 'px';
+      cvs.style.left      = '50%';
+      cvs.style.transform = 'translateX(-50%)';
+      drawChain(chainCvs, cvs, camWrapEl, LAB.material);
     }
+    chainCvs.style.display = 'block';
     sizePendant();
     const ro = new ResizeObserver(sizePendant);
-    ro.observe(camWrap);
-    LAB._pendantRO = ro;
-    LAB._sizePendant = sizePendant;
+    ro.observe(camWrapEl);
+    LAB._pendantRO    = ro;
+    LAB._sizePendant  = sizePendant;
   }
 
   document.getElementById('guideText').textContent    = cfg.guide;
@@ -1644,29 +1653,28 @@ async function startCamera() {
    Returns an AbortController; caller stores it to cancel all
    listeners when leaving step 3. Uses getBoundingClientRect
    at drag start so initial transform offsets are absorbed. */
-function makeDraggable(imgEl, container) {
+function makeDraggable(el, container, onMove) {
   let isDragging = false;
   let startX, startY, startLeft, startTop;
 
-  imgEl.style.userSelect  = 'none';
-  imgEl.style.touchAction = 'none';
+  el.style.userSelect  = 'none';
+  el.style.touchAction = 'none';
 
   const ac  = new AbortController();
   const sig = ac.signal;
 
-  imgEl.addEventListener('mousedown', (e) => {
+  el.addEventListener('mousedown', (e) => {
     isDragging = true;
-    imgEl.style.cursor = 'grabbing';
+    el.style.cursor = 'grabbing';
     startX = e.clientX;
     startY = e.clientY;
-    // Resolve visual position (accounts for any CSS transform)
-    const rect = imgEl.getBoundingClientRect();
+    const rect  = el.getBoundingClientRect();
     const cRect = container.getBoundingClientRect();
     startLeft = rect.left - cRect.left;
     startTop  = rect.top  - cRect.top;
-    imgEl.style.transform = 'none';
-    imgEl.style.left = startLeft + 'px';
-    imgEl.style.top  = startTop  + 'px';
+    el.style.transform = 'none';
+    el.style.left = startLeft + 'px';
+    el.style.top  = startTop  + 'px';
     e.preventDefault();
   }, { signal: sig });
 
@@ -1674,29 +1682,30 @@ function makeDraggable(imgEl, container) {
     if (!isDragging) return;
     let newLeft = startLeft + (e.clientX - startX);
     let newTop  = startTop  + (e.clientY - startY);
-    newLeft = Math.max(0, Math.min(newLeft, container.offsetWidth  - imgEl.offsetWidth));
-    newTop  = Math.max(0, Math.min(newTop,  container.offsetHeight - imgEl.offsetHeight));
-    imgEl.style.left = newLeft + 'px';
-    imgEl.style.top  = newTop  + 'px';
+    newLeft = Math.max(0, Math.min(newLeft, container.offsetWidth  - el.offsetWidth));
+    newTop  = Math.max(0, Math.min(newTop,  container.offsetHeight - el.offsetHeight));
+    el.style.left = newLeft + 'px';
+    el.style.top  = newTop  + 'px';
+    if (onMove) onMove();
   }, { signal: sig });
 
   document.addEventListener('mouseup', () => {
     isDragging = false;
-    imgEl.style.cursor = 'grab';
+    el.style.cursor = 'grab';
   }, { signal: sig });
 
-  imgEl.addEventListener('touchstart', (e) => {
+  el.addEventListener('touchstart', (e) => {
     isDragging = true;
     const t = e.touches[0];
     startX = t.clientX;
     startY = t.clientY;
-    const rect = imgEl.getBoundingClientRect();
+    const rect  = el.getBoundingClientRect();
     const cRect = container.getBoundingClientRect();
     startLeft = rect.left - cRect.left;
     startTop  = rect.top  - cRect.top;
-    imgEl.style.transform = 'none';
-    imgEl.style.left = startLeft + 'px';
-    imgEl.style.top  = startTop  + 'px';
+    el.style.transform = 'none';
+    el.style.left = startLeft + 'px';
+    el.style.top  = startTop  + 'px';
     e.preventDefault();
   }, { passive: false, signal: sig });
 
@@ -1705,11 +1714,12 @@ function makeDraggable(imgEl, container) {
     const t = e.touches[0];
     let newLeft = startLeft + (t.clientX - startX);
     let newTop  = startTop  + (t.clientY - startY);
-    newLeft = Math.max(0, Math.min(newLeft, container.offsetWidth  - imgEl.offsetWidth));
-    newTop  = Math.max(0, Math.min(newTop,  container.offsetHeight - imgEl.offsetHeight));
-    imgEl.style.left = newLeft + 'px';
-    imgEl.style.top  = newTop  + 'px';
-    imgEl.style.transform = 'none';
+    newLeft = Math.max(0, Math.min(newLeft, container.offsetWidth  - el.offsetWidth));
+    newTop  = Math.max(0, Math.min(newTop,  container.offsetHeight - el.offsetHeight));
+    el.style.left = newLeft + 'px';
+    el.style.top  = newTop  + 'px';
+    el.style.transform = 'none';
+    if (onMove) onMove();
   }, { passive: false, signal: sig });
 
   document.addEventListener('touchend', () => {
@@ -1750,15 +1760,13 @@ function setupTryOn() {
   if (!LAB.imageUrl) { goStep(4); return; }
   ['camGuide','jewBadge','camHint'].forEach(id =>
     document.getElementById(id).classList.add('hidden'));
-  document.getElementById('jewelryOverlay').style.display  = 'none';
-  document.getElementById('jewelryOverlay2').style.display = 'none';
-  LAB.processedImageUrl = null; // force re-processing with current pipeline
+  document.getElementById('jewelryCanvas').style.display  = 'none';
+  document.getElementById('jewelryCanvas2').style.display = 'none';
+  document.getElementById('chainCanvas').style.display    = 'none';
 
-  // Show/hide size selector based on jewelry type
   const isPendantType = LAB.type === 'pendant' || LAB.type === 'necklace';
   document.getElementById('pendantSizeRow').style.display = isPendantType ? 'block' : 'none';
 
-  // Reset to default size (1 in) on each entry to step 3
   if (isPendantType) {
     LAB._pendantInches = 1;
     document.querySelectorAll('.psize-btn').forEach(b => {
