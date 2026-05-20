@@ -1134,8 +1134,51 @@ function buildPrompt(type, material, gem, style, desc) {
   return `${base}luxury ${style} ${piece}, ${mDisp}, ${gemPart}, isolated fine jewelry product photograph, pure white seamless background, no shadows, no reflections on background, professional diffuse studio lighting, hyper realistic, 8K ultra high definition, macro lens, sharp focus, precious metal gleam, gemstone sparkle and brilliance, luxury brand catalog`;
 }
 
+/* ── Post-generation chain detection ─────────── */
+async function checkForChain(imageUrl) {
+  if (!CLAUDE_API_KEY) return false;
+  try {
+    const resp = await fetch(imageUrl);
+    if (!resp.ok) return false;
+    const blob = await resp.blob();
+    const base64 = await new Promise(res => {
+      const r = new FileReader();
+      r.onload = () => res(r.result.split(',')[1]);
+      r.readAsDataURL(blob);
+    });
+    const apiRes = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': CLAUDE_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 5,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'image', source: { type: 'base64', media_type: 'image/png', data: base64 } },
+            { type: 'text', text: 'Does this image show a chain, cord, or necklace string attached to or surrounding the pendant? Answer only YES or NO.' }
+          ]
+        }]
+      })
+    });
+    if (!apiRes.ok) return false;
+    const data = await apiRes.json();
+    const answer = (data.content?.[0]?.text || '').trim().toUpperCase();
+    console.log('[JWLZIFY] chain-check:', answer);
+    return answer.startsWith('YES');
+  } catch (e) {
+    console.warn('[JWLZIFY] chain-check failed, skipping:', e.message);
+    return false;
+  }
+}
+
 /* ── Image generation ────────────────────────── */
-function startGeneration(isTweak) {
+async function startGeneration(isTweak) {
   generationId++;
   const thisGen = generationId;
   setGenLoading(true);
@@ -1160,14 +1203,31 @@ function startGeneration(isTweak) {
   LAB.prompt = desc;
 
   const fullPrompt = buildPrompt(LAB.type, LAB.material, LAB.gem, LAB.style, desc);
-  const seed = (Date.now() + Math.floor(Math.random() * 9999)) % 99999;
   const isPendantGen = (LAB.type === 'pendant' || LAB.type === 'necklace');
   // Pendants: disable enhance (it rewrites prompts and adds chain context back),
   // and pass a proper negative_prompt so Flux explicitly suppresses chains.
   const negParam = isPendantGen
     ? `&negative_prompt=${encodeURIComponent('chain,necklace,cord,string,rope,clasp,links,neck,person,model,hanging,worn')}`
     : '';
-  const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(fullPrompt)}?width=800&height=800&nologo=true&seed=${seed}&model=flux&enhance=${isPendantGen ? 'false' : 'true'}${negParam}`;
+  const makeUrl = s =>
+    `https://image.pollinations.ai/prompt/${encodeURIComponent(fullPrompt)}?width=800&height=800&nologo=true&seed=${s}&model=flux&enhance=${isPendantGen ? 'false' : 'true'}${negParam}`;
+
+  let seed = (Date.now() + Math.floor(Math.random() * 9999)) % 99999;
+  let url  = makeUrl(seed);
+
+  // Post-generation safety net: vision-verify pendant images, retry up to 2x.
+  // Silently skipped when CLAUDE_API_KEY is not configured.
+  if (isPendantGen && CLAUDE_API_KEY) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      if (thisGen !== generationId) { setGenLoading(false); return; }
+      const hasChain = await checkForChain(url);
+      if (!hasChain) break;
+      console.warn(`[JWLZIFY] chain detected on attempt ${attempt + 1} — retrying`);
+      seed = (Date.now() + Math.floor(Math.random() * 9999)) % 99999;
+      url  = makeUrl(seed);
+    }
+    if (thisGen !== generationId) { setGenLoading(false); return; }
+  }
 
   LAB.imageUrl = url;
 
