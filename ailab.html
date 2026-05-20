@@ -1113,10 +1113,11 @@ function useInspiration(btn) {
 
 /* ── Prompt building ─────────────────────────── */
 function buildPrompt(type, material, gem, style, desc) {
+  const isPendantType = (type === 'pendant' || type === 'necklace');
   const typeMap = {
-    ring: 'ring band jewelry',
-    necklace: 'pendant necklace jewelry',
-    pendant: 'pendant drop necklace fine jewelry',
+    ring:     'ring band jewelry',
+    necklace: 'isolated pendant charm, bail visible at top',
+    pendant:  'isolated pendant charm, bail visible at top',
     earrings: 'pair of earrings fine jewelry',
     bracelet: 'cuff bracelet jewelry'
   };
@@ -1125,10 +1126,13 @@ function buildPrompt(type, material, gem, style, desc) {
   const gDisp   = gemLabel(gem);
   const gemPart = `${gDisp} center stone`;
   const base    = desc.trim() ? desc.trim() + ', ' : '';
-  const pendantSuffix = (type === 'pendant' || type === 'necklace')
-    ? ', show ONLY the pendant charm itself isolated on a clean background, do NOT include any chain necklace or cord, just the pendant piece alone with its bail connector at the top, clean studio shot'
+  const sceneFraming = isPendantType
+    ? 'floating pendant product photograph, flat-lay display, pure white seamless background'
+    : 'isolated fine jewelry product photograph, pure white seamless background';
+  const pendantExclusions = isPendantType
+    ? ', isolated pendant only, bail connector visible at top, no chain, no necklace, no cord, no string, no links, no clasp, no rope, no neck, no model, pendant piece alone'
     : '';
-  return `${base}luxury ${style} ${piece}, ${mDisp}, ${gemPart}, isolated fine jewelry product photograph, pure white seamless background, no shadows, no reflections on background, professional diffuse studio lighting, hyper realistic, 8K ultra high definition, macro lens, sharp focus, precious metal gleam, gemstone sparkle and brilliance, luxury brand catalog${pendantSuffix}`;
+  return `${base}luxury ${style} ${piece}, ${mDisp}, ${gemPart}, ${sceneFraming}, no shadows, no reflections on background, professional diffuse studio lighting, hyper realistic, 8K ultra high definition, macro lens, sharp focus, precious metal gleam, gemstone sparkle and brilliance, luxury brand catalog${pendantExclusions}`;
 }
 
 /* ── Image generation ────────────────────────── */
