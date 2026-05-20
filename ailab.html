@@ -1034,6 +1034,7 @@ const LAB = {
   _dragACs: [],
   _selectedInches: 1.5,
   _applyPendantSize: null,
+  _bailNormX: 0.5,           // bail anchor X [0–1], updated after each BiRefNet run
 };
 
 let generationId    = 0;
@@ -1142,12 +1143,23 @@ function buildPrompt(type, material, gem, style, desc) {
 
 /* ── Alpha post-processing helpers ────────────── */
 
+function sweepAlphaThreshold(px, N) {
+  // Kill near-transparent halo pixels and solidify near-opaque pixels.
+  // <15% → 0 (fully transparent), >95% → 255 (fully opaque).
+  // Preserves the 15–95% soft-edge range for genuine anti-aliasing.
+  for (let i = 0; i < N; i++) {
+    const a = px[i * 4 + 3];
+    if (a < 38)       px[i * 4 + 3] = 0;
+    else if (a > 242) px[i * 4 + 3] = 255;
+  }
+}
+
 function cleanupComponents(px, W, H) {
-  // Remove stray fragments outside the main subject.
-  // Keeps largest component always. Keeps smaller components only if they
-  // are large enough (>0.5% of image) OR their centroid falls within the
-  // extended bounding box of the main component (preserves dangles, tassels,
-  // separated stones that are part of the design).
+  // BFS connected-component labelling. Keeps the largest component always.
+  // Keeps smaller components if: (a) >0.5% of image pixels (intentional design
+  // elements like dangles/tassels), OR (b) centroid is within the 130% expanded
+  // bounding box of the main component (attached parts close to the pendant body).
+  // Everything else (stray chain-ghost fragments, bg specks) is zeroed.
   const N = W * H;
   const label  = new Int32Array(N).fill(-1);
   const sizes  = [], cxArr = [], cyArr = [], bb = [];
@@ -1183,7 +1195,6 @@ function cleanupComponents(px, W, H) {
   let main = 0;
   for (let l = 1; l < sizes.length; l++) if (sizes[l] > sizes[main]) main = l;
 
-  // Expand main component bounding box by 30% on each axis
   const bw = bb[main][1] - bb[main][0], bh = bb[main][3] - bb[main][2];
   const x1 = Math.max(0, bb[main][0] - bw * 0.3);
   const x2 = Math.min(W - 1, bb[main][1] + bw * 0.3);
@@ -1204,11 +1215,11 @@ function cleanupComponents(px, W, H) {
 
 function decontaminateWhiteEdges(px, W, H) {
   // Reverse white-background color bleed from semi-transparent edge pixels.
-  // composite = a*fg + (1-a)*255  →  fg = (composite - 255*(1-a)) / a
+  // composite = a·fg + (1−a)·255  →  fg = (composite − 255·(1−a)) / a
   const N = W * H;
   for (let i = 0; i < N; i++) {
     const a = px[i * 4 + 3];
-    if (a <= 10 || a >= 245) continue;
+    if (a < 38 || a > 242) continue;  // only soft-edge zone
     const aN = a / 255;
     for (let c = 0; c < 3; c++) {
       px[i * 4 + c] = Math.max(0, Math.min(255,
@@ -1219,14 +1230,14 @@ function decontaminateWhiteEdges(px, W, H) {
 }
 
 function featherAlpha(px, W, H) {
-  // 1-pixel box blur on alpha only, applied to edge-zone pixels.
-  // Softens jagged alpha boundaries without blurring the subject RGB.
+  // 1-pixel box blur on alpha only for soft-edge-zone pixels.
+  // Smooths hard step-edges left by sweepAlphaThreshold without blurring RGB.
   const N = W * H;
   const orig = new Uint8Array(N);
   for (let i = 0; i < N; i++) orig[i] = px[i * 4 + 3];
   for (let i = 0; i < N; i++) {
     const a = orig[i];
-    if (a <= 10 || a >= 245) continue;
+    if (a < 38 || a > 242) continue;
     const x = i % W;
     let sum = a, count = 1;
     for (const ni of [i - 1, i + 1, i - W, i + W]) {
@@ -1237,24 +1248,90 @@ function featherAlpha(px, W, H) {
   }
 }
 
+function computeBailNormX(px, W, H) {
+  // Locate the bail (chain attachment point) as a fraction of image width.
+  // Scans downward from the topmost opaque row; takes the horizontal centre-of-mass
+  // of opaque pixels across the top 5% of the pendant's height.
+  let minY = -1, maxY = -1;
+  outer: for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      if (px[(y * W + x) * 4 + 3] > 128) { minY = y; break outer; }
+    }
+  }
+  if (minY < 0) return 0.5;
+  outer2: for (let y = H - 1; y >= 0; y--) {
+    for (let x = 0; x < W; x++) {
+      if (px[(y * W + x) * 4 + 3] > 128) { maxY = y; break outer2; }
+    }
+  }
+  const bailBottom = minY + Math.max(1, Math.floor((maxY - minY) * 0.05));
+  let sumX = 0, count = 0;
+  for (let y = minY; y <= bailBottom; y++) {
+    for (let x = 0; x < W; x++) {
+      if (px[(y * W + x) * 4 + 3] > 128) { sumX += x; count++; }
+    }
+  }
+  return count > 0 ? sumX / count / W : 0.5;
+}
+
+async function padToStandardCanvas(srcCanvas, px, W, H, bailNormX) {
+  // Crop to opaque bounding box, then re-pad to CANVAS_SIZE × CANVAS_SIZE
+  // with the pendant horizontally centered and 5% top margin.
+  // Computes the bail anchor in the final canvas coordinates.
+  const CANVAS_SIZE = 1024;
+  const N = W * H;
+  let minX = W, maxX = 0, minY = H, maxY = 0;
+  for (let i = 0; i < N; i++) {
+    if (px[i * 4 + 3] <= 10) continue;
+    const x = i % W, y = (i / W) | 0;
+    if (x < minX) minX = x; if (x > maxX) maxX = x;
+    if (y < minY) minY = y; if (y > maxY) maxY = y;
+  }
+  if (minX > maxX || minY > maxY) {
+    const out = document.createElement('canvas');
+    out.width = out.height = CANVAS_SIZE;
+    const blobUrl = await new Promise(res =>
+      out.toBlob(b => res(URL.createObjectURL(b)), 'image/png'));
+    return { blobUrl, bailNormX: 0.5 };
+  }
+  const bbW = maxX - minX + 1, bbH = maxY - minY + 1;
+  const scale = Math.min(1, (CANVAS_SIZE * 0.90) / Math.max(bbW, bbH));
+  const scaledW = Math.round(bbW * scale), scaledH = Math.round(bbH * scale);
+  const leftMargin = Math.round((CANVAS_SIZE - scaledW) / 2);
+  const topMargin  = Math.round(CANVAS_SIZE * 0.05);
+
+  // Bail X within the bounding box → scale → offset to canvas coords
+  const bailXInBBox = bailNormX * W - minX;
+  const bailXFinal  = leftMargin + bailXInBBox * scale;
+
+  const out = document.createElement('canvas');
+  out.width = out.height = CANVAS_SIZE;
+  out.getContext('2d').drawImage(srcCanvas,
+    minX, minY, bbW, bbH,
+    leftMargin, topMargin, scaledW, scaledH
+  );
+  const blobUrl = await new Promise(res =>
+    out.toBlob(b => res(URL.createObjectURL(b)), 'image/png')
+  );
+  return { blobUrl, bailNormX: bailXFinal / CANVAS_SIZE };
+}
+
 function validateCutout(px, W, H) {
   const N = W * H;
   let opaque = 0;
   for (let i = 0; i < N; i++) if (px[i * 4 + 3] > 128) opaque++;
   if (opaque < N * 0.02) return { ok: false, reason: 'no-subject' };
 
-  // Corners (5% of shortest dim) must be transparent — detects bg-removal failure
   const cs = Math.floor(Math.min(W, H) * 0.05);
   let cornerLeak = 0;
   for (let y = 0; y < cs; y++) for (let x = 0; x < cs; x++) {
-    if (px[(y * W + x) * 4 + 3]                > 10) cornerLeak++;
-    if (px[(y * W + (W - 1 - x)) * 4 + 3]      > 10) cornerLeak++;
-    if (px[((H - 1 - y) * W + x) * 4 + 3]      > 10) cornerLeak++;
-    if (px[((H - 1 - y) * W + (W - 1 - x)) * 4 + 3] > 10) cornerLeak++;
+    if (px[(y * W + x) * 4 + 3]                       > 10) cornerLeak++;
+    if (px[(y * W + (W - 1 - x)) * 4 + 3]             > 10) cornerLeak++;
+    if (px[((H - 1 - y) * W + x) * 4 + 3]             > 10) cornerLeak++;
+    if (px[((H - 1 - y) * W + (W - 1 - x)) * 4 + 3]  > 10) cornerLeak++;
   }
   if (cornerLeak > cs * cs * 0.02) return { ok: false, reason: 'bg-leak', cornerLeak };
 
-  // Top 10% must have some opaque pixels — bail must survive
   let bailPixels = 0;
   for (let y = 0; y < Math.floor(H * 0.1); y++)
     for (let x = 0; x < W; x++)
@@ -1269,7 +1346,6 @@ async function isolatePendantSubject(pollinationsUrl) {
   if (!PENDANT_BIREFNET_ENABLED || !FAL_API_KEY) return null;
   if (_birefnetCache.has(pollinationsUrl)) return _birefnetCache.get(pollinationsUrl);
   try {
-    // fal.ai fetches the image server-side — no need to fetch it client-side first
     const res = await fetch('https://fal.run/fal-ai/birefnet', {
       method: 'POST',
       headers: {
@@ -1278,9 +1354,9 @@ async function isolatePendantSubject(pollinationsUrl) {
       },
       body: JSON.stringify({
         image_url:         pollinationsUrl,
-        model:             'General Use (Heavy)',   // better fidelity on fine jewelry detail
+        model:             'General Use (Heavy)',
         output_format:     'png',
-        refine_foreground: true,                    // sub-pixel accuracy on thin structures
+        refine_foreground: true,
       }),
     });
     if (!res.ok) throw new Error('birefnet-http-' + res.status);
@@ -1288,7 +1364,6 @@ async function isolatePendantSubject(pollinationsUrl) {
     const cutoutUrl = data?.image?.url;
     if (!cutoutUrl) throw new Error('no cutout url in response');
 
-    // Load transparent cutout
     const cutoutImg = await new Promise((resolve, reject) => {
       const img = new Image();
       img.crossOrigin = 'anonymous';
@@ -1304,23 +1379,26 @@ async function isolatePendantSubject(pollinationsUrl) {
     const frame = ctx.getImageData(0, 0, W, H);
     const px    = frame.data;
 
-    // Universal post-processing — same pipeline for every pendant, no branching
-    cleanupComponents(px, W, H);        // remove stray chain-ghost fragments
-    decontaminateWhiteEdges(px, W, H);  // strip white-bg bleed from edge pixels
-    featherAlpha(px, W, H);             // soften jagged alpha boundaries
+    // Pass 2 — universal alpha cleanup, applied identically to every pendant.
+    // Order matters: threshold first (kills halos before component analysis),
+    // then cleanup (component labels are now clean), then decontaminate, then feather.
+    sweepAlphaThreshold(px, W * H);       // <15% → 0, >95% → 255; kills grayish halos
+    cleanupComponents(px, W, H);          // remove stray fragments outside main subject
+    decontaminateWhiteEdges(px, W, H);    // strip white-bg color from edge pixels
+    featherAlpha(px, W, H);              // soften step-edges left by threshold
+
+    const bailNormX = computeBailNormX(px, W, H);  // where the chain attaches
 
     const v = validateCutout(px, W, H);
     if (!v.ok) console.warn('[JWLZIFY] cutout validation:', v);
-    else       console.log('[JWLZIFY] BiRefNet isolation complete', v);
+    else       console.log('[JWLZIFY] BiRefNet complete', { ...v, bailNormX: bailNormX.toFixed(3) });
 
     ctx.putImageData(frame, 0, 0);
-    // TRANSPARENT PNG — preserve alpha end-to-end for Try It On compositing.
-    // Do NOT composite onto white here; removeWhiteBackground is skipped downstream.
-    const blobUrl = await new Promise(res =>
-      canvas.toBlob(b => res(URL.createObjectURL(b)), 'image/png')
-    );
-    _birefnetCache.set(pollinationsUrl, blobUrl);
-    return blobUrl;
+    // Crop to bounding box + re-pad to 1024×1024 centered. Returns {blobUrl, bailNormX}
+    // where bailNormX is the bail's X position as a fraction of the 1024px canvas width.
+    const result = await padToStandardCanvas(canvas, px, W, H, bailNormX);
+    _birefnetCache.set(pollinationsUrl, result);
+    return result;  // { blobUrl, bailNormX }
   } catch (e) {
     console.warn('[JWLZIFY] BiRefNet isolation failed, using original:', e.message);
     return null;
@@ -1363,13 +1441,17 @@ async function startGeneration(isTweak) {
   let url =
     `https://image.pollinations.ai/prompt/${encodeURIComponent(fullPrompt)}?width=800&height=800&nologo=true&seed=${seed}&model=flux&enhance=${isPendantGen ? 'false' : 'true'}${negParam}`;
 
-  // BiRefNet post-processing: subject-isolates the pendant, removing any chain
-  // that slipped through. Runs for ALL pendant types universally.
-  // Falls back to raw Pollinations URL on any error.
+  // BiRefNet post-processing: subject-isolates the pendant universally.
+  // Returns { blobUrl, bailNormX } on success, null on any error (graceful fallback).
   if (isPendantGen) {
-    const isolated = await isolatePendantSubject(url);
+    const cutout = await isolatePendantSubject(url);
     if (thisGen !== generationId) { setGenLoading(false); return; }
-    if (isolated) url = isolated;
+    if (cutout) {
+      url = cutout.blobUrl;
+      LAB._bailNormX = cutout.bailNormX;
+    } else {
+      LAB._bailNormX = 0.5;
+    }
   }
 
   LAB.imageUrl = url;
@@ -2083,7 +2165,7 @@ async function placeJewelryOverlay() {
     if (!isPendant) {
       croppedUrl = cleanUrl || LAB.imageUrl;
     } else if (isBiRefNetCutout) {
-      croppedUrl = await cropToOpaqueBounds(cleanUrl);  // tight bbox, bail preserved
+      croppedUrl = cleanUrl;  // already 1024×1024 standardized by padToStandardCanvas — no further crop
     } else {
       croppedUrl = await cropPendantOnly(cleanUrl || LAB.imageUrl);  // fallback: chain-stub crop
     }
@@ -2112,7 +2194,9 @@ async function placeJewelryOverlay() {
         const cPW = inchesToPx(1.5);
         const cW  = Math.round(cPW * 3);
         const chainCenter = cW / 2;
-        const pendantLeft = chainCenter - pW / 2;
+        // Use bail anchor (not image center) so the chain attaches to the correct point.
+        const bailNormX   = LAB._bailNormX || 0.5;
+        const pendantLeft = chainCenter - pW * bailNormX;
         img.style.width    = pW + 'px';
         img.style.height   = 'auto';
         img.style.position = 'relative';
