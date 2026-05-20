@@ -604,8 +604,8 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
         <p style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;letter-spacing:0.18em;text-transform:uppercase;color:#3c6474;margin-bottom:10px;">Pendant Size</p>
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
           <button class="psize-btn"              data-inches="0.5"    onclick="setPendantSize(this)">0.5 in</button>
-          <button class="psize-btn psize-active" data-inches="1"      onclick="setPendantSize(this)">1 in</button>
-          <button class="psize-btn"              data-inches="1.5"    onclick="setPendantSize(this)">1.5 in</button>
+          <button class="psize-btn"              data-inches="1"      onclick="setPendantSize(this)">1 in</button>
+          <button class="psize-btn psize-active" data-inches="1.5"    onclick="setPendantSize(this)">1.5 in</button>
           <button class="psize-btn"              data-inches="2"      onclick="setPendantSize(this)">2 in</button>
           <button class="psize-btn"              data-inches="custom" onclick="setPendantSize(this)">Custom</button>
           <input id="pendantCustomIn" type="number" min="0.25" max="4" step="0.25"
@@ -1023,7 +1023,7 @@ const LAB = {
   cameraStream: null,
   _pendantRO: null,
   _dragACs: [],
-  _selectedInches: 1,
+  _selectedInches: 1.5,
   _applyPendantSize: null,
 };
 
@@ -1702,19 +1702,20 @@ async function placeJewelryOverlay() {
     if (isPendant) {
       // Build a function that resizes chain+img to a given inch value
       function sizeTo(inches) {
-        const pW = inchesToPx(inches);
-        const ch = Math.round(pW * 1.4);
+        const pW  = inchesToPx(inches);
+        const cPW = inchesToPx(1.5);
+        const cH  = Math.round(cPW * 1.4);
         img.style.width  = pW + 'px';
         img.style.height = 'auto';
         unit.style.width = pW + 'px';
-        chainCvs.width         = Math.round(pW * 3);
-        chainCvs.height        = ch;
-        chainCvs.style.width   = Math.round(pW * 3) + 'px';
-        chainCvs.style.height  = ch + 'px';
-        chainCvs.style.left    = (-pW) + 'px';
-        chainCvs.style.top     = (-ch) + 'px';
+        chainCvs.width         = Math.round(cPW * 3);
+        chainCvs.height        = cH;
+        chainCvs.style.width   = Math.round(cPW * 3) + 'px';
+        chainCvs.style.height  = cH + 'px';
+        chainCvs.style.left    = (-cPW) + 'px';
+        chainCvs.style.top     = (-cH) + 'px';
         chainCvs.style.display = 'block';
-        drawChain(pW);
+        drawChain(cPW);
       }
 
       sizeTo(LAB._selectedInches);
@@ -1798,9 +1799,9 @@ function setupTryOn() {
   document.getElementById('pendantSizeRow').style.display = isPendantType ? 'block' : 'none';
 
   if (isPendantType) {
-    LAB._selectedInches = 1;
+    LAB._selectedInches = 1.5;
     document.querySelectorAll('.psize-btn').forEach(b => {
-      b.classList.toggle('psize-active', b.dataset.inches === '1');
+      b.classList.toggle('psize-active', b.dataset.inches === '1.5');
     });
     document.getElementById('pendantCustomIn').style.display = 'none';
   }
