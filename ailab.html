@@ -127,7 +127,7 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
 #camWrap video { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; transform:scaleX(-1); }
 #jewelryUnit, #jewelryUnit2 {
   position:absolute; cursor:grab;
-  display:flex; flex-direction:column; align-items:center;
+  display:flex; flex-direction:column; align-items:flex-start;
   touch-action:none; user-select:none;
   background:transparent; border:none; box-shadow:none;
 }
@@ -1709,16 +1709,21 @@ async function placeJewelryOverlay() {
       function sizeTo(inches) {
         const pW  = inchesToPx(inches);
         const cPW = inchesToPx(1.5);
+        const cW  = Math.round(cPW * 3);
+        const chainCenter = cW / 2;
+        const pendantLeft = chainCenter - pW / 2;
         img.style.width    = pW + 'px';
         img.style.height   = 'auto';
-        img.style.position = '';
-        img.style.left     = '';
+        img.style.position = 'relative';
+        img.style.left     = pendantLeft + 'px';
         unit.style.width        = '';
         chainCvs.style.position = '';
         chainCvs.style.left     = '';
         chainCvs.style.top      = '';
         chainCvs.style.display  = 'block';
         drawChain(cPW);
+        console.log('chainW:', cW, '| pendantPx:', pW, '| pendantLeft:', pendantLeft,
+                    '| center match:', pendantLeft + pW/2, '===', cW/2);
         requestAnimationFrame(center);
       }
 
