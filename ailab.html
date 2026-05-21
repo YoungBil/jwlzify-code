@@ -11,6 +11,18 @@
 <!-- Firebase SDK -->
 <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+<!-- @imgly/background-removal — preloads at page start; exposes window.__imglyRmBg when ready -->
+<script type="module">
+  try {
+    const lib = await import('https://cdn.jsdelivr.net/npm/@imgly/background-removal/+esm');
+    window.__imglyRmBg = lib.removeBackground ?? lib.default?.removeBackground;
+    if (!window.__imglyRmBg) throw new Error('removeBackground not in exports');
+    console.log('[JWLZIFY] imgly preloaded OK');
+  } catch (e) {
+    window.__imglyFailed = true;
+    console.warn('[JWLZIFY] imgly preload failed:', e);
+  }
+</script>
 <script>
 tailwind.config={darkMode:"class",theme:{extend:{colors:{
   "primary":"#3c6474","on-primary":"#ffffff",
@@ -1340,12 +1352,30 @@ function validateCutout(px, W, H) {
 }
 
 /* ── @imgly/background-removal lazy loader ─────── */
-let _imglyMod = null;
+let _imglyMod    = null;
+let _imglyLoading = null;
 async function _getImglyLib() {
-  if (_imglyMod) return _imglyMod;
-  // Use jsdelivr for both JS and binary assets so versions always match
-  _imglyMod = await import('https://cdn.jsdelivr.net/npm/@imgly/background-removal/+esm');
-  return _imglyMod;
+  if (_imglyMod)    return _imglyMod;
+  if (_imglyLoading) return _imglyLoading;   // de-dupe concurrent calls
+  _imglyLoading = (async () => {
+    // Primary: poll for the <script type="module"> preload (exits early on failure flag)
+    const t0 = Date.now();
+    while (!window.__imglyRmBg && !window.__imglyFailed && Date.now() - t0 < 20000) {
+      await new Promise(r => setTimeout(r, 250));
+    }
+    if (window.__imglyRmBg) {
+      _imglyMod = { removeBackground: window.__imglyRmBg };
+      return _imglyMod;
+    }
+    // Fallback: fresh dynamic import attempt (different CDN path as secondary try)
+    console.log('[JWLZIFY] imgly preload missed — trying dynamic import');
+    const mod = await import('https://cdn.jsdelivr.net/npm/@imgly/background-removal/+esm');
+    const fn  = mod.removeBackground ?? mod.default?.removeBackground;
+    if (typeof fn !== 'function') throw new Error('removeBackground not found in module');
+    _imglyMod = { removeBackground: fn };
+    return _imglyMod;
+  })();
+  return _imglyLoading;
 }
 
 /* ── Pendant subject isolation (@imgly/background-removal) ─────── */
@@ -1363,10 +1393,11 @@ async function isolatePendantSubject(pollinationsUrl) {
     if (!srcResp.ok) throw new Error('source-fetch-' + srcResp.status);
     const srcBlob = await srcResp.blob();
 
-    // publicPath must match the CDN serving the JS so model file names align
+    // publicPath must match the CDN serving the JS so model file names align.
+    // isnet_quint8 = INT8 quantized model — smaller download, same quality for jewelry.
     const cutoutBlob = await removeBackground(srcBlob, {
       publicPath: 'https://cdn.jsdelivr.net/npm/@imgly/background-removal/dist/',
-      model: 'isnet',
+      model: 'isnet_quint8',
       output: { format: 'image/png', quality: 1.0 },
     });
 
@@ -1789,10 +1820,22 @@ async function removeWhiteBackground(imageUrl) {
         ? Math.min(55, Math.max(30, spread * 1.3))
         : Math.min(40, Math.max(20, spread * 1.1));
 
-      // STEP 4: Color-distance predicate
+      // Center guard: pendant always lives in image center. Silver/gray jewelry on a
+      // gray background is indistinguishable by color alone — use spatial prior to
+      // tighten tolerance toward center so the BFS cannot eat the pendant body.
+      const cX = W / 2, cY = H / 2;
+      const guardR = Math.min(W, H) * 0.42; // 42% of shorter dimension
+      function tolAt(i) {
+        const x = i % W, y = (i / W) | 0;
+        const d = Math.sqrt((x - cX) ** 2 + (y - cY) ** 2);
+        // Linearly tighten: 28% at exact center → 100% at guardR and beyond
+        return d < guardR ? TOLERANCE * (0.28 + 0.72 * d / guardR) : TOLERANCE;
+      }
+
+      // STEP 4: Color-distance predicate (center-protected)
       function isBg(i) {
         const r = px[i*4], g = px[i*4+1], b = px[i*4+2];
-        return Math.sqrt((r-bgR)**2 + (g-bgG)**2 + (b-bgB)**2) < TOLERANCE;
+        return Math.sqrt((r-bgR)**2 + (g-bgG)**2 + (b-bgB)**2) < tolAt(i);
       }
 
       // STEP 5: Edge-seeded flood fill
@@ -1814,8 +1857,8 @@ async function removeWhiteBackground(imageUrl) {
         seed(i-1); seed(i+1); seed(i-W); seed(i+W);
       }
 
-      // STEP 6: Gradient bg cleanup — wider tolerance, seeded from gone pixels
-      const GRADIENT_TOL = TOLERANCE * 1.55;
+      // STEP 6: Gradient bg cleanup — wider tolerance, seeded from gone pixels.
+      // Uses center-aware tolAt() so gradient cannot bleed into the pendant core.
       const gone2 = new Uint8Array(gone);
       const q2    = new Int32Array(N);
       let h2 = 0, t2 = 0;
@@ -1827,15 +1870,18 @@ async function removeWhiteBackground(imageUrl) {
         for (const n of [i-1, i+1, i-W, i+W]) {
           if (n < 0 || n >= N || gone2[n]) continue;
           const r = px[n*4], g = px[n*4+1], b = px[n*4+2];
-          if (Math.sqrt((r-bgR)**2 + (g-bgG)**2 + (b-bgB)**2) < GRADIENT_TOL) {
+          if (Math.sqrt((r-bgR)**2 + (g-bgG)**2 + (b-bgB)**2) < tolAt(n) * 1.55) {
             gone2[n] = 1; q2[t2++] = n;
           }
         }
       }
 
-      // STEP 7: Merge — only accept gradient removals on pixels bright enough to be bg
+      // STEP 7: Merge — only accept gradient removals on pixels bright enough to be bg.
+      // Never gradient-remove from the center core (guardR * 0.60) to protect pendant body.
       for (let i = 0; i < N; i++) {
         if (gone2[i] && !gone[i]) {
+          const x = i % W, y = (i / W) | 0;
+          if (Math.sqrt((x - cX) ** 2 + (y - cY) ** 2) < guardR * 0.60) continue;
           const lum = px[i*4]*0.299 + px[i*4+1]*0.587 + px[i*4+2]*0.114;
           if (lum > bgLum * 0.72) gone[i] = 1;
         }
