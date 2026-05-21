@@ -1045,6 +1045,7 @@ const LAB = {
   _selectedInches: 1.5,
   _applyPendantSize: null,
   _bailNormX: 0.5,           // bail anchor X [0–1], updated after each BiRefNet run
+  _bailNormY: 0.0,           // bail anchor Y [0–1]: 0.05 when managed cutout, 0 on fallback
 };
 
 let generationId    = 0;
@@ -1485,8 +1486,10 @@ async function startGeneration(isTweak) {
     if (cutout) {
       url = cutout.blobUrl;
       LAB._bailNormX = cutout.bailNormX;
+      LAB._bailNormY = 0.05;
     } else {
       LAB._bailNormX = 0.5;
+      LAB._bailNormY = 0.0;
     }
   }
 
@@ -2233,45 +2236,80 @@ async function placeJewelryOverlay() {
     });
 
     if (isPendant) {
-      function center() {
-        const uW = unit.offsetWidth,  uH = unit.offsetHeight;
-        const cW = camWrap.offsetWidth, cH = camWrap.offsetHeight;
-        unit.style.left = Math.max(0, cW / 2 - uW / 2) + 'px';
-        unit.style.top  = Math.max(0, cH * 0.38 - uH / 2) + 'px';
-      }
+      // Sizing constants — all derived from container height so the overlay
+      // scales correctly regardless of screen/window size.
+      const V_POS  = 0.42;   // chain-end lands at this fraction of container height
+      const MIN_PX = 40;     // absolute minimum pendant height in px
+      const MAX_PX = 200;    // absolute maximum pendant height in px
 
       function sizeTo(inches) {
-        const pW  = inchesToPx(inches);
-        const cPW = inchesToPx(1.5);
-        const cW  = Math.round(cPW * 3);
-        const chainCenter = cW / 2;
-        // Use bail anchor (not image center) so the chain attaches to the correct point.
-        const bailNormX   = LAB._bailNormX || 0.5;
-        const pendantLeft = chainCenter - pW * bailNormX;
-        img.style.width    = pW + 'px';
-        img.style.height   = 'auto';
-        img.style.position = 'relative';
-        img.style.left     = pendantLeft + 'px';
-        unit.style.width        = '';
-        chainCvs.style.position = '';
-        chainCvs.style.left     = '';
-        chainCvs.style.top      = '';
-        chainCvs.style.display  = 'block';
-        drawChain(cPW);
-        requestAnimationFrame(center);
-      }
+        const containerH = camWrap.offsetHeight;
+        const containerW = camWrap.offsetWidth;
+        // Guard: bail if container has no size yet, or image hasn't decoded yet.
+        if (!containerH || !img.naturalHeight) return;
 
-      unit.style.transform = 'none';
-      unit.style.display   = 'flex';
+        // Height-based sizing: pendant occupies inches/12.5 of the container height.
+        // (1.5 in at a 16:9 container ~480px tall → ~57px, grows with window.)
+        const pendantH = Math.max(MIN_PX, Math.min(MAX_PX, containerH * (inches / 12.5)));
+        const pendantW = Math.round(pendantH * (img.naturalWidth / img.naturalHeight));
+
+        // Chain height scales with pendant but is capped at 20% of container
+        // so it never dominates the frame on tall screens.
+        const chainPx = Math.min(
+          Math.round(pendantH * 0.9),
+          Math.round(containerH * 0.20)
+        );
+        const cW = Math.round(chainPx * 3);   // matches drawChain internal formula
+        const cH = Math.round(chainPx * 1.4); // matches drawChain internal formula
+
+        const bailNormX = LAB._bailNormX || 0.5;
+        const bailNormY = LAB._bailNormY || 0;
+
+        // Align the bail anchor on the pendant image with the chain-end center.
+        // Chain end is at absolute position (unit.left + cW/2, unit.top + cH).
+        // Pendant bail anchor is at (imgLeft + bailNormX*pendantW, imgTop + bailNormY*pendantH).
+        // Setting imgLeft and imgTop as below makes both points coincide.
+        const imgLeft = Math.round(cW / 2 - bailNormX * pendantW);
+        const imgTop  = Math.round(cH    - bailNormY * pendantH);
+
+        img.style.position  = 'absolute';
+        img.style.left      = imgLeft + 'px';
+        img.style.top       = imgTop  + 'px';
+        img.style.height    = pendantH + 'px';
+        img.style.width     = 'auto';
+        img.style.maxWidth  = 'none';
+        img.style.maxHeight = 'none';
+        img.style.display   = 'block';
+
+        chainCvs.style.position = 'absolute';
+        chainCvs.style.left     = '0';
+        chainCvs.style.top      = '0';
+        chainCvs.style.display  = 'block';
+        drawChain(chainPx);
+
+        // Unit box covers the chain canvas; pendant may overflow (overflow:visible).
+        unit.style.display   = 'block';
+        unit.style.width     = cW + 'px';
+        unit.style.height    = Math.round(cH + (1 - bailNormY) * pendantH) + 'px';
+        unit.style.overflow  = 'visible';
+        unit.style.transform = 'none';
+
+        // Position unit so chain-end lands at V_POS fraction of container height,
+        // horizontally centered in the container.
+        const chainEndY = Math.round(containerH * V_POS);
+        unit.style.left = Math.round(containerW / 2 - cW / 2) + 'px';
+        unit.style.top  = Math.round(chainEndY - cH) + 'px';
+      }
 
       const prevUrl = previousBlobUrl;
       img.onload = () => {
         if (prevUrl && prevUrl.startsWith('blob:')) URL.revokeObjectURL(prevUrl);
         previousBlobUrl = croppedUrl.startsWith('blob:') ? croppedUrl : null;
-        requestAnimationFrame(center);
+        sizeTo(LAB._selectedInches);
       };
       img.src = croppedUrl;
-      sizeTo(LAB._selectedInches);
+      // Fire immediately for cached images (onload won't fire again).
+      if (img.complete && img.naturalHeight > 0) sizeTo(LAB._selectedInches);
 
       // Store for size buttons
       LAB._applyPendantSize = sizeTo;
