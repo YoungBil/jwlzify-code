@@ -155,6 +155,19 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
 }
 @keyframes tryOnSpin { to { transform:rotate(360deg); } }
 
+/* ── Overlay cleanliness guarantees ── */
+#camWrap *:not(video) {
+  background-color: transparent !important;
+  box-shadow: none !important;
+  -webkit-box-shadow: none !important;
+}
+#jewelryImg, #ringOverlay, #earringLeft,
+#earringRight, #braceletOverlay, #necklaceOverlay {
+  mix-blend-mode: normal !important;
+  filter: none !important;
+  opacity: 1 !important;
+}
+
 @keyframes jwlz-spin { to { transform:rotate(360deg); } }
 #generateBtn[disabled] { opacity:0.65; cursor:not-allowed; }
 #generateBtn[disabled] #genIcon { display:inline-block; animation:jwlz-spin 1.1s linear infinite; }
@@ -1711,153 +1724,11 @@ function submitOrder(e) {
    TRY-ON — live camera + transparent jewelry
 ════════════════════════════════════════════════ */
 
-/* ── floodFillRemoveBackground ───────────────────────────────
-   Multi-strategy BFS. Samples 40 border points, takes brightest
-   60% to estimate bg color, adapts tolerance to light vs dark bg.
-   Gradient pass expands at 1.55× tolerance but guards against
-   eating dark jewelry. Binary alpha output. */
-async function floodFillRemoveBackground(imageUrl) {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-
-    img.onload = () => {
-      const c   = document.createElement('canvas');
-      c.width   = img.naturalWidth  || 512;
-      c.height  = img.naturalHeight || 512;
-      const ctx = c.getContext('2d');
-      ctx.drawImage(img, 0, 0);
-
-      const frame = ctx.getImageData(0, 0, c.width, c.height);
-      const px    = frame.data;
-      const W     = c.width;
-      const H     = c.height;
-      const N     = W * H;
-
-      // STEP 1: Sample 40 points across all 4 borders
-      const allBorderSamples = [];
-      const bStep = Math.max(1, Math.floor(Math.min(W, H) / 10));
-      for (let x = 0; x < W; x += bStep) {
-        allBorderSamples.push(x);
-        allBorderSamples.push((H-1)*W + x);
-      }
-      for (let y = 1; y < H-1; y += bStep) {
-        allBorderSamples.push(y*W);
-        allBorderSamples.push(y*W + W-1);
-      }
-
-      // Take brightest 60% — these are definitely background
-      const lumsAndIdx = allBorderSamples.map(i => ({
-        i,
-        lum: px[i*4]*0.299 + px[i*4+1]*0.587 + px[i*4+2]*0.114
-      }));
-      lumsAndIdx.sort((a, b) => b.lum - a.lum);
-      const topSamples = lumsAndIdx
-        .slice(0, Math.ceil(lumsAndIdx.length * 0.6))
-        .map(s => s.i);
-
-      const bgR   = topSamples.reduce((s,i) => s + px[i*4],   0) / topSamples.length;
-      const bgG   = topSamples.reduce((s,i) => s + px[i*4+1], 0) / topSamples.length;
-      const bgB   = topSamples.reduce((s,i) => s + px[i*4+2], 0) / topSamples.length;
-      const bgLum = bgR*0.299 + bgG*0.587 + bgB*0.114;
-
-      // STEP 2: Light vs dark bg detection
-      const bgIsLight = bgLum > 160;
-
-      // STEP 3: Adaptive tolerance
-      const spread = topSamples.reduce((s, i) => {
-        const r = px[i*4], g = px[i*4+1], b = px[i*4+2];
-        return s + Math.sqrt((r-bgR)**2 + (g-bgG)**2 + (b-bgB)**2);
-      }, 0) / topSamples.length;
-
-      const TOLERANCE = bgIsLight
-        ? Math.min(55, Math.max(30, spread * 1.3))
-        : Math.min(40, Math.max(20, spread * 1.1));
-
-      // Center guard: pendant always lives in image center. Silver/gray jewelry on a
-      // gray background is indistinguishable by color alone — use spatial prior to
-      // tighten tolerance toward center so the BFS cannot eat the pendant body.
-      const cX = W / 2, cY = H / 2;
-      const guardR = Math.min(W, H) * 0.42; // 42% of shorter dimension
-      function tolAt(i) {
-        const x = i % W, y = (i / W) | 0;
-        const d = Math.sqrt((x - cX) ** 2 + (y - cY) ** 2);
-        // Linearly tighten: 28% at exact center → 100% at guardR and beyond
-        return d < guardR ? TOLERANCE * (0.28 + 0.72 * d / guardR) : TOLERANCE;
-      }
-
-      // STEP 4: Color-distance predicate (center-protected)
-      function isBg(i) {
-        const r = px[i*4], g = px[i*4+1], b = px[i*4+2];
-        return Math.sqrt((r-bgR)**2 + (g-bgG)**2 + (b-bgB)**2) < tolAt(i);
-      }
-
-      // STEP 5: Edge-seeded flood fill
-      const gone  = new Uint8Array(N);
-      const queue = new Int32Array(N * 2);
-      let head = 0, tail = 0;
-
-      function seed(i) {
-        if (i >= 0 && i < N && !gone[i] && isBg(i)) {
-          gone[i] = 1; queue[tail++] = i;
-        }
-      }
-
-      for (let x = 0; x < W; x++) { seed(x); seed((H-1)*W + x); }
-      for (let y = 1; y < H-1; y++) { seed(y*W); seed(y*W + W-1); }
-
-      while (head < tail) {
-        const i = queue[head++];
-        seed(i-1); seed(i+1); seed(i-W); seed(i+W);
-      }
-
-      // STEP 6: Gradient bg cleanup — wider tolerance, seeded from gone pixels.
-      // Uses center-aware tolAt() so gradient cannot bleed into the pendant core.
-      const gone2 = new Uint8Array(gone);
-      const q2    = new Int32Array(N);
-      let h2 = 0, t2 = 0;
-
-      for (let i = 0; i < N; i++) { if (gone[i]) q2[t2++] = i; }
-
-      while (h2 < t2) {
-        const i = q2[h2++];
-        for (const n of [i-1, i+1, i-W, i+W]) {
-          if (n < 0 || n >= N || gone2[n]) continue;
-          const r = px[n*4], g = px[n*4+1], b = px[n*4+2];
-          if (Math.sqrt((r-bgR)**2 + (g-bgG)**2 + (b-bgB)**2) < tolAt(n) * 1.55) {
-            gone2[n] = 1; q2[t2++] = n;
-          }
-        }
-      }
-
-      // STEP 7: Merge — only accept gradient removals on pixels bright enough to be bg.
-      // Never gradient-remove from the center core (guardR * 0.60) to protect pendant body.
-      for (let i = 0; i < N; i++) {
-        if (gone2[i] && !gone[i]) {
-          const x = i % W, y = (i / W) | 0;
-          if (Math.sqrt((x - cX) ** 2 + (y - cY) ** 2) < guardR * 0.60) continue;
-          const lum = px[i*4]*0.299 + px[i*4+1]*0.587 + px[i*4+2]*0.114;
-          if (lum > bgLum * 0.72) gone[i] = 1;
-        }
-      }
-
-      // STEP 8: Binary alpha — no partial transparency
-      for (let i = 0; i < N; i++) { px[i*4+3] = gone[i] ? 0 : 255; }
-
-      ctx.putImageData(frame, 0, 0);
-      c.toBlob(blob => resolve(URL.createObjectURL(blob)), 'image/png');
-    };
-
-    img.onerror = () => resolve(null);
-    img.src = imageUrl;
-  });
-}
-
-
-
 /* ═══════════════════════════════════════════════
-   TF BACKGROUND REMOVAL — runs once per image,
-   never per frame. Falls back to BFS flood-fill.
+   DEFINITIVE BACKGROUND REMOVAL PIPELINE
+   Stage 1: TF body segmentation (neural net)
+   Stage 2: Advanced multi-pass flood fill
+   Stage 3: Return original as last resort
 ════════════════════════════════════════════════ */
 
 const TRYON_GUIDE = {
@@ -1868,74 +1739,295 @@ const TRYON_GUIDE = {
   earrings: 'CENTER YOUR FACE IN FRAME',
 };
 
-let segmenterInstance = null;
+function canvasToBlob(canvas) {
+  return new Promise(resolve => {
+    canvas.toBlob(
+      blob => resolve(URL.createObjectURL(blob)),
+      'image/png'
+    );
+  });
+}
+
+let _segmenter = null;
 
 async function getSegmenter() {
-  if (segmenterInstance) return segmenterInstance;
-  segmenterInstance = await bodySegmentation.createSegmenter(
+  if (_segmenter) return _segmenter;
+  _segmenter = await bodySegmentation.createSegmenter(
     bodySegmentation.SupportedModels.MediaPipeSelfieSegmentation,
     { runtime: 'tfjs', modelType: 'general' }
   );
-  return segmenterInstance;
+  return _segmenter;
 }
 
-async function runTFSegmentation(img, canvas, ctx) {
+window.addEventListener('load', () => {
+  getSegmenter().catch(() => {
+    console.warn('Segmenter preload failed — flood fill will be used as fallback');
+  });
+});
+
+async function tfSegmentationRemoval(img, W, H) {
   const segmenter = await getSegmenter();
-  const segmentation = await segmenter.segmentPeople(img, {
+
+  const segs = await segmenter.segmentPeople(img, {
     multiSegmentation: false,
     segmentBodyParts:  false,
+    flipHorizontal:    false,
   });
-  const W = canvas.width, H = canvas.height;
+
+  const fgColor = { r:0, g:0, b:0, a:0   };
+  const bgColor = { r:0, g:0, b:0, a:255 };
+
   const mask = await bodySegmentation.toBinaryMask(
-    segmentation,
-    { r:0, g:0, b:0, a:0 },
-    { r:0, g:0, b:0, a:255 },
-    false,
-    0.4
+    segs, fgColor, bgColor, false, 0.35
   );
-  const imageData = ctx.getImageData(0, 0, W, H);
-  const pixels    = imageData.data;
-  for (let i = 0; i < pixels.length / 4; i++) {
-    pixels[i * 4 + 3] = mask.data[i * 4 + 3] > 128 ? 0 : 255;
+
+  const canvas  = document.createElement('canvas');
+  canvas.width  = W;
+  canvas.height = H;
+  const ctx     = canvas.getContext('2d');
+  ctx.drawImage(img, 0, 0, W, H);
+
+  const frame = ctx.getImageData(0, 0, W, H);
+  const px    = frame.data;
+
+  for (let i = 0; i < W * H; i++) {
+    const isBgMask = mask.data[i * 4 + 3] > 128;
+    if (!isBgMask) {
+      px[i * 4 + 3] = 255;
+      continue;
+    }
+    const r = px[i*4], g = px[i*4+1], b = px[i*4+2];
+    const sat = Math.max(r,g,b) - Math.min(r,g,b);
+    const lum = r*0.299 + g*0.587 + b*0.114;
+    if (lum < 80 || sat > 45) {
+      px[i * 4 + 3] = 255;
+    } else {
+      px[i * 4 + 3] = 0;
+    }
   }
-  ctx.putImageData(imageData, 0, 0);
-  return new Promise(resolve =>
-    canvas.toBlob(blob => resolve(URL.createObjectURL(blob)), 'image/png')
+
+  for (let y = 1; y < H-1; y++) {
+    for (let x = 1; x < W-1; x++) {
+      const i = y * W + x;
+      if (px[i*4+3] > 0) continue;
+      const surrounded =
+        px[(i-1)*4+3] > 128 &&
+        px[(i+1)*4+3] > 128 &&
+        px[(i-W)*4+3] > 128 &&
+        px[(i+W)*4+3] > 128;
+      if (surrounded) px[i*4+3] = 255;
+    }
+  }
+
+  ctx.putImageData(frame, 0, 0);
+  return canvasToBlob(canvas);
+}
+
+async function checkRemovalQuality(blobUrl) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const c = document.createElement('canvas');
+      c.width = img.naturalWidth;
+      c.height = img.naturalHeight;
+      const ctx = c.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      const d = ctx.getImageData(0, 0, c.width, c.height).data;
+      let transparent = 0;
+      const total = c.width * c.height;
+      for (let i = 3; i < d.length; i += 4) {
+        if (d[i] < 128) transparent++;
+      }
+      resolve({ transparentRatio: transparent / total });
+    };
+    img.src = blobUrl;
+  });
+}
+
+async function advancedFloodFill(img, W, H) {
+  const canvas  = document.createElement('canvas');
+  canvas.width  = W;
+  canvas.height = H;
+  const ctx     = canvas.getContext('2d');
+  ctx.drawImage(img, 0, 0, W, H);
+
+  const frame = ctx.getImageData(0, 0, W, H);
+  const px    = frame.data;
+  const N     = W * H;
+
+  const samplePoints = [];
+  const divisions = 10;
+  for (let i = 0; i <= divisions; i++) {
+    const t = i / divisions;
+    samplePoints.push(
+      Math.floor(t * (W-1)),
+      (H-1)*W + Math.floor(t * (W-1)),
+      Math.floor(t * (H-1)) * W,
+      Math.floor(t * (H-1)) * W + (W-1)
+    );
+  }
+
+  const sampleData = samplePoints.map(idx => ({
+    idx,
+    r: px[idx*4], g: px[idx*4+1], b: px[idx*4+2],
+    lum: px[idx*4]*0.299 + px[idx*4+1]*0.587 + px[idx*4+2]*0.114,
+    sat: Math.max(px[idx*4],px[idx*4+1],px[idx*4+2]) -
+         Math.min(px[idx*4],px[idx*4+1],px[idx*4+2])
+  }));
+
+  const bgSamples = sampleData.filter(s => s.lum > 140 && s.sat < 50);
+  const validSamples = bgSamples.length >= 4 ? bgSamples : sampleData;
+
+  validSamples.sort((a,b) => a.lum - b.lum);
+  const mid = validSamples.slice(
+    Math.floor(validSamples.length * 0.25),
+    Math.floor(validSamples.length * 0.75)
   );
+
+  const bgR   = mid.reduce((s,x) => s+x.r, 0) / mid.length;
+  const bgG   = mid.reduce((s,x) => s+x.g, 0) / mid.length;
+  const bgB   = mid.reduce((s,x) => s+x.b, 0) / mid.length;
+  const bgLum = bgR*0.299 + bgG*0.587 + bgB*0.114;
+
+  const bgVariance = mid.reduce((s,x) => {
+    return s + Math.abs(x.r-bgR) + Math.abs(x.g-bgG) + Math.abs(x.b-bgB);
+  }, 0) / mid.length;
+
+  const BASE_TOL = Math.min(60, Math.max(25, bgVariance * 1.5));
+
+  function isBg(idx, tolerance) {
+    const r = px[idx*4], g = px[idx*4+1], b = px[idx*4+2];
+    const dist = Math.sqrt((r-bgR)**2 + (g-bgG)**2 + (b-bgB)**2);
+    if (dist >= tolerance) return false;
+    const lum = r*0.299 + g*0.587 + b*0.114;
+    if (lum < 55) return false;
+    const sat = Math.max(r,g,b) - Math.min(r,g,b);
+    if (sat > 65) return false;
+    return true;
+  }
+
+  const gone  = new Uint8Array(N);
+  const queue = new Int32Array(N * 2);
+  let head = 0, tail = 0;
+
+  function seed(i) {
+    if (i>=0 && i<N && !gone[i] && isBg(i, BASE_TOL)) {
+      gone[i]=1; queue[tail++]=i;
+    }
+  }
+
+  for (let x=0; x<W; x++) { seed(x); seed((H-1)*W+x); }
+  for (let y=1; y<H-1; y++) { seed(y*W); seed(y*W+W-1); }
+
+  while (head < tail) {
+    const i = queue[head++];
+    seed(i-1); seed(i+1); seed(i-W); seed(i+W);
+  }
+
+  const SHADOW_TOL = BASE_TOL * 1.6;
+  const gone2 = new Uint8Array(gone);
+  const q2    = new Int32Array(N);
+  let h2=0, t2=0;
+
+  for (let i=0; i<N; i++) { if (gone[i]) q2[t2++]=i; }
+
+  while (h2 < t2) {
+    const i = q2[h2++];
+    const neighbors = [i-1, i+1, i-W, i+W];
+    for (const n of neighbors) {
+      if (n<0||n>=N||gone2[n]) continue;
+      if (isBg(n, SHADOW_TOL)) { gone2[n]=1; q2[t2++]=n; }
+    }
+  }
+
+  for (let i=0; i<N; i++) {
+    if (gone2[i] && !gone[i]) {
+      const lum = px[i*4]*0.299 + px[i*4+1]*0.587 + px[i*4+2]*0.114;
+      if (lum > bgLum * 0.60) gone[i] = 1;
+    }
+  }
+
+  for (let y=2; y<H-2; y++) {
+    for (let x=2; x<W-2; x++) {
+      const i = y*W+x;
+      if (!gone[i]) continue;
+      let opaqueCount = 0;
+      for (let dy=-1; dy<=1; dy++) {
+        for (let dx=-1; dx<=1; dx++) {
+          if (dy===0 && dx===0) continue;
+          if (!gone[(y+dy)*W+(x+dx)]) opaqueCount++;
+        }
+      }
+      if (opaqueCount >= 7) gone[i] = 0;
+    }
+  }
+
+  for (let i=0; i<N; i++) { px[i*4+3] = gone[i] ? 0 : 255; }
+
+  ctx.putImageData(frame, 0, 0);
+  return canvasToBlob(canvas);
 }
 
 async function removeBackground(imageUrl) {
-  return new Promise(resolve => {
+  return new Promise((resolve) => {
     const img = new Image();
     img.crossOrigin = 'anonymous';
+
     img.onload = async () => {
-      const canvas  = document.createElement('canvas');
-      canvas.width  = img.naturalWidth;
-      canvas.height = img.naturalHeight;
-      const ctx     = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0);
+      const W = img.naturalWidth;
+      const H = img.naturalHeight;
+
       try {
-        const result = await Promise.race([
-          runTFSegmentation(img, canvas, ctx),
-          new Promise((_, rej) => setTimeout(() => rej(new Error('TF timeout')), 5000)),
+        const tfResult = await Promise.race([
+          tfSegmentationRemoval(img, W, H),
+          new Promise((_, rej) =>
+            setTimeout(() => rej(new Error('TF timeout')), 6000)
+          ),
         ]);
-        resolve(result);
-      } catch (err) {
-        console.warn('[JWLZIFY] TF bg removal failed, using flood-fill:', err);
-        resolve(await floodFillRemoveBackground(imageUrl));
+
+        const quality = await checkRemovalQuality(tfResult);
+        if (quality.transparentRatio > 0.08) {
+          resolve(tfResult);
+          return;
+        }
+        throw new Error('TF result quality too low');
+
+      } catch (tfErr) {
+        console.warn('TF stage failed:', tfErr.message);
+      }
+
+      try {
+        const floodResult = await advancedFloodFill(img, W, H);
+        resolve(floodResult);
+      } catch (floodErr) {
+        console.warn('Flood fill failed:', floodErr);
+        resolve(imageUrl);
       }
     };
-    img.onerror = async () => resolve(await floodFillRemoveBackground(imageUrl));
+
+    img.onerror = () => resolve(imageUrl);
     img.src = imageUrl;
   });
 }
 
-/* ── Segmenter preload on page load ── */
-window.addEventListener('load', () => {
-  if (typeof bodySegmentation !== 'undefined') {
-    getSegmenter().catch(e => console.warn('[JWLZIFY] Segmenter preload failed:', e));
+function enforceCleanOverlay(el) {
+  const camWrap = document.getElementById('camWrap');
+  let node = el;
+  while (node && node !== camWrap) {
+    node.style.background        = 'transparent';
+    node.style.backgroundColor   = 'transparent';
+    node.style.boxShadow         = 'none';
+    node.style.webkitBoxShadow   = 'none';
+    node.style.border            = 'none';
+    node.style.outline           = 'none';
+    node.style.filter            = 'none';
+    node.style.webkitFilter      = 'none';
+    node.style.mixBlendMode      = 'normal';
+    node.style.backdropFilter    = 'none';
+    node.style.opacity           = '1';
+    node = node.parentElement;
   }
-});
+}
 
 /* ═══════════════════════════════════════════════
    HARDCODED OVERLAY SYSTEM
@@ -2076,6 +2168,7 @@ async function showPendantOverlay(rawUrl) {
     unit.style.left    = Math.round(cW / 2 - chainW / 2) + 'px';
     unit.style.top     = Math.round(cH * 0.18) + 'px';
     unit.style.display = 'flex';
+    enforceCleanOverlay(img);
     hideTryOnLoading();
     makeDraggable(unit);
   };
@@ -2097,6 +2190,7 @@ async function showNecklaceOverlay(rawUrl) {
     el.style.left      = Math.round(camWrap.offsetWidth * 0.175) + 'px';
     el.style.top       = Math.round(camWrap.offsetHeight * 0.18) + 'px';
     el.style.display   = 'block';
+    enforceCleanOverlay(el);
     hideTryOnLoading();
     makeDraggable(el);
   };
@@ -2116,6 +2210,7 @@ async function showRingOverlay(rawUrl) {
     el.style.left      = Math.round(camWrap.offsetWidth  * 0.50 - w / 2) + 'px';
     el.style.top       = Math.round(camWrap.offsetHeight * 0.68 - el.offsetHeight / 2) + 'px';
     el.style.display   = 'block';
+    enforceCleanOverlay(el);
     hideTryOnLoading();
     makeDraggable(el);
   };
@@ -2144,6 +2239,7 @@ async function showEarringOverlay(rawUrl) {
     el.style.left    = Math.round(camWrap.offsetWidth  * xFrac - w / 2) + 'px';
     el.style.top     = Math.round(camWrap.offsetHeight * 0.26 - el.offsetHeight / 2) + 'px';
     el.style.display = 'block';
+    enforceCleanOverlay(el);
     if (++loaded === 2) onBothLoaded();
   };
 
@@ -2166,6 +2262,7 @@ async function showBraceletOverlay(rawUrl) {
     el.style.left      = Math.round(camWrap.offsetWidth  * 0.50 - w / 2) + 'px';
     el.style.top       = Math.round(camWrap.offsetHeight * 0.72 - el.offsetHeight / 2) + 'px';
     el.style.display   = 'block';
+    enforceCleanOverlay(el);
     hideTryOnLoading();
     makeDraggable(el);
   };
