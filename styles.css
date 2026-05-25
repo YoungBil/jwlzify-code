@@ -57,8 +57,9 @@ button { cursor: pointer; }
   white-space: nowrap;
 }
 .nav-link:hover {
-  color: #1b1c1c;
-  border-bottom-color: rgba(60,100,116,0.2);
+  color: #3c6474;
+  border-bottom-color: rgba(60,100,116,0.4);
+  opacity: 0.85;
 }
 .nav-active {
   color: #3c6474 !important;

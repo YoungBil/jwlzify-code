@@ -69,7 +69,12 @@ nav:hover, header:hover {
 .nav-link {
   color: rgba(255,255,255,0.92) !important;
   border-bottom: 2px solid transparent !important;
-  transition: color 0.35s ease, border-color 0.35s ease;
+  transition: color 0.25s ease, border-color 0.25s ease, opacity 0.25s ease;
+}
+.nav-link:hover {
+  color: #ffffff !important;
+  opacity: 0.75 !important;
+  border-bottom: 2px solid rgba(255,255,255,0.5) !important;
 }
 .nav-link.nav-active {
   color: rgba(255,255,255,0.96) !important;
@@ -79,6 +84,13 @@ nav.nav-visible .nav-link,
 header.nav-visible .nav-link {
   color: #1b1c1c !important;
   border-bottom: 2px solid transparent !important;
+  opacity: 1 !important;
+}
+nav.nav-visible .nav-link:hover,
+header.nav-visible .nav-link:hover {
+  color: #3c6474 !important;
+  opacity: 1 !important;
+  border-bottom: 2px solid rgba(60,100,116,0.4) !important;
 }
 nav.nav-visible .nav-link.nav-active,
 header.nav-visible .nav-link.nav-active {
