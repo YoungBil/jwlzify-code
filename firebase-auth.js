@@ -2,12 +2,12 @@
 // Get them from: console.firebase.google.com
 // Project Settings > General > Your Apps > SDK setup
 var firebaseConfig = {
-  apiKey:            "YOUR_API_KEY",
-  authDomain:        "YOUR_AUTH_DOMAIN",
-  projectId:         "YOUR_PROJECT_ID",
-  storageBucket:     "YOUR_STORAGE_BUCKET",
-  messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-  appId:             "YOUR_APP_ID"
+  apiKey:            "AIzaSyAgE9VthaPufLzdU-H92NlJRx0iUuitHrY",
+  authDomain:        "jwlzify.firebaseapp.com",
+  projectId:         "jwlzify",
+  storageBucket:     "jwlzify.firebasestorage.app",
+  messagingSenderId: "885878261157",
+  appId:             "1:885878261157:web:e6f16655b6a2875983144c"
 };
 
 if (!firebase.apps.length) {
