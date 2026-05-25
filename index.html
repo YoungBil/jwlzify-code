@@ -71,27 +71,27 @@ nav:hover, header:hover {
   border-bottom: 2px solid transparent !important;
   transition: color 0.25s ease, border-color 0.25s ease, opacity 0.25s ease;
 }
-.nav-link:hover {
-  border-bottom: 2px solid rgba(255,255,255,0.5) !important;
-}
 .nav-link.nav-active {
   color: rgba(255,255,255,0.96) !important;
   font-weight: 600 !important;
 }
-nav.nav-visible .nav-link,
-header.nav-visible .nav-link {
+#siteHeader .nav-link:hover {
+  border-bottom: 2px solid rgba(255,255,255,0.55) !important;
+}
+#siteHeader.nav-visible .nav-link,
+#siteHeader:hover .nav-link {
   color: #1b1c1c !important;
   border-bottom: 2px solid transparent !important;
   opacity: 1 !important;
 }
-nav.nav-visible .nav-link:hover,
-header.nav-visible .nav-link:hover {
+#siteHeader.nav-visible .nav-link:hover,
+#siteHeader:hover .nav-link:hover {
   color: #3c6474 !important;
+  border-bottom: 2px solid rgba(60,100,116,0.5) !important;
   opacity: 1 !important;
-  border-bottom: 2px solid rgba(60,100,116,0.4) !important;
 }
-nav.nav-visible .nav-link.nav-active,
-header.nav-visible .nav-link.nav-active {
+#siteHeader.nav-visible .nav-link.nav-active,
+#siteHeader:hover .nav-link.nav-active {
   color: #3c6474 !important;
   border-bottom: 2px solid #3c6474 !important;
 }
@@ -101,25 +101,16 @@ header.nav-visible .nav-link.nav-active {
   color: rgba(255,255,255,0.92) !important;
   transition: color 0.35s ease;
 }
-nav.nav-visible .brand-logo,
-header.nav-visible .brand-logo { color: #1b1c1c !important; }
-
-/* Sign In */
-.nav-signin {
-  color: rgba(255,255,255,0.72) !important;
-  transition: color 0.35s ease;
-  cursor: pointer;
-}
-nav.nav-visible .nav-signin,
-header.nav-visible .nav-signin { color: #1b1c1c !important; }
+#siteHeader.nav-visible .brand-logo,
+#siteHeader:hover .brand-logo { color: #1b1c1c !important; }
 
 /* Auth elements — white on transparent nav, dark on white nav */
 #signInBtn { color: rgba(255,255,255,0.8) !important; transition: color 0.35s ease; }
-nav.nav-visible #signInBtn, header.nav-visible #signInBtn,
-nav:hover #signInBtn, header:hover #signInBtn { color: rgba(65,72,75,0.8) !important; }
+#siteHeader.nav-visible #signInBtn,
+#siteHeader:hover #signInBtn { color: rgba(65,72,75,0.8) !important; }
 #userName { color: rgba(255,255,255,0.9) !important; transition: color 0.35s ease; }
-nav.nav-visible #userName, header.nav-visible #userName,
-nav:hover #userName, header:hover #userName { color: #1b1c1c !important; }
+#siteHeader.nav-visible #userName,
+#siteHeader:hover #userName { color: #1b1c1c !important; }
 
 /* Mobile menu icon */
 .nav-menu-btn {
