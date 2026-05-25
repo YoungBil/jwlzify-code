@@ -776,7 +776,23 @@ header.nav-visible #navGenerateBtn {
 
 <script>
   const navEl = document.getElementById('siteHeader');
-  navEl.classList.add('nav-visible'); // always white from first load
+
+  function pastFold() {
+    return window.scrollY >= window.innerHeight * 0.85;
+  }
+
+  window.addEventListener('scroll', () => {
+    if (pastFold()) {
+      navEl.classList.add('nav-visible');
+    } else if (!navEl.matches(':hover')) {
+      navEl.classList.remove('nav-visible');
+    }
+  });
+
+  navEl.addEventListener('mouseenter', () => navEl.classList.add('nav-visible'));
+  navEl.addEventListener('mouseleave', () => {
+    if (!pastFold()) navEl.classList.remove('nav-visible');
+  });
 </script>
 <script src="firebase-auth.js"></script>
 
