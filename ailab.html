@@ -137,7 +137,23 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
 /* ── Try-on camera view ── */
 #camWrap { position:relative; overflow:hidden; background:#000; }
 #camWrap video { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; transform:scaleX(-1); }
-#arCanvas { display:block; pointer-events:none; }
+
+/* ── Jewelry overlays ── */
+#jewelryUnit {
+  position:absolute; display:none; flex-direction:column; align-items:center;
+  cursor:grab; touch-action:none; user-select:none; background:transparent;
+}
+#chainCanvas { display:block; background:transparent; }
+#jewelryImg, #necklaceOverlay, #ringOverlay,
+#earringLeft, #earringRight, #braceletOverlay {
+  display:block; background:transparent; border:none; outline:none;
+  box-shadow:none; filter:none; mix-blend-mode:normal; opacity:1;
+}
+#necklaceOverlay, #ringOverlay,
+#earringLeft, #earringRight, #braceletOverlay {
+  position:absolute; cursor:grab; touch-action:none; user-select:none;
+}
+@keyframes tryOnSpin { to { transform:rotate(360deg); } }
 
 @keyframes jwlz-spin { to { transform:rotate(360deg); } }
 #generateBtn[disabled] { opacity:0.65; cursor:not-allowed; }
@@ -538,6 +554,18 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
         <video id="camVideo" autoplay playsinline muted
                style="width:100%;height:100%;object-fit:cover;transform:scaleX(-1);"></video>
 
+        <!-- ── Pendant / necklace pendant unit ── -->
+        <div id="jewelryUnit">
+          <canvas id="chainCanvas"></canvas>
+          <img id="jewelryImg" src="" alt="">
+        </div>
+
+        <!-- ── Per-type overlays ── -->
+        <img id="necklaceOverlay" src="" alt="" style="display:none;">
+        <img id="ringOverlay"     src="" alt="" style="display:none;">
+        <img id="earringLeft"     src="" alt="" style="display:none;">
+        <img id="earringRight"    src="" alt="" style="display:none;">
+        <img id="braceletOverlay" src="" alt="" style="display:none;">
 
         <!-- ── Loading state ── -->
         <div id="camLoading" class="absolute inset-0 flex flex-col items-center justify-center gap-5">
@@ -983,9 +1011,6 @@ const LAB = {
   quote: null,
   spec: null,
   cameraStream: null,
-  holistic: null,
-  arCamera: null,
-  jewelryImg: new Image(),
 };
 
 let generationId    = 0;
@@ -1019,20 +1044,15 @@ function updateProgress(n) {
 
 /* ── Step navigation ─────────────────────────── */
 function goStep(n) {
-  // Kill camera and MediaPipe when leaving step 3
+  // Kill camera when leaving step 3
   if (LAB.step === 3 && n !== 3) {
     isTryOnActive = false;
     isProcessing  = false;
-    if (LAB.arCamera) { LAB.arCamera.stop(); LAB.arCamera = null; }
     if (LAB.cameraStream) {
       LAB.cameraStream.getTracks().forEach(t => t.stop());
       LAB.cameraStream = null;
     }
-    const arCanvas = document.getElementById('arCanvas');
-    if (arCanvas) {
-      const ctx = arCanvas.getContext('2d');
-      ctx.clearRect(0, 0, arCanvas.width, arCanvas.height);
-    }
+    hideAllOverlays();
   }
   document.querySelectorAll('.sp').forEach(el => el.classList.remove('active'));
   const el = document.getElementById('s' + n) || document.getElementById('sSuccess');
@@ -1691,12 +1711,12 @@ function submitOrder(e) {
    TRY-ON — live camera + transparent jewelry
 ════════════════════════════════════════════════ */
 
-/* ── removeWhiteBackground ───────────────────────────────────
+/* ── floodFillRemoveBackground ───────────────────────────────
    Multi-strategy BFS. Samples 40 border points, takes brightest
    60% to estimate bg color, adapts tolerance to light vs dark bg.
    Gradient pass expands at 1.55× tolerance but guards against
    eating dark jewelry. Binary alpha output. */
-async function removeWhiteBackground(imageUrl) {
+async function floodFillRemoveBackground(imageUrl) {
   return new Promise((resolve) => {
     const img = new Image();
     img.crossOrigin = 'anonymous';
@@ -1835,7 +1855,11 @@ async function removeWhiteBackground(imageUrl) {
 
 
 
-/* ── MediaPipe guide text ── */
+/* ═══════════════════════════════════════════════
+   TF BACKGROUND REMOVAL — runs once per image,
+   never per frame. Falls back to BFS flood-fill.
+════════════════════════════════════════════════ */
+
 const TRYON_GUIDE = {
   ring:     'HOLD YOUR LEFT HAND IN FRAME',
   necklace: 'CENTER YOUR NECK & CHEST IN FRAME',
@@ -1844,138 +1868,322 @@ const TRYON_GUIDE = {
   earrings: 'CENTER YOUR FACE IN FRAME',
 };
 
-/* ── Chain drawing on the AR canvas ── */
-function drawChainOnCanvas(ctx, lx, ly, rx, ry, pendantX, pendantY, metal) {
-  const color = metal === '14ctgold' ? '#d4af65'
-              : metal === '10ctgold' ? '#c9a96e'
-              : '#b8c0c8';
+let segmenterInstance = null;
+
+async function getSegmenter() {
+  if (segmenterInstance) return segmenterInstance;
+  segmenterInstance = await bodySegmentation.createSegmenter(
+    bodySegmentation.SupportedModels.MediaPipeSelfieSegmentation,
+    { runtime: 'tfjs', modelType: 'general' }
+  );
+  return segmenterInstance;
+}
+
+async function runTFSegmentation(img, canvas, ctx) {
+  const segmenter = await getSegmenter();
+  const segmentation = await segmenter.segmentPeople(img, {
+    multiSegmentation: false,
+    segmentBodyParts:  false,
+  });
+  const W = canvas.width, H = canvas.height;
+  const mask = await bodySegmentation.toBinaryMask(
+    segmentation,
+    { r:0, g:0, b:0, a:0 },
+    { r:0, g:0, b:0, a:255 },
+    false,
+    0.4
+  );
+  const imageData = ctx.getImageData(0, 0, W, H);
+  const pixels    = imageData.data;
+  for (let i = 0; i < pixels.length / 4; i++) {
+    pixels[i * 4 + 3] = mask.data[i * 4 + 3] > 128 ? 0 : 255;
+  }
+  ctx.putImageData(imageData, 0, 0);
+  return new Promise(resolve =>
+    canvas.toBlob(blob => resolve(URL.createObjectURL(blob)), 'image/png')
+  );
+}
+
+async function removeBackground(imageUrl) {
+  return new Promise(resolve => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = async () => {
+      const canvas  = document.createElement('canvas');
+      canvas.width  = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      const ctx     = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      try {
+        const result = await Promise.race([
+          runTFSegmentation(img, canvas, ctx),
+          new Promise((_, rej) => setTimeout(() => rej(new Error('TF timeout')), 5000)),
+        ]);
+        resolve(result);
+      } catch (err) {
+        console.warn('[JWLZIFY] TF bg removal failed, using flood-fill:', err);
+        resolve(await floodFillRemoveBackground(imageUrl));
+      }
+    };
+    img.onerror = async () => resolve(await floodFillRemoveBackground(imageUrl));
+    img.src = imageUrl;
+  });
+}
+
+/* ── Segmenter preload on page load ── */
+window.addEventListener('load', () => {
+  if (typeof bodySegmentation !== 'undefined') {
+    getSegmenter().catch(e => console.warn('[JWLZIFY] Segmenter preload failed:', e));
+  }
+});
+
+/* ═══════════════════════════════════════════════
+   HARDCODED OVERLAY SYSTEM
+════════════════════════════════════════════════ */
+
+function inchesToPx(inches) {
+  return (document.getElementById('camWrap').offsetWidth / 24) * inches;
+}
+
+function drawChain(chainPx) {
+  const cvs = document.getElementById('chainCanvas');
+  const chainW = Math.round(chainPx * 3);
+  const chainH = Math.round(chainPx * 1.4);
+  cvs.width  = chainW;
+  cvs.height = chainH;
+  cvs.style.width  = chainW + 'px';
+  cvs.style.height = chainH + 'px';
+  const ctx = cvs.getContext('2d');
+  ctx.clearRect(0, 0, chainW, chainH);
+
+  const meetX  = chainW / 2;
+  const meetY  = chainH;
+  const spread = chainPx * 1.1;
+  const topY   = chainH * 0.06;
+  const metal  = document.getElementById('materialSelect')?.value || '925silver';
+  const color  = metal.includes('14ct') ? '#d4af65'
+               : metal.includes('10ct') ? '#c9a96e'
+               : '#b8c0c8';
+
   ctx.strokeStyle = color;
-  ctx.lineWidth   = 2;
-  ctx.setLineDash([3, 2.5]);
+  ctx.lineWidth   = 1.6;
+  ctx.setLineDash([2.5, 2]);
   ctx.lineCap     = 'round';
   ctx.globalAlpha = 0.85;
 
   ctx.beginPath();
-  ctx.moveTo(lx, ly);
-  ctx.quadraticCurveTo(pendantX - 30, pendantY - 20, pendantX, pendantY);
+  ctx.moveTo(meetX - spread, topY);
+  ctx.quadraticCurveTo(meetX - spread * 0.5, chainH * 0.75, meetX, meetY);
   ctx.stroke();
 
   ctx.beginPath();
-  ctx.moveTo(rx, ry);
-  ctx.quadraticCurveTo(pendantX + 30, pendantY - 20, pendantX, pendantY);
+  ctx.moveTo(meetX + spread, topY);
+  ctx.quadraticCurveTo(meetX + spread * 0.5, chainH * 0.75, meetX, meetY);
   ctx.stroke();
 
   ctx.setLineDash([]);
   ctx.globalAlpha = 1;
 }
 
-/* ── MediaPipe AR onResults — draws jewelry onto the AR canvas every frame ── */
-function onARResults(results, arCanvas, canvasCtx) {
-  const video = document.getElementById('camVideo');
-  const W = arCanvas.width  = video.videoWidth  || 1280;
-  const H = arCanvas.height = video.videoHeight || 720;
+function makeDraggable(el) {
+  let dragging = false, ox, oy, oleft, otop;
+  const wrap = () => document.getElementById('camWrap');
 
-  canvasCtx.save();
-  canvasCtx.clearRect(0, 0, W, H);
-  canvasCtx.drawImage(results.image, 0, 0, W, H);
+  const startDrag = (cx, cy) => {
+    dragging = true;
+    el.style.cursor = 'grabbing';
+    ox = cx; oy = cy;
+    const r = el.getBoundingClientRect(), cr = wrap().getBoundingClientRect();
+    oleft = r.left - cr.left; otop = r.top - cr.top;
+    el.style.transform = 'none';
+    el.style.left = oleft + 'px'; el.style.top = otop + 'px';
+  };
 
-  const img  = LAB.jewelryImg;
-  const type = LAB.type;
-  const lm   = results.faceLandmarks;
-  const pose = results.poseLandmarks;
-  const lh   = results.leftHandLandmarks;
-  const rh   = results.rightHandLandmarks;
+  const moveDrag = (cx, cy) => {
+    if (!dragging) return;
+    const cw = wrap();
+    let nl = oleft + (cx - ox), nt = otop + (cy - oy);
+    nl = Math.max(0, Math.min(nl, cw.offsetWidth  - el.offsetWidth));
+    nt = Math.max(0, Math.min(nt, cw.offsetHeight - el.offsetHeight));
+    el.style.left = nl + 'px'; el.style.top = nt + 'px';
+  };
 
-  if (!img || !img.complete || !img.naturalWidth) {
-    canvasCtx.restore();
-    return;
-  }
+  el.addEventListener('mousedown',  e => { startDrag(e.clientX, e.clientY); e.preventDefault(); });
+  document.addEventListener('mousemove', e => moveDrag(e.clientX, e.clientY));
+  document.addEventListener('mouseup',   () => { dragging = false; el.style.cursor = 'grab'; });
 
-  const iW = img.naturalWidth;
-  const iH = img.naturalHeight;
-
-  // ── PENDANT ───────────────────────────────────────────────
-  if (type === 'pendant' && pose) {
-    const ls = pose[11], rs = pose[12];
-    if (ls && rs) {
-      const shoulderW = Math.abs(rs.x - ls.x) * W;
-      const neckX = ((ls.x + rs.x) / 2) * W;
-      const neckY = ((ls.y + rs.y) / 2) * H;
-      const pw = shoulderW * 0.18;
-      const ph = pw * (iH / iW);
-      const py = neckY + shoulderW * 0.05;
-      canvasCtx.drawImage(img, neckX - pw / 2, py, pw, ph);
-      drawChainOnCanvas(canvasCtx, ls.x*W, ls.y*H, rs.x*W, rs.y*H, neckX, py, LAB.material);
-    }
-  }
-
-  // ── NECKLACE ──────────────────────────────────────────────
-  if (type === 'necklace' && pose) {
-    const ls = pose[11], rs = pose[12];
-    if (ls && rs) {
-      const shoulderW = Math.abs(rs.x - ls.x) * W;
-      const neckX = ((ls.x + rs.x) / 2) * W;
-      const neckY = ((ls.y + rs.y) / 2) * H;
-      const nw = shoulderW * 0.95;
-      const nh = nw * (iH / iW);
-      canvasCtx.drawImage(img, neckX - nw/2, neckY - nh * 0.3, nw, nh);
-    }
-  }
-
-  // ── EARRINGS ──────────────────────────────────────────────
-  if (type === 'earrings' && lm) {
-    const leftEar  = lm[234];
-    const rightEar = lm[454];
-    if (leftEar && rightEar) {
-      const faceW   = Math.abs(lm[454].x - lm[234].x) * W;
-      const earSize = faceW * 0.12;
-      const earH    = earSize * (iH / iW);
-      canvasCtx.drawImage(img, leftEar.x*W - earSize/2, leftEar.y*H, earSize, earH);
-      canvasCtx.save();
-      canvasCtx.scale(-1, 1);
-      canvasCtx.drawImage(img, -(rightEar.x*W) - earSize/2, rightEar.y*H, earSize, earH);
-      canvasCtx.restore();
-    }
-  }
-
-  // ── RING ──────────────────────────────────────────────────
-  if (type === 'ring') {
-    const hand = rh || lh;
-    if (hand) {
-      const fingerBase = hand[13];
-      const fingerTip  = hand[14];
-      if (fingerBase && fingerTip) {
-        const fingerLen = Math.hypot(
-          (fingerTip.x - fingerBase.x) * W,
-          (fingerTip.y - fingerBase.y) * H
-        );
-        const ringSize = fingerLen * 1.1;
-        canvasCtx.drawImage(img,
-          fingerBase.x*W - ringSize/2,
-          fingerBase.y*H - ringSize/2,
-          ringSize, ringSize
-        );
-      }
-    }
-  }
-
-  // ── BRACELET ──────────────────────────────────────────────
-  if (type === 'bracelet') {
-    const hand = rh || lh;
-    if (hand && pose) {
-      const wristPose = rh ? pose[16] : pose[15];
-      if (wristPose) {
-        const wristX = wristPose.x * W;
-        const wristY = wristPose.y * H;
-        const bw = Math.abs(hand[17].x - hand[5].x) * W * 1.4;
-        const bh = bw * (iH / iW);
-        canvasCtx.drawImage(img, wristX - bw/2, wristY - bh/2, bw, bh);
-      }
-    }
-  }
-
-  canvasCtx.restore();
+  el.addEventListener('touchstart', e => {
+    startDrag(e.touches[0].clientX, e.touches[0].clientY); e.preventDefault();
+  }, { passive: false });
+  document.addEventListener('touchmove', e => {
+    moveDrag(e.touches[0].clientX, e.touches[0].clientY);
+  }, { passive: false });
+  document.addEventListener('touchend', () => { dragging = false; });
 }
+
+function hideAllOverlays() {
+  ['jewelryUnit','necklaceOverlay','ringOverlay',
+   'earringLeft','earringRight','braceletOverlay']
+    .forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.style.display = 'none';
+    });
+}
+
+function showTryOnLoading() {
+  const wrap = document.getElementById('camWrap');
+  let loader = document.getElementById('tryOnLoader');
+  if (!loader) {
+    loader = document.createElement('div');
+    loader.id = 'tryOnLoader';
+    loader.style.cssText =
+      'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;' +
+      'background:rgba(0,0,0,0.28);z-index:20;border-radius:inherit;';
+    loader.innerHTML =
+      '<div style="width:40px;height:40px;border:3px solid rgba(255,255,255,0.3);' +
+      'border-top-color:#fff;border-radius:50%;animation:tryOnSpin 0.8s linear infinite;"></div>';
+    wrap.appendChild(loader);
+  }
+  loader.style.display = 'flex';
+}
+
+function hideTryOnLoading() {
+  const loader = document.getElementById('tryOnLoader');
+  if (loader) loader.style.display = 'none';
+}
+
+/* — per-type show functions — */
+
+async function showPendantOverlay(rawUrl) {
+  showTryOnLoading();
+  const cleanUrl = rawUrl.startsWith('blob:')
+    ? rawUrl
+    : await removeBackground(rawUrl);
+
+  const img      = document.getElementById('jewelryImg');
+  const unit     = document.getElementById('jewelryUnit');
+  const camWrap  = document.getElementById('camWrap');
+
+  img.onload = () => {
+    const chainPx  = inchesToPx(1.5);
+    const pendantW = inchesToPx(2);
+    drawChain(chainPx);
+    img.style.width  = pendantW + 'px';
+    img.style.height = 'auto';
+
+    const chainW = Math.round(chainPx * 3);
+    const cW = camWrap.offsetWidth, cH = camWrap.offsetHeight;
+    unit.style.left    = Math.round(cW / 2 - chainW / 2) + 'px';
+    unit.style.top     = Math.round(cH * 0.18) + 'px';
+    unit.style.display = 'flex';
+    hideTryOnLoading();
+    makeDraggable(unit);
+  };
+  img.src = cleanUrl || rawUrl;
+}
+
+async function showNecklaceOverlay(rawUrl) {
+  showTryOnLoading();
+  const cleanUrl = rawUrl.startsWith('blob:')
+    ? rawUrl
+    : await removeBackground(rawUrl);
+
+  const el = document.getElementById('necklaceOverlay');
+  el.onload = () => {
+    const camWrap = document.getElementById('camWrap');
+    const w = Math.round(camWrap.offsetWidth * 0.65);
+    el.style.width     = w + 'px';
+    el.style.height    = 'auto';
+    el.style.left      = Math.round(camWrap.offsetWidth * 0.175) + 'px';
+    el.style.top       = Math.round(camWrap.offsetHeight * 0.18) + 'px';
+    el.style.display   = 'block';
+    hideTryOnLoading();
+    makeDraggable(el);
+  };
+  el.src = cleanUrl || rawUrl;
+}
+
+async function showRingOverlay(rawUrl) {
+  showTryOnLoading();
+  const cleanUrl = await removeBackground(rawUrl);
+
+  const el = document.getElementById('ringOverlay');
+  el.onload = () => {
+    const camWrap = document.getElementById('camWrap');
+    const w = Math.round(camWrap.offsetWidth * 0.14);
+    el.style.width     = w + 'px';
+    el.style.height    = 'auto';
+    el.style.left      = Math.round(camWrap.offsetWidth  * 0.50 - w / 2) + 'px';
+    el.style.top       = Math.round(camWrap.offsetHeight * 0.68 - el.offsetHeight / 2) + 'px';
+    el.style.display   = 'block';
+    hideTryOnLoading();
+    makeDraggable(el);
+  };
+  el.src = cleanUrl || rawUrl;
+}
+
+async function showEarringOverlay(rawUrl) {
+  showTryOnLoading();
+  const cleanUrl = await removeBackground(rawUrl);
+  let loaded = 0;
+
+  const camWrap = document.getElementById('camWrap');
+  const leftEl  = document.getElementById('earringLeft');
+  const rightEl = document.getElementById('earringRight');
+
+  const onBothLoaded = () => {
+    hideTryOnLoading();
+    makeDraggable(leftEl);
+    makeDraggable(rightEl);
+  };
+
+  const positionEarring = (el, xFrac) => {
+    const w = Math.round(camWrap.offsetWidth * 0.07);
+    el.style.width   = w + 'px';
+    el.style.height  = 'auto';
+    el.style.left    = Math.round(camWrap.offsetWidth  * xFrac - w / 2) + 'px';
+    el.style.top     = Math.round(camWrap.offsetHeight * 0.26 - el.offsetHeight / 2) + 'px';
+    el.style.display = 'block';
+    if (++loaded === 2) onBothLoaded();
+  };
+
+  leftEl.onload  = () => positionEarring(leftEl,  0.28);
+  rightEl.onload = () => positionEarring(rightEl, 0.72);
+  leftEl.src  = cleanUrl || rawUrl;
+  rightEl.src = cleanUrl || rawUrl;
+}
+
+async function showBraceletOverlay(rawUrl) {
+  showTryOnLoading();
+  const cleanUrl = await removeBackground(rawUrl);
+
+  const el = document.getElementById('braceletOverlay');
+  el.onload = () => {
+    const camWrap = document.getElementById('camWrap');
+    const w = Math.round(camWrap.offsetWidth * 0.28);
+    el.style.width     = w + 'px';
+    el.style.height    = 'auto';
+    el.style.left      = Math.round(camWrap.offsetWidth  * 0.50 - w / 2) + 'px';
+    el.style.top       = Math.round(camWrap.offsetHeight * 0.72 - el.offsetHeight / 2) + 'px';
+    el.style.display   = 'block';
+    hideTryOnLoading();
+    makeDraggable(el);
+  };
+  el.src = cleanUrl || rawUrl;
+}
+
+function activateTryOnOverlay(type, rawUrl) {
+  hideAllOverlays();
+  switch (type) {
+    case 'pendant':  showPendantOverlay(rawUrl);  break;
+    case 'necklace': showNecklaceOverlay(rawUrl); break;
+    case 'ring':     showRingOverlay(rawUrl);     break;
+    case 'earrings': showEarringOverlay(rawUrl);  break;
+    case 'bracelet': showBraceletOverlay(rawUrl); break;
+  }
+}
+
+/* ── Camera + try-on entry ── */
 
 async function startCamera() {
   const loading = document.getElementById('camLoading');
@@ -2011,60 +2219,13 @@ async function setupTryOn() {
 
   ['camGuide','jewBadge','camHint'].forEach(id =>
     document.getElementById(id).classList.add('hidden'));
-
-  // Create or reuse the AR canvas that overlays the (hidden) video element.
-  const camWrap = document.getElementById('camWrap');
-  let arCanvas = document.getElementById('arCanvas');
-  if (!arCanvas) {
-    arCanvas = document.createElement('canvas');
-    arCanvas.id = 'arCanvas';
-    arCanvas.style.cssText =
-      'width:100%;height:100%;position:absolute;top:0;left:0;transform:scaleX(-1);';
-    camWrap.appendChild(arCanvas);
-  }
-  const canvasCtx = arCanvas.getContext('2d');
-
-  // Populate jewelry image — pendant/necklace arrive pre-processed as blob URLs;
-  // other types run removeWhiteBackground on the fly.
-  if (LAB.imageUrl && LAB.imageUrl.startsWith('blob:')) {
-    LAB.jewelryImg.src = LAB.imageUrl;
-  } else if (LAB.imageUrl) {
-    const cleanUrl = await removeWhiteBackground(LAB.imageUrl);
-    LAB.jewelryImg.src = cleanUrl || LAB.imageUrl;
-  }
-
-  // Initialize Holistic once — model files are ~30 MB; reuse across sessions.
-  if (!LAB.holistic) {
-    LAB.holistic = new Holistic({
-      locateFile: (file) =>
-        `https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${file}`
-    });
-    LAB.holistic.setOptions({
-      modelComplexity:        1,
-      smoothLandmarks:        true,
-      enableSegmentation:     false,
-      smoothSegmentation:     false,
-      refineFaceLandmarks:    true,
-      minDetectionConfidence: 0.5,
-      minTrackingConfidence:  0.5,
-    });
-  }
-  LAB.holistic.onResults(results => onARResults(results, arCanvas, canvasCtx));
+  hideAllOverlays();
 
   try {
     await startCamera();
   } catch { return; }
 
-  const video = document.getElementById('camVideo');
-
-  if (LAB.arCamera) { LAB.arCamera.stop(); LAB.arCamera = null; }
-
-  LAB.arCamera = new Camera(video, {
-    onFrame: async () => { await LAB.holistic.send({ image: video }); },
-    width: 1280,
-    height: 720,
-  });
-  LAB.arCamera.start();
+  activateTryOnOverlay(LAB.type, LAB.imageUrl);
 
   document.getElementById('guideText').textContent    = TRYON_GUIDE[LAB.type] || 'CENTER YOURSELF IN FRAME';
   document.getElementById('jewBadgeText').textContent = LAB.type.toUpperCase();
@@ -2171,10 +2332,9 @@ if (PENDANT_IMGLY_ENABLED) {
 }
 </script>
 
-<!-- MediaPipe AR — loaded after main script so Holistic/Camera globals are available -->
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/holistic/holistic.js" crossorigin="anonymous"></script>
+<!-- TensorFlow.js + body segmentation for one-shot BG removal on jewelry images -->
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/body-segmentation@1.0.1/dist/body-segmentation.min.js"></script>
 
 </body>
 </html>
