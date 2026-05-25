@@ -776,18 +776,7 @@ header.nav-visible #navGenerateBtn {
 
 <script>
   const navEl = document.getElementById('siteHeader');
-  const scrollThreshold = () => window.innerHeight * 0.9;
-  window.addEventListener('scroll', () => {
-    if (window.scrollY > scrollThreshold()) {
-      navEl.classList.add('nav-visible');
-    } else if (!navEl.matches(':hover')) {
-      navEl.classList.remove('nav-visible');
-    }
-  });
-  navEl.addEventListener('mouseenter', () => navEl.classList.add('nav-visible'));
-  navEl.addEventListener('mouseleave', () => {
-    if (window.scrollY <= scrollThreshold()) navEl.classList.remove('nav-visible');
-  });
+  navEl.classList.add('nav-visible'); // always white from first load
 </script>
 <script src="firebase-auth.js"></script>
 
