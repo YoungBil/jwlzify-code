@@ -19,13 +19,18 @@ var _provider = new firebase.auth.GoogleAuthProvider();
 
 _auth.getRedirectResult().then(function(result) {
   if (result && result.user) {
-    console.log('Signed in via redirect:', result.user.displayName);
+    console.log('Sign in success:', result.user.displayName);
+  } else {
+    console.log('getRedirectResult: no user returned');
   }
 }).catch(function(error) {
-  console.error('Redirect sign in error:', error.code, error.message);
+  console.error('FIREBASE ERROR CODE:', error.code);
+  console.error('FIREBASE ERROR MESSAGE:', error.message);
+  console.error('FIREBASE ERROR FULL:', JSON.stringify(error));
 });
 
 _auth.onAuthStateChanged(function(user) {
+  console.log('Auth state changed. User:', user ? user.displayName : 'null');
   var signInBtn  = document.getElementById('signInBtn');
   var userMenu   = document.getElementById('userMenu');
   var userAvatar = document.getElementById('userAvatar');
