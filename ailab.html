@@ -137,35 +137,7 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
 /* ── Try-on camera view ── */
 #camWrap { position:relative; overflow:hidden; background:#000; }
 #camWrap video { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; transform:scaleX(-1); }
-#jewelryUnit, #jewelryUnit2 {
-  position:absolute; cursor:grab;
-  display:flex; flex-direction:column; align-items:flex-start;
-  touch-action:none; user-select:none;
-  background:transparent; border:none; box-shadow:none;
-}
-#chainCanvas {
-  pointer-events:none; flex-shrink:0;
-  background:transparent; border:none; box-shadow:none;
-}
-#jewelryImg, #jewelryImg2 {
-  display:block; flex-shrink:0;
-  background:transparent; border:none; outline:none;
-  box-shadow:none; filter:none; opacity:1;
-}
-/* ── Pendant size buttons ── */
-.psize-btn {
-  font-family:'Inter',sans-serif; font-size:12px; font-weight:500;
-  padding:8px 18px; border-radius:8px;
-  border:1px solid rgba(193,199,203,0.55);
-  background:transparent; color:#1b1c1c;
-  cursor:pointer; transition:all 0.2s ease;
-}
-.psize-btn:hover { border-color:#3c6474; color:#3c6474; }
-.psize-btn.psize-active {
-  background:#b9e2f5; color:#234c5b;
-  border-color:transparent;
-  box-shadow:0 4px 14px rgba(185,226,245,0.45);
-}
+#arCanvas { display:block; pointer-events:none; }
 
 @keyframes jwlz-spin { to { transform:rotate(360deg); } }
 #generateBtn[disabled] { opacity:0.65; cursor:not-allowed; }
@@ -566,15 +538,6 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
         <video id="camVideo" autoplay playsinline muted
                style="width:100%;height:100%;object-fit:cover;transform:scaleX(-1);"></video>
 
-        <!-- Main jewelry unit — pendant/necklace/ring/bracelet/left-earring -->
-        <div id="jewelryUnit" style="display:none;">
-          <canvas id="chainCanvas" style="display:none;"></canvas>
-          <img id="jewelryImg" src="" alt="">
-        </div>
-        <!-- Second earring unit -->
-        <div id="jewelryUnit2" style="display:none;">
-          <img id="jewelryImg2" src="" alt="">
-        </div>
 
         <!-- ── Loading state ── -->
         <div id="camLoading" class="absolute inset-0 flex flex-col items-center justify-center gap-5">
@@ -612,26 +575,6 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
 
       </div>
 
-      <!-- ── Drag hint ── -->
-      <p style="font-family:'Inter',sans-serif;font-size:11px;font-style:italic;color:rgba(65,72,75,0.5);text-align:center;margin-top:6px;">Drag to reposition</p>
-
-      <!-- ── Pendant size selector (pendant + necklace only) ── -->
-      <div id="pendantSizeRow" style="display:none;width:100%;max-width:780px;">
-        <p style="font-family:'Inter',sans-serif;font-size:11px;font-weight:600;letter-spacing:0.18em;text-transform:uppercase;color:#3c6474;margin-bottom:10px;">Pendant Size</p>
-        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-          <button class="psize-btn"              data-inches="0.5"    onclick="setPendantSize(this)">0.5 in</button>
-          <button class="psize-btn"              data-inches="1"      onclick="setPendantSize(this)">1 in</button>
-          <button class="psize-btn psize-active" data-inches="1.5"    onclick="setPendantSize(this)">1.5 in</button>
-          <button class="psize-btn"              data-inches="2"      onclick="setPendantSize(this)">2 in</button>
-          <button class="psize-btn"              data-inches="custom" onclick="setPendantSize(this)">Custom</button>
-          <input id="pendantCustomIn" type="number" min="0.25" max="4" step="0.25"
-                 placeholder="inches"
-                 oninput="applySize(parseFloat(this.value))"
-                 style="display:none;width:80px;padding:8px 10px;font-family:'Inter',sans-serif;
-                        font-size:13px;border:1px solid rgba(193,199,203,0.55);
-                        border-radius:8px;outline:none;color:#1b1c1c;background:#fff;">
-        </div>
-      </div>
 
       <!-- ── Controls below camera ── -->
       <div class="flex gap-3 justify-center flex-wrap" style="width:100%;max-width:720px;">
@@ -1040,18 +983,14 @@ const LAB = {
   quote: null,
   spec: null,
   cameraStream: null,
-  _pendantRO: null,
-  _dragACs: [],
-  _selectedInches: 1.5,
-  _applyPendantSize: null,
-  _bailNormX: 0.5,           // bail anchor X [0–1], updated after each BiRefNet run
-  _bailNormY: 0.0,           // bail anchor Y [0–1]: 0.05 when managed cutout, 0 on fallback
+  holistic: null,
+  arCamera: null,
+  jewelryImg: new Image(),
 };
 
 let generationId    = 0;
 let isTryOnActive   = false;
 let isProcessing    = false;
-let previousBlobUrl = null;
 const _birefnetCache = new Map(); // pollinationsUrl → processed blob URL (session-scoped)
 
 function setGenLoading(on) {
@@ -1080,23 +1019,20 @@ function updateProgress(n) {
 
 /* ── Step navigation ─────────────────────────── */
 function goStep(n) {
-  // Kill camera and pendant ResizeObserver when leaving step 3
+  // Kill camera and MediaPipe when leaving step 3
   if (LAB.step === 3 && n !== 3) {
     isTryOnActive = false;
     isProcessing  = false;
+    if (LAB.arCamera) { LAB.arCamera.stop(); LAB.arCamera = null; }
     if (LAB.cameraStream) {
       LAB.cameraStream.getTracks().forEach(t => t.stop());
       LAB.cameraStream = null;
     }
-    if (LAB._pendantRO) {
-      LAB._pendantRO.disconnect();
-      LAB._pendantRO = null;
+    const arCanvas = document.getElementById('arCanvas');
+    if (arCanvas) {
+      const ctx = arCanvas.getContext('2d');
+      ctx.clearRect(0, 0, arCanvas.width, arCanvas.height);
     }
-    LAB._dragACs.forEach(ac => ac.abort());
-    LAB._dragACs = [];
-    document.getElementById('chainCanvas').style.display  = 'none';
-    document.getElementById('jewelryUnit').style.display  = 'none';
-    document.getElementById('jewelryUnit2').style.display = 'none';
   }
   document.querySelectorAll('.sp').forEach(el => el.classList.remove('active'));
   const el = document.getElementById('s' + n) || document.getElementById('sSuccess');
@@ -1485,11 +1421,6 @@ async function startGeneration(isTweak) {
     if (thisGen !== generationId) { setGenLoading(false); return; }
     if (cutout) {
       url = cutout.blobUrl;
-      LAB._bailNormX = cutout.bailNormX;
-      LAB._bailNormY = 0.05;
-    } else {
-      LAB._bailNormX = 0.5;
-      LAB._bailNormY = 0.0;
     }
   }
 
@@ -1902,444 +1833,148 @@ async function removeWhiteBackground(imageUrl) {
   });
 }
 
-/* ── cropChainStub ───────────────────────────────────────────
-   Scans from the top of the (already bg-removed) image
-   downward. Rows with fewer than 12% of width in opaque pixels
-   are the thin chain stub. Crops from the first "body" row
-   (≥12% opaque) minus a 4px buffer. No-ops if stub not found. */
-async function cropChainStub(blobUrl) {
-  return new Promise(resolve => {
-    const img = new Image();
-    img.onload = () => {
-      const c = document.createElement('canvas');
-      c.width  = img.naturalWidth;
-      c.height = img.naturalHeight;
-      const ctx = c.getContext('2d');
-      ctx.drawImage(img, 0, 0);
-
-      const { data: px, width: W, height: H } =
-        ctx.getImageData(0, 0, c.width, c.height);
-
-      const BODY_THRESHOLD = W * 0.12;
-      let cropTop = 0;
-
-      for (let y = 0; y < H; y++) {
-        let opaque = 0;
-        for (let x = 0; x < W; x++) {
-          if (px[(y * W + x) * 4 + 3] > 128) opaque++;
-        }
-        if (opaque >= BODY_THRESHOLD) {
-          cropTop = Math.max(0, y - 4);
-          break;
-        }
-      }
-
-      if (cropTop === 0) { resolve(blobUrl); return; }
-
-      const croppedH = H - cropTop;
-      const out = document.createElement('canvas');
-      out.width  = W;
-      out.height = croppedH;
-      out.getContext('2d').drawImage(img, 0, cropTop, W, croppedH,
-                                         0, 0,       W, croppedH);
-      out.toBlob(blob => resolve(URL.createObjectURL(blob)), 'image/png');
-    };
-    img.src = blobUrl;
-  });
-}
 
 
-/* ── cropPendantOnly ─────────────────────────────────────────
-   Crops the chain stub from top and excess transparent space from
-   sides of a pendant image. Scans center 60% of width; first row
-   where ≥20% of that center span is opaque = pendant body start.
-   Also trims transparent left/right columns. */
-async function cropPendantOnly(blobUrl) {
-  return new Promise(resolve => {
-    const img = new Image();
-    img.onload = () => {
-      const c = document.createElement('canvas');
-      c.width  = img.naturalWidth;
-      c.height = img.naturalHeight;
-      const ctx = c.getContext('2d');
-      ctx.drawImage(img, 0, 0);
-
-      const { data: px, width: W, height: H } =
-        ctx.getImageData(0, 0, c.width, c.height);
-
-      const cx1 = Math.floor(W * 0.2);
-      const cx2 = Math.floor(W * 0.8);
-      const THRESHOLD = (cx2 - cx1) * 0.20;
-      let cropTop = 0;
-
-      for (let y = 0; y < Math.floor(H * 0.5); y++) {
-        let count = 0;
-        for (let x = cx1; x < cx2; x++) {
-          if (px[(y * W + x) * 4 + 3] > 128) count++;
-        }
-        if (count >= THRESHOLD) { cropTop = Math.max(0, y - 4); break; }
-      }
-
-      let cropLeft = 0, cropRight = W;
-      for (let x = 0; x < W; x++) {
-        let found = false;
-        for (let y = cropTop; y < H; y++) { if (px[(y*W+x)*4+3] > 128) { found=true; break; } }
-        if (found) { cropLeft = Math.max(0, x - 4); break; }
-      }
-      for (let x = W-1; x >= 0; x--) {
-        let found = false;
-        for (let y = cropTop; y < H; y++) { if (px[(y*W+x)*4+3] > 128) { found=true; break; } }
-        if (found) { cropRight = Math.min(W, x + 4); break; }
-      }
-
-      if (cropTop === 0 && cropLeft === 0 && cropRight === W) { resolve(blobUrl); return; }
-
-      const outW = cropRight - cropLeft;
-      const outH = H - cropTop;
-      const out  = document.createElement('canvas');
-      out.width  = outW;
-      out.height = outH;
-      out.getContext('2d').drawImage(img, cropLeft, cropTop, outW, outH, 0, 0, outW, outH);
-      out.toBlob(blob => resolve(URL.createObjectURL(blob)), 'image/png');
-    };
-    img.src = blobUrl;
-  });
-}
-
-/* ── cropToOpaqueBounds ──────────────────────────────────────
-   Tight bounding box crop for BiRefNet-processed transparent pendants.
-   Unlike cropPendantOnly, does NOT attempt chain-stub detection —
-   BiRefNet has already removed the chain. Preserves the bail at top.
-   Crops to the pixel-exact bounds of all alpha > 10 pixels + 4px buffer. */
-async function cropToOpaqueBounds(blobUrl) {
-  return new Promise(resolve => {
-    const img = new Image();
-    img.onload = () => {
-      const W = img.naturalWidth, H = img.naturalHeight;
-      const c = document.createElement('canvas');
-      c.width = W; c.height = H;
-      const ctx = c.getContext('2d');
-      ctx.drawImage(img, 0, 0);
-      const { data: px } = ctx.getImageData(0, 0, W, H);
-      let minX = W, maxX = 0, minY = H, maxY = 0;
-      for (let i = 0, N = W * H; i < N; i++) {
-        if (px[i * 4 + 3] <= 10) continue;
-        const x = i % W, y = (i / W) | 0;
-        if (x < minX) minX = x; if (x > maxX) maxX = x;
-        if (y < minY) minY = y; if (y > maxY) maxY = y;
-      }
-      if (minX > maxX || minY > maxY) { resolve(blobUrl); return; }
-      const buf = 4;
-      const x1 = Math.max(0, minX - buf), y1 = Math.max(0, minY - buf);
-      const x2 = Math.min(W, maxX + buf + 1), y2 = Math.min(H, maxY + buf + 1);
-      const out = document.createElement('canvas');
-      out.width = x2 - x1; out.height = y2 - y1;
-      out.getContext('2d').drawImage(img, x1, y1, out.width, out.height,
-                                          0,  0, out.width, out.height);
-      out.toBlob(blob => resolve(URL.createObjectURL(blob)), 'image/png');
-    };
-    img.onerror = () => resolve(blobUrl);
-    img.src = blobUrl;
-  });
-}
-
-const TRYON_CONFIG = {
-  ring:     { top:'65%', left:'58%',  width:'12%', guide:'HOLD YOUR LEFT HAND IN FRAME' },
-  necklace: { top:'20%', left:'50%',  width:'28%', guide:'CENTER YOUR NECK & CHEST IN FRAME' },
-  pendant:  { top:'20%', left:'50%',  width:'28%', guide:'CENTER YOUR CHEST IN FRAME' },
-  bracelet: { top:'72%', left:'50%',  width:'24%', guide:'HOLD YOUR WRIST IN FRAME' },
-  earrings: { topL:'30%', leftL:'30%', topR:'30%', leftR:'70%', width:'7%', guide:'CENTER YOUR FACE IN FRAME' },
+/* ── MediaPipe guide text ── */
+const TRYON_GUIDE = {
+  ring:     'HOLD YOUR LEFT HAND IN FRAME',
+  necklace: 'CENTER YOUR NECK & CHEST IN FRAME',
+  pendant:  'CENTER YOUR CHEST IN FRAME',
+  bracelet: 'HOLD YOUR WRIST IN FRAME',
+  earrings: 'CENTER YOUR FACE IN FRAME',
 };
 
-/* ── inchesToPx / drawChain / applySize / setPendantSize ── */
-function inchesToPx(inches) {
-  return (document.getElementById('camWrap').offsetWidth / 24) * inches;
-}
-
-function drawChain(chainPx) {
-  const chainCvs = document.getElementById('chainCanvas');
-  const cW = Math.round(chainPx * 3);
-  const cH = Math.round(chainPx * 1.4);
-  chainCvs.width        = cW;
-  chainCvs.height       = cH;
-  chainCvs.style.width  = cW + 'px';
-  chainCvs.style.height = cH + 'px';
-  const ctx = chainCvs.getContext('2d');
-  ctx.clearRect(0, 0, cW, cH);
-
-  const bottomCX = cW / 2, bottomCY = cH;
-  const spread   = chainPx * 1.1;
-  const topY     = cH * 0.08;
-
-  const metal = LAB.material;
+/* ── Chain drawing on the AR canvas ── */
+function drawChainOnCanvas(ctx, lx, ly, rx, ry, pendantX, pendantY, metal) {
   const color = metal === '14ctgold' ? '#d4af65'
               : metal === '10ctgold' ? '#c9a96e'
               : '#b8c0c8';
-
-  ctx.strokeStyle = color; ctx.lineWidth = 1.6;
-  ctx.setLineDash([2.5, 2]); ctx.lineCap = 'round'; ctx.globalAlpha = 0.85;
+  ctx.strokeStyle = color;
+  ctx.lineWidth   = 2;
+  ctx.setLineDash([3, 2.5]);
+  ctx.lineCap     = 'round';
+  ctx.globalAlpha = 0.85;
 
   ctx.beginPath();
-  ctx.moveTo(bottomCX - spread, topY);
-  ctx.quadraticCurveTo(bottomCX - spread * 0.5, cH * 0.7, bottomCX, bottomCY);
+  ctx.moveTo(lx, ly);
+  ctx.quadraticCurveTo(pendantX - 30, pendantY - 20, pendantX, pendantY);
   ctx.stroke();
 
   ctx.beginPath();
-  ctx.moveTo(bottomCX + spread, topY);
-  ctx.quadraticCurveTo(bottomCX + spread * 0.5, cH * 0.7, bottomCX, bottomCY);
+  ctx.moveTo(rx, ry);
+  ctx.quadraticCurveTo(pendantX + 30, pendantY - 20, pendantX, pendantY);
   ctx.stroke();
 
-  ctx.setLineDash([]); ctx.globalAlpha = 1;
+  ctx.setLineDash([]);
+  ctx.globalAlpha = 1;
 }
 
-function applySize(inches) {
-  if (!inches || isNaN(inches) || inches <= 0) return;
-  LAB._selectedInches = inches;
-  if (LAB._applyPendantSize) LAB._applyPendantSize(inches);
-}
+/* ── MediaPipe AR onResults — draws jewelry onto the AR canvas every frame ── */
+function onARResults(results, arCanvas, canvasCtx) {
+  const video = document.getElementById('camVideo');
+  const W = arCanvas.width  = video.videoWidth  || 1280;
+  const H = arCanvas.height = video.videoHeight || 720;
 
-function setPendantSize(btn) {
-  document.querySelectorAll('.psize-btn').forEach(b => b.classList.remove('psize-active'));
-  btn.classList.add('psize-active');
-  const customInput = document.getElementById('pendantCustomIn');
-  if (btn.dataset.inches === 'custom') {
-    customInput.style.display = 'inline-block';
-    const val = parseFloat(customInput.value);
-    if (val > 0) applySize(val);
-  } else {
-    customInput.style.display = 'none';
-    applySize(parseFloat(btn.dataset.inches));
-  }
-}
+  canvasCtx.save();
+  canvasCtx.clearRect(0, 0, W, H);
+  canvasCtx.drawImage(results.image, 0, 0, W, H);
 
-async function placeJewelryOverlay() {
-  if (isProcessing) return;
-  isProcessing = true;
-  try {
-  const thisGen   = generationId;           // stale-check snapshot
-  const cfg       = TRYON_CONFIG[LAB.type] || TRYON_CONFIG.ring;
-  const unit      = document.getElementById('jewelryUnit');
-  const unit2     = document.getElementById('jewelryUnit2');
-  const img       = document.getElementById('jewelryImg');
-  const img2      = document.getElementById('jewelryImg2');
-  const chainCvs  = document.getElementById('chainCanvas');
-  const camWrap   = document.getElementById('camWrap');
-  const isPendant = LAB.type === 'pendant' || LAB.type === 'necklace';
+  const img  = LAB.jewelryImg;
+  const type = LAB.type;
+  const lm   = results.faceLandmarks;
+  const pose = results.poseLandmarks;
+  const lh   = results.leftHandLandmarks;
+  const rh   = results.rightHandLandmarks;
 
-  unit.style.display  = 'none';
-  unit2.style.display = 'none';
-  chainCvs.style.display = 'none';
-
-  LAB._dragACs.forEach(ac => ac.abort());
-  LAB._dragACs = [];
-  if (LAB._pendantRO) { LAB._pendantRO.disconnect(); LAB._pendantRO = null; }
-  LAB._applyPendantSize = null;
-
-  // AbortController-scoped drag; no onMove needed — chain is inside the unit
-  function attachDrag(el) {
-    let dragging = false, ox, oy, oleft, otop;
-    const ac = new AbortController(), sig = ac.signal;
-
-    el.addEventListener('mousedown', e => {
-      dragging = true; el.style.cursor = 'grabbing';
-      ox = e.clientX; oy = e.clientY;
-      const r = el.getBoundingClientRect(), cr = camWrap.getBoundingClientRect();
-      oleft = r.left - cr.left; otop = r.top - cr.top;
-      el.style.left = oleft + 'px'; el.style.top = otop + 'px';
-      e.preventDefault();
-    }, { signal: sig });
-
-    document.addEventListener('mousemove', e => {
-      if (!dragging) return;
-      let nl = oleft + (e.clientX - ox), nt = otop + (e.clientY - oy);
-      nl = Math.max(0, Math.min(nl, camWrap.offsetWidth  - el.offsetWidth));
-      nt = Math.max(0, Math.min(nt, camWrap.offsetHeight - el.offsetHeight));
-      el.style.left = nl + 'px'; el.style.top = nt + 'px';
-    }, { signal: sig });
-
-    document.addEventListener('mouseup', () => {
-      dragging = false; el.style.cursor = 'grab';
-    }, { signal: sig });
-
-    el.addEventListener('touchstart', e => {
-      dragging = true;
-      const t = e.touches[0]; ox = t.clientX; oy = t.clientY;
-      const r = el.getBoundingClientRect(), cr = camWrap.getBoundingClientRect();
-      oleft = r.left - cr.left; otop = r.top - cr.top;
-      el.style.left = oleft + 'px'; el.style.top = otop + 'px';
-      e.preventDefault();
-    }, { passive: false, signal: sig });
-
-    document.addEventListener('touchmove', e => {
-      if (!dragging) return;
-      const t = e.touches[0];
-      let nl = oleft + (t.clientX - ox), nt = otop + (t.clientY - oy);
-      nl = Math.max(0, Math.min(nl, camWrap.offsetWidth  - el.offsetWidth));
-      nt = Math.max(0, Math.min(nt, camWrap.offsetHeight - el.offsetHeight));
-      el.style.left = nl + 'px'; el.style.top = nt + 'px';
-    }, { passive: false, signal: sig });
-
-    document.addEventListener('touchend', () => { dragging = false; }, { signal: sig });
-    return ac;
+  if (!img || !img.complete || !img.naturalWidth) {
+    canvasCtx.restore();
+    return;
   }
 
-  if (LAB.type === 'earrings') {
-    const [url1, url2] = await Promise.all([
-      removeWhiteBackground(LAB.imageUrl),
-      removeWhiteBackground(LAB.imageUrl),
-    ]);
-    if (thisGen !== generationId) return;
-    if (img.src.startsWith('blob:')) URL.revokeObjectURL(img.src);
-    if (img2.src.startsWith('blob:')) URL.revokeObjectURL(img2.src);
-    img.src  = url1 || LAB.imageUrl;
-    img2.src = url2 || LAB.imageUrl;
-    const wPx = parseFloat(cfg.width) / 100 * camWrap.offsetWidth;
-    [[unit, img, cfg.topL, cfg.leftL], [unit2, img2, cfg.topR, cfg.leftR]].forEach(([u, i, top, left]) => {
-      i.style.width  = wPx + 'px';
-      i.style.height = 'auto';
-      u.style.width     = wPx + 'px';
-      u.style.top       = top;
-      u.style.left      = left;
-      u.style.transform = 'translate(-50%,-50%)';
-      u.style.display   = 'block';
-    });
-    LAB._dragACs.push(attachDrag(unit), attachDrag(unit2));
+  const iW = img.naturalWidth;
+  const iH = img.naturalHeight;
 
-  } else {
-    // BiRefNet-processed pendants arrive as transparent blob URLs.
-    // Preserve the ML alpha matte — skip BFS removeWhiteBackground entirely.
-    // Fallback (raw Pollinations URL) still goes through removeWhiteBackground.
-    const isManagedCutout = isPendant && LAB.imageUrl.startsWith('blob:');
-    const cleanUrl = isManagedCutout
-      ? LAB.imageUrl
-      : await removeWhiteBackground(LAB.imageUrl);
-    if (thisGen !== generationId) return;
-
-    let croppedUrl;
-    if (!isPendant) {
-      croppedUrl = cleanUrl || LAB.imageUrl;
-    } else if (isManagedCutout) {
-      croppedUrl = cleanUrl;  // already 1024×1024 standardized by padToStandardCanvas — no further crop
-    } else {
-      croppedUrl = await cropPendantOnly(cleanUrl || LAB.imageUrl);  // fallback: chain-stub crop
+  // ── PENDANT ───────────────────────────────────────────────
+  if (type === 'pendant' && pose) {
+    const ls = pose[11], rs = pose[12];
+    if (ls && rs) {
+      const shoulderW = Math.abs(rs.x - ls.x) * W;
+      const neckX = ((ls.x + rs.x) / 2) * W;
+      const neckY = ((ls.y + rs.y) / 2) * H;
+      const pw = shoulderW * 0.18;
+      const ph = pw * (iH / iW);
+      const py = neckY + shoulderW * 0.05;
+      canvasCtx.drawImage(img, neckX - pw / 2, py, pw, ph);
+      drawChainOnCanvas(canvasCtx, ls.x*W, ls.y*H, rs.x*W, rs.y*H, neckX, py, LAB.material);
     }
-    if (thisGen !== generationId) return;
-    [img, unit].forEach(el => {
-      el.style.background      = 'transparent';
-      el.style.backgroundColor = 'transparent';
-      el.style.boxShadow       = 'none';
-      el.style.border          = 'none';
-      el.style.outline         = 'none';
-      el.style.filter          = 'none';
-      el.style.mixBlendMode    = 'normal';
-      el.style.opacity         = '1';
-    });
+  }
 
-    if (isPendant) {
-      // Sizing constants — all derived from container height so the overlay
-      // scales correctly regardless of screen/window size.
-      const V_POS  = 0.42;   // chain-end lands at this fraction of container height
-      const MIN_PX = 40;     // absolute minimum pendant height in px
-      const MAX_PX = 200;    // absolute maximum pendant height in px
+  // ── NECKLACE ──────────────────────────────────────────────
+  if (type === 'necklace' && pose) {
+    const ls = pose[11], rs = pose[12];
+    if (ls && rs) {
+      const shoulderW = Math.abs(rs.x - ls.x) * W;
+      const neckX = ((ls.x + rs.x) / 2) * W;
+      const neckY = ((ls.y + rs.y) / 2) * H;
+      const nw = shoulderW * 0.95;
+      const nh = nw * (iH / iW);
+      canvasCtx.drawImage(img, neckX - nw/2, neckY - nh * 0.3, nw, nh);
+    }
+  }
 
-      function sizeTo(inches) {
-        const containerH = camWrap.offsetHeight;
-        const containerW = camWrap.offsetWidth;
-        // Guard: bail if container has no size yet, or image hasn't decoded yet.
-        if (!containerH || !img.naturalHeight) return;
+  // ── EARRINGS ──────────────────────────────────────────────
+  if (type === 'earrings' && lm) {
+    const leftEar  = lm[234];
+    const rightEar = lm[454];
+    if (leftEar && rightEar) {
+      const faceW   = Math.abs(lm[454].x - lm[234].x) * W;
+      const earSize = faceW * 0.12;
+      const earH    = earSize * (iH / iW);
+      canvasCtx.drawImage(img, leftEar.x*W - earSize/2, leftEar.y*H, earSize, earH);
+      canvasCtx.save();
+      canvasCtx.scale(-1, 1);
+      canvasCtx.drawImage(img, -(rightEar.x*W) - earSize/2, rightEar.y*H, earSize, earH);
+      canvasCtx.restore();
+    }
+  }
 
-        // Height-based sizing: pendant occupies inches/12.5 of the container height.
-        // (1.5 in at a 16:9 container ~480px tall → ~57px, grows with window.)
-        const pendantH = Math.max(MIN_PX, Math.min(MAX_PX, containerH * (inches / 12.5)));
-        const pendantW = Math.round(pendantH * (img.naturalWidth / img.naturalHeight));
-
-        // Chain height scales with pendant but is capped at 20% of container
-        // so it never dominates the frame on tall screens.
-        const chainPx = Math.min(
-          Math.round(pendantH * 0.9),
-          Math.round(containerH * 0.20)
+  // ── RING ──────────────────────────────────────────────────
+  if (type === 'ring') {
+    const hand = rh || lh;
+    if (hand) {
+      const fingerBase = hand[13];
+      const fingerTip  = hand[14];
+      if (fingerBase && fingerTip) {
+        const fingerLen = Math.hypot(
+          (fingerTip.x - fingerBase.x) * W,
+          (fingerTip.y - fingerBase.y) * H
         );
-        const cW = Math.round(chainPx * 3);   // matches drawChain internal formula
-        const cH = Math.round(chainPx * 1.4); // matches drawChain internal formula
-
-        const bailNormX = LAB._bailNormX || 0.5;
-        const bailNormY = LAB._bailNormY || 0;
-
-        // Align the bail anchor on the pendant image with the chain-end center.
-        // Chain end is at absolute position (unit.left + cW/2, unit.top + cH).
-        // Pendant bail anchor is at (imgLeft + bailNormX*pendantW, imgTop + bailNormY*pendantH).
-        // Setting imgLeft and imgTop as below makes both points coincide.
-        const imgLeft = Math.round(cW / 2 - bailNormX * pendantW);
-        const imgTop  = Math.round(cH    - bailNormY * pendantH);
-
-        img.style.position  = 'absolute';
-        img.style.left      = imgLeft + 'px';
-        img.style.top       = imgTop  + 'px';
-        img.style.height    = pendantH + 'px';
-        img.style.width     = 'auto';
-        img.style.maxWidth  = 'none';
-        img.style.maxHeight = 'none';
-        img.style.display   = 'block';
-
-        chainCvs.style.position = 'absolute';
-        chainCvs.style.left     = '0';
-        chainCvs.style.top      = '0';
-        chainCvs.style.display  = 'block';
-        drawChain(chainPx);
-
-        // Unit box covers the chain canvas; pendant may overflow (overflow:visible).
-        unit.style.display   = 'block';
-        unit.style.width     = cW + 'px';
-        unit.style.height    = Math.round(cH + (1 - bailNormY) * pendantH) + 'px';
-        unit.style.overflow  = 'visible';
-        unit.style.transform = 'none';
-
-        // Position unit so chain-end lands at V_POS fraction of container height,
-        // horizontally centered in the container.
-        const chainEndY = Math.round(containerH * V_POS);
-        unit.style.left = Math.round(containerW / 2 - cW / 2) + 'px';
-        unit.style.top  = Math.round(chainEndY - cH) + 'px';
+        const ringSize = fingerLen * 1.1;
+        canvasCtx.drawImage(img,
+          fingerBase.x*W - ringSize/2,
+          fingerBase.y*H - ringSize/2,
+          ringSize, ringSize
+        );
       }
-
-      const prevUrl = previousBlobUrl;
-      img.onload = () => {
-        if (prevUrl && prevUrl.startsWith('blob:')) URL.revokeObjectURL(prevUrl);
-        previousBlobUrl = croppedUrl.startsWith('blob:') ? croppedUrl : null;
-        sizeTo(LAB._selectedInches);
-      };
-      img.src = croppedUrl;
-      // Fire immediately for cached images (onload won't fire again).
-      if (img.complete && img.naturalHeight > 0) sizeTo(LAB._selectedInches);
-
-      // Store for size buttons
-      LAB._applyPendantSize = sizeTo;
-
-      const ro = new ResizeObserver(() => { sizeTo(LAB._selectedInches); });
-      ro.observe(camWrap);
-      LAB._pendantRO = ro;
-
-      LAB._dragACs.push(attachDrag(unit));
-
-    } else {
-      const wPx = parseFloat(cfg.width) / 100 * camWrap.offsetWidth;
-      img.style.width  = wPx + 'px';
-      img.style.height = 'auto';
-      unit.style.width     = wPx + 'px';
-      unit.style.top       = cfg.top;
-      unit.style.left      = cfg.left;
-      unit.style.transform = cfg.anchorTop ? 'translateX(-50%)' : 'translate(-50%,-50%)';
-      unit.style.display   = 'block';
-      LAB._dragACs.push(attachDrag(unit));
     }
   }
 
-  document.getElementById('guideText').textContent    = cfg.guide;
-  document.getElementById('jewBadgeText').textContent = LAB.type.toUpperCase();
-  ['camGuide','jewBadge','camHint'].forEach(id =>
-    document.getElementById(id).classList.remove('hidden'));
-  } finally {
-    isProcessing = false;
+  // ── BRACELET ──────────────────────────────────────────────
+  if (type === 'bracelet') {
+    const hand = rh || lh;
+    if (hand && pose) {
+      const wristPose = rh ? pose[16] : pose[15];
+      if (wristPose) {
+        const wristX = wristPose.x * W;
+        const wristY = wristPose.y * H;
+        const bw = Math.abs(hand[17].x - hand[5].x) * W * 1.4;
+        const bh = bw * (iH / iW);
+        canvasCtx.drawImage(img, wristX - bw/2, wristY - bh/2, bw, bh);
+      }
+    }
   }
+
+  canvasCtx.restore();
 }
 
 async function startCamera() {
@@ -2355,13 +1990,7 @@ async function startCamera() {
 
   try {
     const stream = await navigator.mediaDevices.getUserMedia({
-      video: {
-        facingMode: 'user',
-        width:  { ideal: 1920 },
-        height: { ideal: 1080 },
-        aspectRatio: { ideal: 16/9 },
-        zoom: 1
-      }
+      video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } }
     });
     LAB.cameraStream = stream;
     const video = document.getElementById('camVideo');
@@ -2369,35 +1998,80 @@ async function startCamera() {
     await new Promise(res => { video.onloadedmetadata = res; });
     await video.play();
     loading.classList.add('hidden');
-    await placeJewelryOverlay();
-  } catch(err) {
+  } catch (err) {
     loading.classList.add('hidden');
     denied.classList.remove('hidden');
+    throw err;
   }
 }
 
-function setupTryOn() {
+async function setupTryOn() {
   isTryOnActive = true;
   if (!LAB.imageUrl) { goStep(4); return; }
+
   ['camGuide','jewBadge','camHint'].forEach(id =>
     document.getElementById(id).classList.add('hidden'));
-  document.getElementById('jewelryUnit').style.display  = 'none';
-  document.getElementById('jewelryUnit2').style.display = 'none';
-  document.getElementById('chainCanvas').style.display  = 'none';
 
-  const isPendantType = LAB.type === 'pendant' || LAB.type === 'necklace';
-  document.getElementById('pendantSizeRow').style.display = isPendantType ? 'block' : 'none';
+  // Create or reuse the AR canvas that overlays the (hidden) video element.
+  const camWrap = document.getElementById('camWrap');
+  let arCanvas = document.getElementById('arCanvas');
+  if (!arCanvas) {
+    arCanvas = document.createElement('canvas');
+    arCanvas.id = 'arCanvas';
+    arCanvas.style.cssText =
+      'width:100%;height:100%;position:absolute;top:0;left:0;transform:scaleX(-1);';
+    camWrap.appendChild(arCanvas);
+  }
+  const canvasCtx = arCanvas.getContext('2d');
 
-  if (isPendantType) {
-    LAB._selectedInches = 1.5;
-    document.querySelectorAll('.psize-btn').forEach(b => {
-      b.classList.toggle('psize-active', b.dataset.inches === '1.5');
-    });
-    document.getElementById('pendantCustomIn').style.display = 'none';
+  // Populate jewelry image — pendant/necklace arrive pre-processed as blob URLs;
+  // other types run removeWhiteBackground on the fly.
+  if (LAB.imageUrl && LAB.imageUrl.startsWith('blob:')) {
+    LAB.jewelryImg.src = LAB.imageUrl;
+  } else if (LAB.imageUrl) {
+    const cleanUrl = await removeWhiteBackground(LAB.imageUrl);
+    LAB.jewelryImg.src = cleanUrl || LAB.imageUrl;
   }
 
-  startCamera();
+  // Initialize Holistic once — model files are ~30 MB; reuse across sessions.
+  if (!LAB.holistic) {
+    LAB.holistic = new Holistic({
+      locateFile: (file) =>
+        `https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${file}`
+    });
+    LAB.holistic.setOptions({
+      modelComplexity:        1,
+      smoothLandmarks:        true,
+      enableSegmentation:     false,
+      smoothSegmentation:     false,
+      refineFaceLandmarks:    true,
+      minDetectionConfidence: 0.5,
+      minTrackingConfidence:  0.5,
+    });
+  }
+  LAB.holistic.onResults(results => onARResults(results, arCanvas, canvasCtx));
+
+  try {
+    await startCamera();
+  } catch { return; }
+
+  const video = document.getElementById('camVideo');
+
+  if (LAB.arCamera) { LAB.arCamera.stop(); LAB.arCamera = null; }
+
+  LAB.arCamera = new Camera(video, {
+    onFrame: async () => { await LAB.holistic.send({ image: video }); },
+    width: 1280,
+    height: 720,
+  });
+  LAB.arCamera.start();
+
+  document.getElementById('guideText').textContent    = TRYON_GUIDE[LAB.type] || 'CENTER YOURSELF IN FRAME';
+  document.getElementById('jewBadgeText').textContent = LAB.type.toUpperCase();
+  ['camGuide','jewBadge','camHint'].forEach(id =>
+    document.getElementById(id).classList.remove('hidden'));
 }
+
 
 /* ═══════════════════════════════════════════════
    AI SPEC CARD
@@ -2496,6 +2170,11 @@ if (PENDANT_IMGLY_ENABLED) {
   setTimeout(() => _getImglyLib().catch(() => {}), 1000);
 }
 </script>
+
+<!-- MediaPipe AR — loaded after main script so Holistic/Camera globals are available -->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/holistic/holistic.js" crossorigin="anonymous"></script>
 
 </body>
 </html>
