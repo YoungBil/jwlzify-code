@@ -17,6 +17,14 @@ if (!firebase.apps.length) {
 var _auth     = firebase.auth();
 var _provider = new firebase.auth.GoogleAuthProvider();
 
+_auth.getRedirectResult().then(function(result) {
+  if (result && result.user) {
+    console.log('Signed in via redirect:', result.user.displayName);
+  }
+}).catch(function(error) {
+  console.error('Redirect sign in error:', error.code, error.message);
+});
+
 _auth.onAuthStateChanged(function(user) {
   var signInBtn  = document.getElementById('signInBtn');
   var userMenu   = document.getElementById('userMenu');
@@ -36,8 +44,7 @@ _auth.onAuthStateChanged(function(user) {
 });
 
 window.signInWithGoogle = function() {
-  _auth.signInWithPopup(_provider)
-    .catch(function(err) { console.error('Sign in error:', err); });
+  _auth.signInWithRedirect(_provider);
 };
 
 window.signOut = function() {
