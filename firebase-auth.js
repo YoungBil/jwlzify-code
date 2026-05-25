@@ -14,20 +14,7 @@ if (!firebase.apps.length) {
 var _auth     = firebase.auth();
 var _provider = new firebase.auth.GoogleAuthProvider();
 
-_auth.getRedirectResult().then(function(result) {
-  if (result && result.user) {
-    console.log('Sign in success:', result.user.displayName);
-  } else {
-    console.log('getRedirectResult: no user returned');
-  }
-}).catch(function(error) {
-  console.error('FIREBASE ERROR CODE:', error.code);
-  console.error('FIREBASE ERROR MESSAGE:', error.message);
-  console.error('FIREBASE ERROR FULL:', JSON.stringify(error));
-});
-
 _auth.onAuthStateChanged(function(user) {
-  console.log('Auth state changed. User:', user ? user.displayName : 'null');
   var signInBtn  = document.getElementById('signInBtn');
   var userMenu   = document.getElementById('userMenu');
   var userAvatar = document.getElementById('userAvatar');
@@ -46,7 +33,21 @@ _auth.onAuthStateChanged(function(user) {
 });
 
 window.signInWithGoogle = function() {
-  _auth.signInWithRedirect(_provider);
+  var provider = new firebase.auth.GoogleAuthProvider();
+  provider.setCustomParameters({ prompt: 'select_account' });
+  firebase.auth().signInWithPopup(provider)
+    .then(function(result) {
+      console.log('Signed in:', result.user.displayName);
+    })
+    .catch(function(error) {
+      if (error.code === 'auth/popup-blocked') {
+        firebase.auth().signInWithRedirect(provider);
+      } else if (error.code === 'auth/popup-closed-by-user') {
+        console.log('User closed the popup');
+      } else {
+        console.error('Sign in error:', error.code, error.message);
+      }
+    });
 };
 
 window.signOut = function() {
