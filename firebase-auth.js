@@ -12,19 +12,16 @@ if (!firebase.apps.length) {
 }
 
 window.signInWithGoogle = function() {
+  const auth     = firebase.auth();
   const provider = new firebase.auth.GoogleAuthProvider();
-  provider.addScope('email');
-  provider.addScope('profile');
-  firebase.auth().signInWithRedirect(provider);
+  auth.signInWithPopup(provider)
+    .then((result) => {
+      console.log('Success:', result.user.displayName);
+    })
+    .catch((error) => {
+      console.error('Error:', error.code, error.message);
+    });
 };
-
-firebase.auth().getRedirectResult().then((result) => {
-  if (result && result.user) {
-    console.log('Signed in:', result.user.displayName);
-  }
-}).catch((error) => {
-  console.error('Auth error:', error.code, error.message);
-});
 
 firebase.auth().onAuthStateChanged((user) => {
   const signInBtn  = document.getElementById('signInBtn');
