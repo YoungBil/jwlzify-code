@@ -1622,7 +1622,15 @@ function applySuggestion(el) {
 }
 
 /* ── Live spot prices ── */
-const SPOT = { silver: 0.97, gold10ct: 26.50, gold14ct: 37.10, source: 'fallback', fetchedAt: null, silverOz: 32.50, goldOz: 3300.00 };
+const SPOT = (function() {
+  const TROY = 31.1035, sOz = 32.50, gOz = 3300.00;
+  return {
+    silver:   sOz / TROY,
+    gold10ct: (gOz / TROY) * (10 / 24),
+    gold14ct: (gOz / TROY) * (14 / 24),
+    source: 'fallback', fetchedAt: null, silverOz: sOz, goldOz: gOz
+  };
+})();
 
 function applyOzPrices(silverOz, goldOz, source) {
   const TROY = 31.1035;
