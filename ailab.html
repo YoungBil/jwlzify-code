@@ -11,6 +11,7 @@
 <!-- Firebase SDK -->
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
 <!-- @imgly/background-removal — preloads at page start; exposes window.__imglyRmBg when ready -->
 <script type="module">
   try {
@@ -756,22 +757,22 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-5 mb-5">
           <div>
             <label class="label block mb-2" style="font-size:10px;letter-spacing:0.16em;color:#3c6474;">First Name *</label>
-            <input type="text" required placeholder="First name" class="order-input">
+            <input type="text" name="firstName" required placeholder="First name" class="order-input">
           </div>
           <div>
             <label class="label block mb-2" style="font-size:10px;letter-spacing:0.16em;color:#3c6474;">Last Name *</label>
-            <input type="text" required placeholder="Last name" class="order-input">
+            <input type="text" name="lastName" required placeholder="Last name" class="order-input">
           </div>
         </div>
 
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-5 mb-5">
           <div>
             <label class="label block mb-2" style="font-size:10px;letter-spacing:0.16em;color:#3c6474;">Email Address *</label>
-            <input type="email" required placeholder="you@example.com" class="order-input">
+            <input type="email" name="email" required placeholder="you@example.com" class="order-input">
           </div>
           <div>
             <label class="label block mb-2" style="font-size:10px;letter-spacing:0.16em;color:#3c6474;">Phone Number</label>
-            <input type="tel" placeholder="+1 (416) 555-0000" class="order-input">
+            <input type="tel" name="phone" placeholder="+1 (416) 555-0000" class="order-input">
           </div>
         </div>
 
@@ -780,28 +781,28 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
 
         <div class="mb-5">
           <label class="label block mb-2" style="font-size:10px;letter-spacing:0.16em;color:#3c6474;">Street Address *</label>
-          <input type="text" required placeholder="123 Luxury Ave" class="order-input mb-3">
-          <input type="text" placeholder="Apartment, suite, unit (optional)" class="order-input">
+          <input type="text" name="address1" required placeholder="123 Luxury Ave" class="order-input mb-3">
+          <input type="text" name="address2" placeholder="Apartment, suite, unit (optional)" class="order-input">
         </div>
 
         <div class="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-5">
           <div>
             <label class="label block mb-2" style="font-size:10px;letter-spacing:0.16em;color:#3c6474;">City *</label>
-            <input type="text" required placeholder="Toronto" class="order-input">
+            <input type="text" name="city" required placeholder="Toronto" class="order-input">
           </div>
           <div>
             <label class="label block mb-2" style="font-size:10px;letter-spacing:0.16em;color:#3c6474;">Province / State *</label>
-            <input type="text" required placeholder="Ontario" class="order-input">
+            <input type="text" name="province" required placeholder="Ontario" class="order-input">
           </div>
           <div>
             <label class="label block mb-2" style="font-size:10px;letter-spacing:0.16em;color:#3c6474;">Postal Code *</label>
-            <input type="text" required placeholder="M5V 2T6" class="order-input">
+            <input type="text" name="postalCode" required placeholder="M5V 2T6" class="order-input">
           </div>
         </div>
 
         <div class="mb-6">
           <label class="label block mb-2" style="font-size:10px;letter-spacing:0.16em;color:#3c6474;">Country</label>
-          <select class="order-input" style="cursor:pointer;">
+          <select name="country" class="order-input" style="cursor:pointer;">
             <option>Canada</option>
             <option>United States</option>
             <option>United Kingdom</option>
@@ -812,7 +813,7 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
 
         <div class="mb-6">
           <label class="label block mb-2" style="font-size:10px;letter-spacing:0.16em;color:#3c6474;">Special Instructions</label>
-          <textarea rows="3" placeholder="Gift wrapping, engraving requests, ring size (if known), delivery date preference…"
+          <textarea name="notes" rows="3" placeholder="Gift wrapping, engraving requests, ring size (if known), delivery date preference…"
                     class="order-input" style="resize:vertical;line-height:1.65;"></textarea>
         </div>
 
@@ -979,6 +980,7 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
   document.getElementById('siteHeader').classList.add('nav-visible');
 </script>
 <script src="firebase-auth.js"></script>
+<script src="firestore-service.js"></script>
 
 <!-- ════════════════════════════
      JAVASCRIPT
@@ -1085,7 +1087,7 @@ function goStep(n) {
   updateProgress(n);
   window.scrollTo({ top: 0, behavior: 'smooth' });
   if (n === 3) setupTryOn();
-  if (n === 4) displayPricing(LAB.material, LAB.gem, LAB.type);
+  if (n === 4) { displayPricing(LAB.material, LAB.gem, LAB.type); saveCurrentDesign(); }
   if (n === 5) populateOrderSummary();
 }
 
@@ -1924,6 +1926,21 @@ function populateOrderSummary() {
 }
 
 /* ── Order submission ────────────────────────── */
+function saveCurrentDesign() {
+  if (!window.JWL) return;
+  const user = firebase.auth().currentUser;
+  if (!user) return;
+  JWL.saveDesign({
+    prompt:   LAB.prompt  || '',
+    style:    LAB.style,
+    material: LAB.material,
+    gem:      LAB.gem,
+    type:     LAB.type,
+    imageUrl: LAB.imageUrl || null,
+    price:    LAB.quote ? LAB.quote.total : null,
+  }).catch(console.error);
+}
+
 function submitOrder(e) {
   e.preventDefault();
   const btn  = document.getElementById('orderSubmitBtn');
@@ -1931,9 +1948,41 @@ function submitOrder(e) {
   btn.disabled = true;
   text.textContent = 'Placing order…';
 
+  const orderId = 'JWLZ-' + String(Date.now()).slice(-6);
+
+  if (window.JWL) {
+    const fd = new FormData(e.target);
+    JWL.saveOrder({
+      orderId,
+      status: 'pending',
+      design: {
+        style:    LAB.style,
+        material: LAB.material,
+        gem:      LAB.gem,
+        type:     LAB.type,
+        imageUrl: LAB.imageUrl || null,
+        price:    LAB.quote ? LAB.quote.total : null,
+      },
+      customer: {
+        firstName: fd.get('firstName') || '',
+        lastName:  fd.get('lastName')  || '',
+        email:     fd.get('email')     || '',
+        phone:     fd.get('phone')     || '',
+      },
+      shipping: {
+        address1:   fd.get('address1')   || '',
+        address2:   fd.get('address2')   || '',
+        city:       fd.get('city')       || '',
+        province:   fd.get('province')   || '',
+        postalCode: fd.get('postalCode') || '',
+        country:    fd.get('country')    || '',
+      },
+      notes: fd.get('notes') || '',
+    }).catch(console.error);
+  }
+
   setTimeout(() => {
-    const id = 'JWLZ-' + String(Date.now()).slice(-6);
-    document.getElementById('orderIdDisplay').textContent = 'ORDER #' + id;
+    document.getElementById('orderIdDisplay').textContent = 'ORDER #' + orderId;
     document.querySelectorAll('.sp').forEach(el => el.classList.remove('active'));
     document.getElementById('sSuccess').classList.add('active');
     updateProgress(5);

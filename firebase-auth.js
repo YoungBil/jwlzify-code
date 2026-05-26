@@ -105,6 +105,18 @@ firebase.auth().onAuthStateChanged((user) => {
     if (userAvatar) userAvatar.src = user.photoURL || '';
     if (userName)   userName.textContent =
       user.displayName?.split(' ')[0] || 'Account';
+
+    var dd = document.getElementById('userDropdown');
+    if (dd && !dd.querySelector('[data-jwl-account]')) {
+      var btn = document.createElement('button');
+      btn.setAttribute('data-jwl-account', '');
+      btn.onclick = function() { window.location.href = 'account.html'; };
+      btn.style.cssText = 'width:100%;text-align:left;padding:10px 14px;font-family:Inter;font-size:13px;color:#1b1c1c;background:transparent;border:none;border-radius:8px;cursor:pointer;transition:background 0.15s ease;';
+      btn.textContent = 'My Account';
+      btn.onmouseover = function() { this.style.background = '#f5f3f3'; };
+      btn.onmouseout  = function() { this.style.background = 'transparent'; };
+      dd.insertBefore(btn, dd.firstChild);
+    }
   } else {
     if (signInBtn)  signInBtn.style.display  = 'block';
     if (userMenu)   userMenu.style.display   = 'none';
