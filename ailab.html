@@ -674,7 +674,6 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
 
       <!-- Right: price breakdown -->
       <div class="md:col-span-3">
-        <div id="priceSourceIndicator" style="font-size:11px;color:#8a9299;margin-bottom:8px;padding-left:2px;"></div>
         <div id="pricingCard" class="rounded-2xl bg-white p-8 shadow-xl border border-[#c1c7cb]/15">
           <!-- Header -->
           <div class="flex items-center gap-3 pb-6 mb-6" style="border-bottom:1px solid rgba(193,199,203,0.35);">
@@ -1005,6 +1004,7 @@ const GEM_LABEL = {
   'lab_diamond_vvs':   'Lab Diamond VVS',
   'lab_diamond':       'Lab Diamond',
   'real_diamond_vsvvs':'Real Diamond VS/VVS',
+  'natural_diamond':   'Natural Diamond VS/VVS',
 };
 function matLabel(v) { return MATERIAL_LABEL[v] || v; }
 function gemLabel(v) { return GEM_LABEL[v] || v; }
@@ -1622,37 +1622,32 @@ function applySuggestion(el) {
 }
 
 /* ── Live spot prices ── */
-const SPOT = (function() {
-  const TROY = 31.1035, sOz = 32.50, gOz = 3300.00;
+const FALLBACK_PRICES = { silverPerOz: 32.50, goldPerOz: 3300.00 };
+
+const spotPrices = (function() {
+  var TROY = 31.1034768, s = FALLBACK_PRICES.silverPerOz, g = FALLBACK_PRICES.goldPerOz;
   return {
-    silver:   sOz / TROY,
-    gold10ct: (gOz / TROY) * (10 / 24),
-    gold14ct: (gOz / TROY) * (14 / 24),
-    source: 'fallback', fetchedAt: null, silverOz: sOz, goldOz: gOz
+    silverPerGram:   (s / TROY) * 0.925,
+    gold10ctPerGram: (g / TROY) * (10 / 24),
+    gold14ctPerGram: (g / TROY) * (14 / 24),
+    source: 'fallback', fetchedAt: null
   };
 })();
 
-function applyOzPrices(silverOz, goldOz, source) {
-  const TROY = 31.1035;
-  SPOT.silverOz  = silverOz;
-  SPOT.goldOz    = goldOz;
-  SPOT.silver    = silverOz / TROY;
-  SPOT.gold10ct  = (goldOz / TROY) * (10 / 24);
-  SPOT.gold14ct  = (goldOz / TROY) * (14 / 24);
-  SPOT.source    = source;
-  SPOT.fetchedAt = new Date();
-  updatePriceIndicator(source);
-}
-
-function updatePriceIndicator(source) {
-  const el = document.getElementById('priceSourceIndicator');
-  if (!el) return;
-  const time = SPOT.fetchedAt
-    ? SPOT.fetchedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    : '';
-  el.innerHTML = source === 'fallback'
-    ? '<span style="color:#ba6c00;">● Estimated prices</span><span style="color:#8a9299;"> · market data unavailable</span>'
-    : `<span style="color:#3c6474;">● Live prices</span><span style="color:#8a9299;"> via ${source} · updated ${time}</span>`;
+function applyOzPrices(silverOzRaw, goldOz, source) {
+  var TROY = 31.1034768;
+  spotPrices.silverPerGram   = (silverOzRaw / TROY) * 0.925;
+  spotPrices.gold10ctPerGram = (goldOz / TROY) * (10 / 24);
+  spotPrices.gold14ctPerGram = (goldOz / TROY) * (14 / 24);
+  spotPrices.source          = source;
+  spotPrices.fetchedAt       = new Date().toISOString();
+  console.log('=== SPOT PRICES LOADED ===');
+  console.log('Source:', source);
+  console.log('Silver spot (oz): $' + silverOzRaw);
+  console.log('Gold spot (oz): $' + goldOz);
+  console.log('925 Silver /g: $' + spotPrices.silverPerGram.toFixed(6));
+  console.log('10ct Gold /g: $' + spotPrices.gold10ctPerGram.toFixed(6));
+  console.log('14ct Gold /g: $' + spotPrices.gold14ctPerGram.toFixed(6));
 }
 
 async function fetchSpotPrices() {
@@ -1692,102 +1687,118 @@ async function fetchSpotPrices() {
     if (goldOz) { applyOzPrices(goldOz / 85, goldOz, 'frankfurter.app'); return; }
   } catch(e) {}
 
-  applyOzPrices(32.50, 3300.00, 'fallback');
+  applyOzPrices(FALLBACK_PRICES.silverPerOz, FALLBACK_PRICES.goldPerOz, 'fallback');
 }
 
 /* ── Pricing engine ── */
 const MATERIAL_WEIGHTS = {
-  '925silver': { ring:4, necklace:8, pendant:5, earrings:3, bracelet:12 },
-  '10ctgold':  { ring:4, necklace:8, pendant:5, earrings:3, bracelet:12 },
-  '14ctgold':  { ring:4, necklace:8, pendant:5, earrings:3, bracelet:12 },
+  ring:     { metalGrams: 4,  stoneCarats: 0.80 },
+  necklace: { metalGrams: 8,  stoneCarats: 1.20 },
+  pendant:  { metalGrams: 5,  stoneCarats: 0.60 },
+  earrings: { metalGrams: 3,  stoneCarats: 0.50 },
+  bracelet: { metalGrams: 12, stoneCarats: 1.50 },
 };
-const STONE_CARATS = { ring:0.8, necklace:1.2, pendant:0.6, earrings:0.5, bracelet:1.5 };
-const STONE_RATES  = { moissanite_vvs:80, lab_diamond_vvs:150, lab_diamond:150, real_diamond_vsvvs:800 };
-const PRICE_MULT   = {
-  '925silver|moissanite_vvs':    2.7,
-  '925silver|lab_diamond_vvs':   2.2,
-  '10ctgold|lab_diamond':        2.2,
-  '10ctgold|real_diamond_vsvvs': 1.9,
-  '14ctgold|lab_diamond':        2.2,
-  '14ctgold|real_diamond_vsvvs': 1.9,
+const STONE_RATES = {
+  moissanite_vvs:    89.00,
+  lab_diamond_vvs:   185.00,
+  lab_diamond:       185.00,
+  real_diamond_vsvvs: 1050.00,
+  natural_diamond:   1050.00,
 };
-
-function metalRate(mat) {
-  if (mat === '925silver') return SPOT.silver;
-  if (mat === '10ctgold')  return SPOT.gold10ct;
-  if (mat === '14ctgold')  return SPOT.gold14ct;
-  return SPOT.silver;
-}
 
 function calculatePrice(metalType, stoneType, jewelryType) {
-  console.log('calculatePrice called with:', metalType, stoneType, jewelryType);
-  console.log('MATERIAL_WEIGHTS for metal:', MATERIAL_WEIGHTS[metalType]);
-  const metalCostPerGram  = metalRate(metalType);
-  const stoneCostPerCarat = STONE_RATES[stoneType] || 80;
-  console.log('metalCostPerGram:', metalCostPerGram, '| stoneCostPerCarat:', stoneCostPerCarat);
+  var weights = MATERIAL_WEIGHTS[jewelryType] || MATERIAL_WEIGHTS['pendant'];
 
-  const metalGrams  = (LAB.spec && LAB.spec.totalWeightGrams)
-    ? parseFloat(LAB.spec.totalWeightGrams)
-    : ((MATERIAL_WEIGHTS[metalType] && MATERIAL_WEIGHTS[metalType][jewelryType]) || 4);
-  const stoneCarats = (LAB.spec && LAB.spec.totalCarats)
-    ? parseFloat(LAB.spec.totalCarats)
-    : (STONE_CARATS[jewelryType] || 0.8);
+  var metalPerGram = 0;
+  if (metalType === '925silver')   metalPerGram = spotPrices.silverPerGram;
+  else if (metalType === '10ctgold') metalPerGram = spotPrices.gold10ctPerGram;
+  else if (metalType === '14ctgold') metalPerGram = spotPrices.gold14ctPerGram;
 
-  const metalCost = metalGrams  * metalCostPerGram;
-  const stoneCost = stoneCarats * stoneCostPerCarat;
-  const baseCost  = metalCost + stoneCost;
-  const mult      = PRICE_MULT[`${metalType}|${stoneType}`] || 2.2;
-  const total     = Math.ceil(baseCost * mult / 10) * 10;
+  var stoneRate = STONE_RATES[stoneType] || 89.00;
+  var metalCost = weights.metalGrams  * metalPerGram;
+  var stoneCost = weights.stoneCarats * stoneRate;
+  var baseCost  = metalCost + stoneCost;
 
-  return { total, metalGrams, stoneCarats, metalCostPerGram, stoneCostPerCarat, metalCost, stoneCost, baseCost, mult };
+  var labourRate = 0.20;
+  var profitRate = 1.00;
+  if (metalType === '925silver' && stoneType === 'moissanite_vvs') {
+    profitRate = 1.50;
+  } else if ((metalType === '10ctgold' || metalType === '14ctgold') &&
+             (stoneType === 'real_diamond_vsvvs' || stoneType === 'natural_diamond')) {
+    profitRate = 0.70;
+  }
+
+  var labourCost = baseCost * labourRate;
+  var profitCost = baseCost * profitRate;
+  var finalPrice = baseCost + labourCost + profitCost;
+
+  console.log('=== EXACT PRICE CALCULATION ===');
+  console.log('Type:', jewelryType);
+  console.log('Metal:', metalType, '@ $' + metalPerGram.toFixed(6) + '/g ×', weights.metalGrams + 'g = $' + metalCost.toFixed(6));
+  console.log('Stone:', stoneType, '@ $' + stoneRate + '/ct ×', weights.stoneCarats + 'ct = $' + stoneCost.toFixed(6));
+  console.log('Base cost: $' + baseCost.toFixed(6));
+  console.log('Labour (20%): $' + labourCost.toFixed(6));
+  console.log('Profit (' + (profitRate * 100) + '%): $' + profitCost.toFixed(6));
+  console.log('FINAL EXACT: $' + finalPrice.toFixed(2));
+  console.log('================================');
+
+  return {
+    metalGrams:    weights.metalGrams,
+    stoneCarats:   weights.stoneCarats,
+    metalCostPerG: metalPerGram,
+    stoneRate:     stoneRate,
+    metalCost:     metalCost,
+    stoneCost:     stoneCost,
+    baseCost:      baseCost,
+    labourCost:    labourCost,
+    profitCost:    profitCost,
+    finalPrice:    finalPrice
+  };
 }
 
 function calcQuote() {
-  return LAB.quote || calculatePrice(LAB.material, LAB.gem, LAB.type);
+  return LAB.quote || { total: calculatePrice(LAB.material, LAB.gem, LAB.type).finalPrice };
 }
 
 async function displayPricing(metalType, stoneType, jewelryType) {
-  if (!SPOT.fetchedAt) await fetchSpotPrices();
+  if (!spotPrices.fetchedAt) await fetchSpotPrices();
 
-  const r        = calculatePrice(metalType, stoneType, jewelryType);
-  LAB.quote      = { total: r.total, grams: r.metalGrams };
+  var r   = calculatePrice(metalType, stoneType, jewelryType);
+  LAB.quote = { total: r.finalPrice, grams: r.metalGrams };
 
-  const typeName = jewelryType.charAt(0).toUpperCase() + jewelryType.slice(1);
-  document.getElementById('quoteHeading').textContent = `${LAB.style} ${typeName}`;
+  var typeName = jewelryType.charAt(0).toUpperCase() + jewelryType.slice(1);
+  document.getElementById('quoteHeading').textContent = LAB.style + ' ' + typeName;
 
   function row(label, value, bold) {
-    var fs    = bold ? '13px' : '12px';
-    var fw    = bold ? '700'  : '500';
-    var color = bold ? '#1b1c1c' : '#41484b';
+    var fs = bold ? '13px' : '12px', fw = bold ? '700' : '500', col = bold ? '#1b1c1c' : '#41484b';
     return '<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid rgba(193,199,203,0.2);">'
       + '<span style="font-family:Inter,sans-serif;font-size:11px;color:#8a9299;letter-spacing:0.04em;">' + label + '</span>'
-      + '<span style="font-family:Inter,sans-serif;font-size:' + fs + ';font-weight:' + fw + ';color:' + color + ';">' + value + '</span>'
+      + '<span style="font-family:Inter,sans-serif;font-size:' + fs + ';font-weight:' + fw + ';color:' + col + ';">' + value + '</span>'
       + '</div>';
   }
-  function usd(n) { return '$' + n.toFixed(2); }
 
   document.getElementById('priceRows').innerHTML =
     '<div style="margin-bottom:14px;">'
-    + row('Piece Type',         typeName)
-    + row('Metal',              matLabel(metalType))
-    + row('Metal Weight',       r.metalGrams.toFixed(1) + 'g')
-    + row('Metal Rate (live)',  usd(r.metalCostPerGram) + '/g')
-    + row('Metal Cost',         usd(r.metalCost))
-    + row('Stone',              gemLabel(stoneType))
-    + row('Stone Weight',       r.stoneCarats.toFixed(2) + 'ct')
-    + row('Stone Rate',         '$' + r.stoneCostPerCarat + '/ct')
-    + row('Stone Cost',         usd(r.stoneCost))
-    + row('Total Material Cost',usd(r.baseCost), true)
+    + row('Piece Type',          typeName)
+    + row('Metal',               matLabel(metalType))
+    + row('Metal Weight',        r.metalGrams.toFixed(1) + 'g')
+    + row('Metal Rate (live)',   '$' + r.metalCostPerG.toFixed(4) + '/g')
+    + row('Metal Cost',          '$' + r.metalCost.toFixed(2))
+    + row('Stone',               gemLabel(stoneType))
+    + row('Stone Weight',        r.stoneCarats.toFixed(2) + 'ct')
+    + row('Stone Rate',          '$' + r.stoneRate.toFixed(2) + '/ct')
+    + row('Stone Cost',          '$' + r.stoneCost.toFixed(2))
+    + row('Total Material Cost', '$' + r.baseCost.toFixed(2), true)
     + '</div>'
     + '<div class="quote-row" style="padding:12px 0 6px;border-top:2px solid rgba(193,199,203,0.4);">'
     +   '<span class="body-copy" style="font-size:15px;color:#41484b;">Estimated Price</span>'
-    +   '<span style="font-family:\'Playfair Display\',serif;font-size:30px;font-weight:700;color:#3c6474;">$' + r.total.toLocaleString() + '</span>'
+    +   '<span style="font-family:\'Playfair Display\',serif;font-size:30px;font-weight:700;color:#3c6474;">$' + r.finalPrice.toFixed(2) + '</span>'
     + '</div>'
     + '<div style="font-family:Inter,sans-serif;font-size:10px;color:rgba(65,72,75,0.5);text-align:center;margin-top:8px;letter-spacing:0.06em;">Price updates daily with live market rates</div>';
 
   document.getElementById('quoteTotal').style.display = 'none';
 
-  const INCLUDES = [
+  var INCLUDES = [
     { icon:'diamond',        label:'GIA Certified Stones' },
     { icon:'verified',       label:'18-Month Craftsmanship Warranty' },
     { icon:'image',          label:'Archival AI Design Render' },
@@ -1800,8 +1811,6 @@ async function displayPricing(metalType, stoneType, jewelryType) {
       + '<span class="body-copy" style="font-size:13px;color:#41484b;">' + i.label + '</span>'
       + '</li>';
   }).join('');
-
-  updatePriceIndicator(SPOT.source);
 }
 
 /* ── Order summary population ────────────────── */
@@ -2531,7 +2540,18 @@ async function fetchSpecCard() {
 }
 
 /* ── Initialise spot prices on load ── */
-fetchSpotPrices();
+fetchSpotPrices().then(function() {
+  console.log('=== VERIFICATION TESTS ===');
+  var t1 = calculatePrice('925silver', 'moissanite_vvs', 'ring');
+  console.log('Test 1 — 925 Silver + Moissanite Ring:');
+  console.log('Base: $' + t1.baseCost.toFixed(2));
+  console.log('Final: $' + t1.finalPrice.toFixed(2));
+  var t2 = calculatePrice('14ctgold', 'natural_diamond', 'pendant');
+  console.log('Test 2 — 14ct Gold + Natural Diamond Pendant:');
+  console.log('Base: $' + t2.baseCost.toFixed(2));
+  console.log('Final: $' + t2.finalPrice.toFixed(2));
+  console.log('==========================');
+});
 setInterval(fetchSpotPrices, 12 * 60 * 60 * 1000);
 
 /* ── Prefetch @imgly/background-removal model weights non-blocking ── */
