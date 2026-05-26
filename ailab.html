@@ -1728,16 +1728,16 @@ function calculatePrice(metalType, stoneType, jewelryType) {
     : (STONE_CARATS[jewelryType] || 0.8);
   const baseCost = (grams * metalRate(metalType)) + (carats * (STONE_RATES[stoneType] || 80));
   const mult     = PRICE_MULT[`${metalType}|${stoneType}`] || 2.2;
-  return Math.ceil(baseCost * mult / 10) * 10;
+  return { total: Math.ceil(baseCost * mult / 10) * 10, grams, carats };
 }
 
 function calcQuote() {
-  return LAB.quote || { total: calculatePrice(LAB.material, LAB.gem, LAB.type) };
+  return LAB.quote || calculatePrice(LAB.material, LAB.gem, LAB.type);
 }
 
 function displayPricing(metalType, stoneType, jewelryType) {
-  const total = calculatePrice(metalType, stoneType, jewelryType);
-  LAB.quote   = { total };
+  const { total, grams } = calculatePrice(metalType, stoneType, jewelryType);
+  LAB.quote = { total, grams };
 
   const typeName = jewelryType.charAt(0).toUpperCase() + jewelryType.slice(1);
   document.getElementById('quoteHeading').textContent = `${LAB.style} ${typeName}`;
@@ -1746,9 +1746,13 @@ function displayPricing(metalType, stoneType, jewelryType) {
     ? SPOT.fetchedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     : 'estimated';
   document.getElementById('priceRows').innerHTML = `
-    <div class="quote-row" style="padding:22px 0;">
+    <div class="quote-row" style="padding:14px 0 10px;">
       <span class="body-copy" style="font-size:16px;color:#41484b;">Estimated Price</span>
       <span style="font-family:'Playfair Display',serif;font-size:30px;font-weight:700;color:#3c6474;">$${total.toLocaleString()}</span>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0 14px;border-top:1px solid rgba(193,199,203,0.3);">
+      <span class="body-copy" style="font-size:13px;color:#41484b;">Metal weight</span>
+      <span style="font-family:'Inter',sans-serif;font-size:13px;font-weight:600;color:#1b1c1c;">${grams.toFixed(1)} g &nbsp;<span style="font-weight:400;color:#8a9299;">${matLabel(metalType)}</span></span>
     </div>
     <div style="padding:0 0 16px;font-size:11px;color:#8a9299;">Metal rate as of ${time} · varies with live market</div>
   `;
