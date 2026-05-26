@@ -11,47 +11,41 @@ if (!firebase.apps.length) {
   firebase.initializeApp(firebaseConfig);
 }
 
-var _auth     = firebase.auth();
-var _provider = new firebase.auth.GoogleAuthProvider();
+window.signInWithGoogle = function() {
+  const provider = new firebase.auth.GoogleAuthProvider();
+  provider.addScope('email');
+  provider.addScope('profile');
+  firebase.auth().signInWithRedirect(provider);
+};
 
-_auth.onAuthStateChanged(function(user) {
-  var signInBtn  = document.getElementById('signInBtn');
-  var userMenu   = document.getElementById('userMenu');
-  var userAvatar = document.getElementById('userAvatar');
-  var userName   = document.getElementById('userName');
+firebase.auth().getRedirectResult().then((result) => {
+  if (result && result.user) {
+    console.log('Signed in:', result.user.displayName);
+  }
+}).catch((error) => {
+  console.error('Auth error:', error.code, error.message);
+});
+
+firebase.auth().onAuthStateChanged((user) => {
+  const signInBtn  = document.getElementById('signInBtn');
+  const userMenu   = document.getElementById('userMenu');
+  const userAvatar = document.getElementById('userAvatar');
+  const userName   = document.getElementById('userName');
 
   if (user) {
     if (signInBtn)  signInBtn.style.display  = 'none';
     if (userMenu)   userMenu.style.display   = 'flex';
-    if (userAvatar) userAvatar.src = user.photoURL ||
-      'https://ui-avatars.com/api/?name=' + encodeURIComponent(user.displayName || 'U') + '&background=3c6474&color=fff';
-    if (userName)   userName.textContent = (user.displayName || '').split(' ')[0] || 'Account';
+    if (userAvatar) userAvatar.src = user.photoURL || '';
+    if (userName)   userName.textContent =
+      user.displayName?.split(' ')[0] || 'Account';
   } else {
     if (signInBtn)  signInBtn.style.display  = 'block';
     if (userMenu)   userMenu.style.display   = 'none';
   }
 });
 
-window.signInWithGoogle = function() {
-  var provider = new firebase.auth.GoogleAuthProvider();
-  provider.setCustomParameters({ prompt: 'select_account' });
-  firebase.auth().signInWithPopup(provider)
-    .then(function(result) {
-      console.log('Signed in:', result.user.displayName);
-    })
-    .catch(function(error) {
-      if (error.code === 'auth/popup-blocked') {
-        firebase.auth().signInWithRedirect(provider);
-      } else if (error.code === 'auth/popup-closed-by-user') {
-        console.log('User closed the popup');
-      } else {
-        console.error('Sign in error:', error.code, error.message);
-      }
-    });
-};
-
 window.signOut = function() {
-  _auth.signOut();
+  firebase.auth().signOut();
   var dd = document.getElementById('userDropdown');
   if (dd) dd.style.display = 'none';
 };
