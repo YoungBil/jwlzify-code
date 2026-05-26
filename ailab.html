@@ -674,7 +674,8 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
 
       <!-- Right: price breakdown -->
       <div class="md:col-span-3">
-        <div class="rounded-2xl bg-white p-8 shadow-xl border border-[#c1c7cb]/15">
+        <div id="priceSourceIndicator" style="font-size:11px;color:#8a9299;margin-bottom:8px;padding-left:2px;"></div>
+        <div id="pricingCard" class="rounded-2xl bg-white p-8 shadow-xl border border-[#c1c7cb]/15">
           <!-- Header -->
           <div class="flex items-center gap-3 pb-6 mb-6" style="border-bottom:1px solid rgba(193,199,203,0.35);">
             <div style="width:40px;height:40px;background:linear-gradient(135deg,#b9e2f5,#3c6474);border-radius:6px;transform:rotate(45deg);flex-shrink:0;"></div>
@@ -1084,7 +1085,7 @@ function goStep(n) {
   updateProgress(n);
   window.scrollTo({ top: 0, behavior: 'smooth' });
   if (n === 3) setupTryOn();
-  if (n === 4) renderQuote();
+  if (n === 4) displayPricing(LAB.material, LAB.gem, LAB.type);
   if (n === 5) populateOrderSummary();
 }
 
@@ -1620,39 +1621,89 @@ function applySuggestion(el) {
   ta.focus();
 }
 
-/* ── Live spot prices (updated by fetchSpotPrices) ── */
-const SPOT = { silver: 0.97, gold10ct: 26.50, gold14ct: 37.10 };
+/* ── Live spot prices ── */
+const SPOT = { silver: 0.97, gold10ct: 26.50, gold14ct: 37.10, source: 'fallback', fetchedAt: null, silverOz: 32.50, goldOz: 3300.00 };
+
+function applyOzPrices(silverOz, goldOz, source) {
+  const TROY = 31.1035;
+  SPOT.silverOz  = silverOz;
+  SPOT.goldOz    = goldOz;
+  SPOT.silver    = silverOz / TROY;
+  SPOT.gold10ct  = (goldOz / TROY) * (10 / 24);
+  SPOT.gold14ct  = (goldOz / TROY) * (14 / 24);
+  SPOT.source    = source;
+  SPOT.fetchedAt = new Date();
+  updatePriceIndicator(source);
+}
+
+function updatePriceIndicator(source) {
+  const el = document.getElementById('priceSourceIndicator');
+  if (!el) return;
+  const time = SPOT.fetchedAt
+    ? SPOT.fetchedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    : '';
+  el.innerHTML = source === 'fallback'
+    ? '<span style="color:#ba6c00;">● Estimated prices</span><span style="color:#8a9299;"> · market data unavailable</span>'
+    : `<span style="color:#3c6474;">● Live prices</span><span style="color:#8a9299;"> via ${source} · updated ${time}</span>`;
+}
 
 async function fetchSpotPrices() {
+  // Source 1: goldprice.org
   try {
-    const res = await fetch('https://api.metalpriceapi.com/v1/latest?api_key=demo&base=USD&currencies=XAU,XAG');
-    if (!res.ok) throw new Error('non-200');
+    const res = await fetch('https://data-asg.goldprice.org/dbXRates/USD');
+    if (!res.ok) throw new Error();
     const data = await res.json();
-    if (!data.rates) throw new Error('no rates');
-    const TROY = 31.1035;
-    if (data.rates.XAG) {
-      SPOT.silver = (1 / data.rates.XAG) / TROY;
+    const item = data.items && data.items[0];
+    if (item && item.xauPrice && item.xagPrice) {
+      applyOzPrices(item.xagPrice, item.xauPrice, 'goldprice.org');
+      return;
     }
-    if (data.rates.XAU) {
-      const goldPerGram = (1 / data.rates.XAU) / TROY;
-      SPOT.gold10ct = goldPerGram * (10 / 24);
-      SPOT.gold14ct = goldPerGram * (14 / 24);
+  } catch(e) {}
+
+  // Source 2: metals.live
+  try {
+    const res = await fetch('https://api.metals.live/v1/spot');
+    if (!res.ok) throw new Error();
+    const data = await res.json();
+    let silverOz, goldOz;
+    if (Array.isArray(data)) {
+      data.forEach(m => {
+        if (m.silver !== undefined) silverOz = m.silver;
+        if (m.gold   !== undefined) goldOz   = m.gold;
+      });
     }
-  } catch(e) { /* use fallback values */ }
+    if (silverOz && goldOz) { applyOzPrices(silverOz, goldOz, 'metals.live'); return; }
+  } catch(e) {}
+
+  // Source 3: frankfurter.app XAU proxy
+  try {
+    const res = await fetch('https://api.frankfurter.app/latest?from=XAU&to=USD');
+    if (!res.ok) throw new Error();
+    const data = await res.json();
+    const goldOz = data.rates && data.rates.USD;
+    if (goldOz) { applyOzPrices(goldOz / 85, goldOz, 'frankfurter.app'); return; }
+  } catch(e) {}
+
+  applyOzPrices(32.50, 3300.00, 'fallback');
 }
 
 /* ── Pricing engine ── */
-const METAL_GRAMS  = { ring:4, necklace:8, pendant:5, earrings:3, bracelet:12 };
-const STONE_CARATS = { ring:0.8, necklace:1.2, pendant:0.6, earrings:0.5, bracelet:1.5 };
-const STONE_RATE   = { moissanite_vvs:80, lab_diamond_vvs:150, lab_diamond:150, real_diamond_vsvvs:800 };
-const PROFIT_MULT  = {
-  '925silver|moissanite_vvs':    1.20 * 2.50,
-  '925silver|lab_diamond_vvs':   1.20 * 2.00,
-  '10ctgold|lab_diamond':        1.20 * 2.00,
-  '10ctgold|real_diamond_vsvvs': 1.20 * 1.70,
-  '14ctgold|lab_diamond':        1.20 * 2.00,
-  '14ctgold|real_diamond_vsvvs': 1.20 * 1.70,
+const MATERIAL_WEIGHTS = {
+  '925silver': { ring:4, necklace:8, pendant:5, earrings:3, bracelet:12 },
+  '10ctgold':  { ring:4, necklace:8, pendant:5, earrings:3, bracelet:12 },
+  '14ctgold':  { ring:4, necklace:8, pendant:5, earrings:3, bracelet:12 },
 };
+const STONE_CARATS = { ring:0.8, necklace:1.2, pendant:0.6, earrings:0.5, bracelet:1.5 };
+const STONE_RATES  = { moissanite_vvs:80, lab_diamond_vvs:150, lab_diamond:150, real_diamond_vsvvs:800 };
+const PRICE_MULT   = {
+  '925silver|moissanite_vvs':    2.7,
+  '925silver|lab_diamond_vvs':   2.2,
+  '10ctgold|lab_diamond':        2.2,
+  '10ctgold|real_diamond_vsvvs': 1.9,
+  '14ctgold|lab_diamond':        2.2,
+  '14ctgold|real_diamond_vsvvs': 1.9,
+};
+
 function metalRate(mat) {
   if (mat === '925silver') return SPOT.silver;
   if (mat === '10ctgold')  return SPOT.gold10ct;
@@ -1660,32 +1711,38 @@ function metalRate(mat) {
   return SPOT.silver;
 }
 
-function calcQuote() {
-  const type   = LAB.type;
-  const mat    = LAB.material;
-  const gem    = LAB.gem;
+function calculatePrice(metalType, stoneType, jewelryType) {
   const grams  = (LAB.spec && LAB.spec.totalWeightGrams)
-                   ? parseFloat(LAB.spec.totalWeightGrams) : (METAL_GRAMS[type]  || 4);
+    ? parseFloat(LAB.spec.totalWeightGrams)
+    : ((MATERIAL_WEIGHTS[metalType] && MATERIAL_WEIGHTS[metalType][jewelryType]) || 4);
   const carats = (LAB.spec && LAB.spec.totalCarats)
-                   ? parseFloat(LAB.spec.totalCarats)      : (STONE_CARATS[type] || 0.8);
-  const mult   = PROFIT_MULT[`${mat}|${gem}`] || (1.20 * 2.00);
-  const raw    = ((grams * metalRate(mat)) + (carats * (STONE_RATE[gem] || 80))) * mult;
-  const total  = Math.max(800, Math.round(raw / 50) * 50);
-  return { total };
+    ? parseFloat(LAB.spec.totalCarats)
+    : (STONE_CARATS[jewelryType] || 0.8);
+  const baseCost = (grams * metalRate(metalType)) + (carats * (STONE_RATES[stoneType] || 80));
+  const mult     = PRICE_MULT[`${metalType}|${stoneType}`] || 2.2;
+  return Math.ceil(baseCost * mult / 10) * 10;
 }
 
-function renderQuote() {
-  const q = calcQuote();
-  LAB.quote = q;
+function calcQuote() {
+  return LAB.quote || { total: calculatePrice(LAB.material, LAB.gem, LAB.type) };
+}
 
-  const typeName = LAB.type.charAt(0).toUpperCase() + LAB.type.slice(1);
+function displayPricing(metalType, stoneType, jewelryType) {
+  const total = calculatePrice(metalType, stoneType, jewelryType);
+  LAB.quote   = { total };
+
+  const typeName = jewelryType.charAt(0).toUpperCase() + jewelryType.slice(1);
   document.getElementById('quoteHeading').textContent = `${LAB.style} ${typeName}`;
 
+  const time = SPOT.fetchedAt
+    ? SPOT.fetchedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    : 'estimated';
   document.getElementById('priceRows').innerHTML = `
     <div class="quote-row" style="padding:22px 0;">
       <span class="body-copy" style="font-size:16px;color:#41484b;">Estimated Price</span>
-      <span style="font-family:'Playfair Display',serif;font-size:30px;font-weight:700;color:#3c6474;">$${q.total.toLocaleString()}</span>
+      <span style="font-family:'Playfair Display',serif;font-size:30px;font-weight:700;color:#3c6474;">$${total.toLocaleString()}</span>
     </div>
+    <div style="padding:0 0 16px;font-size:11px;color:#8a9299;">Metal rate as of ${time} · varies with live market</div>
   `;
   document.getElementById('quoteTotal').style.display = 'none';
 
@@ -1702,6 +1759,8 @@ function renderQuote() {
       <span class="body-copy" style="font-size:13px;color:#41484b;">${i.label}</span>
     </li>
   `).join('');
+
+  updatePriceIndicator(SPOT.source);
 }
 
 /* ── Order summary population ────────────────── */
@@ -2432,6 +2491,7 @@ async function fetchSpecCard() {
 
 /* ── Initialise spot prices on load ── */
 fetchSpotPrices();
+setInterval(fetchSpotPrices, 12 * 60 * 60 * 1000);
 
 /* ── Prefetch @imgly/background-removal model weights non-blocking ── */
 if (PENDANT_IMGLY_ENABLED) {
