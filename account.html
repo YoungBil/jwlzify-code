@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html class="light" lang="en">
+<head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>My Account | JWLZIFY</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+<script>
+tailwind.config = {
+  darkMode:"class",
+  theme:{extend:{colors:{
+    "primary":"#3c6474","on-primary":"#ffffff",
+    "primary-container":"#b9e2f5","on-primary-container":"#3e6576",
+    "surface":"#fbf9f9","surface-dim":"#dbdad9",
+    "surface-container-lowest":"#ffffff","surface-container-low":"#f5f3f3",
+    "surface-container":"#efeded","surface-container-high":"#e9e8e7",
+    "on-surface":"#1b1c1c","on-surface-variant":"#41484b",
+    "outline":"#71787c","outline-variant":"#c1c7cb",
+    "background":"#fbf9f9",
+  }}}
+}
+</script>
+<style>
+nav, header { background: rgba(255,255,255,0.97) !important; backdrop-filter: blur(20px) !important; box-shadow: 0 1px 0 rgba(0,0,0,0.06) !important; border-bottom: none !important; }
+.nav-link { color: #1b1c1c !important; border-bottom: 2px solid transparent !important; transition: color 0.25s ease, border-color 0.25s ease; }
+.nav-link:hover { color: #3c6474 !important; border-bottom: 2px solid rgba(60,100,116,0.5) !important; }
+.brand-logo { color: #1b1c1c !important; }
+#signInBtn { color: rgba(65,72,75,0.8) !important; }
+#userName  { color: #1b1c1c !important; }
+#navGenerateBtn { background: #3c6474 !important; color: white !important; border: 1.5px solid #3c6474 !important; font-family: Inter,sans-serif; font-size: 11px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; border-radius: 0.5rem; padding: 12px 28px; cursor: pointer; box-shadow: 0 8px 28px rgba(60,100,116,0.28); }
+.tab-btn { font-family: Inter, sans-serif; font-size: 13px; font-weight: 500; padding: 10px 22px; border-radius: 10px; border: none; cursor: pointer; transition: background 0.15s, color 0.15s; background: transparent; color: #6b7280; }
+.tab-btn.active { background: #3c6474; color: white; }
+.card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 20px; }
+.design-card { background: white; border-radius: 16px; overflow: hidden; border: 0.5px solid rgba(193,199,203,0.5); box-shadow: 0 2px 12px rgba(0,0,0,0.06); transition: box-shadow 0.2s; }
+.design-card:hover { box-shadow: 0 8px 32px rgba(0,0,0,0.10); }
+.design-thumb { width: 100%; height: 180px; object-fit: cover; background: #f5f3f3; }
+.design-thumb-placeholder { width: 100%; height: 180px; background: linear-gradient(135deg, #e8f4f8, #d4e8f0); display: flex; align-items: center; justify-content: center; }
+.order-row { background: white; border-radius: 16px; padding: 20px 24px; border: 0.5px solid rgba(193,199,203,0.5); box-shadow: 0 2px 12px rgba(0,0,0,0.06); display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+.status-badge { font-family: Inter, sans-serif; font-size: 10px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; padding: 4px 10px; border-radius: 999px; }
+.status-pending   { background: #fef3c7; color: #92400e; }
+.status-processing{ background: #dbeafe; color: #1e40af; }
+.status-shipped   { background: #d1fae5; color: #065f46; }
+.status-delivered { background: #ede9fe; color: #4c1d95; }
+</style>
+</head>
+<body class="bg-[#fbf9f9] text-[#1b1c1c] min-h-screen">
+
+<!-- NAV -->
+<header class="fixed top-0 w-full z-50" id="siteHeader">
+  <nav id="mainNav" class="flex justify-between items-center w-full max-w-[1600px] mx-auto px-4 md:px-16 py-5">
+    <div class="flex items-center gap-10">
+      <a href="index.html" class="brand-logo" style="font-family:'Playfair Display',serif;font-size:22px;font-weight:600;letter-spacing:0.32em;text-transform:uppercase;">JWLZIFY</a>
+      <div class="hidden lg:flex items-center gap-8">
+        <a href="index.html"       class="nav-link">Home</a>
+        <a href="collections.html" class="nav-link">Collections</a>
+        <a href="ailab.html"       class="nav-link">AI Lab</a>
+        <a href="about.html"       class="nav-link">About Us</a>
+        <a href="support.html"     class="nav-link">Support</a>
+      </div>
+    </div>
+    <div class="flex items-center gap-5">
+      <div class="hidden lg:flex items-center">
+        <button id="signInBtn" onclick="signInWithGoogle()"
+          style="font-family:Inter,sans-serif;font-size:12px;font-weight:500;letter-spacing:0.08em;background:transparent;border:none;cursor:pointer;padding:6px 0;transition:color 0.2s ease;">Sign In</button>
+        <div id="userMenu" style="display:none;align-items:center;gap:8px;position:relative;cursor:pointer;" onclick="toggleDropdown()">
+          <img id="userAvatar" style="width:32px;height:32px;border-radius:50%;object-fit:cover;border:2px solid rgba(60,100,116,0.3);" src="" alt="avatar">
+          <span id="userName" style="font-family:Inter;font-size:13px;font-weight:500;"></span>
+          <div id="userDropdown" style="display:none;position:absolute;top:calc(100% + 12px);right:0;background:white;border:0.5px solid rgba(193,199,203,0.6);border-radius:12px;padding:8px;min-width:160px;box-shadow:0 8px 32px rgba(0,0,0,0.08);z-index:1000;">
+            <button onclick="signOut()" style="width:100%;text-align:left;padding:10px 14px;font-family:Inter;font-size:13px;color:#1b1c1c;background:transparent;border:none;border-radius:8px;cursor:pointer;transition:background 0.15s ease;" onmouseover="this.style.background='#f5f3f3'" onmouseout="this.style.background='transparent'">Sign Out</button>
+          </div>
+        </div>
+      </div>
+      <a href="ailab.html">
+        <button id="navGenerateBtn" class="active:scale-95">GENERATE</button>
+      </a>
+    </div>
+  </nav>
+</header>
+
+<!-- MAIN -->
+<main class="pt-28 pb-20 px-4 md:px-16 max-w-[1200px] mx-auto">
+
+  <!-- Auth gate -->
+  <div id="authGate" style="display:none;text-align:center;padding:80px 20px;">
+    <span class="material-symbols-outlined" style="font-size:48px;color:#c1c7cb;">lock</span>
+    <p style="font-family:'Playfair Display',serif;font-size:24px;font-weight:600;margin:16px 0 8px;">Sign in to view your account</p>
+    <p style="font-family:Inter,sans-serif;font-size:14px;color:#6b7280;margin-bottom:28px;">Your designs and orders are saved to your account.</p>
+    <button onclick="signInWithGoogle()" style="font-family:Inter,sans-serif;font-size:13px;font-weight:600;letter-spacing:0.1em;background:#3c6474;color:white;border:none;border-radius:12px;padding:14px 32px;cursor:pointer;">Sign In with Google</button>
+  </div>
+
+  <!-- Account content (shown when signed in) -->
+  <div id="accountContent" style="display:none;">
+
+    <!-- Profile header -->
+    <div class="flex items-center gap-5 mb-10">
+      <img id="profileAvatar" src="" alt="avatar" style="width:64px;height:64px;border-radius:50%;object-fit:cover;border:2px solid rgba(60,100,116,0.25);">
+      <div>
+        <p style="font-family:'Playfair Display',serif;font-size:26px;font-weight:600;margin:0 0 2px;" id="profileName"></p>
+        <p style="font-family:Inter,sans-serif;font-size:13px;color:#6b7280;margin:0;" id="profileEmail"></p>
+      </div>
+      <button onclick="firebase.auth().signOut().then(()=>location.href='index.html')"
+        style="margin-left:auto;font-family:Inter,sans-serif;font-size:12px;font-weight:500;color:#6b7280;background:transparent;border:1px solid #e5e7eb;border-radius:8px;padding:8px 16px;cursor:pointer;">
+        Sign Out
+      </button>
+    </div>
+
+    <!-- Tabs -->
+    <div style="display:flex;gap:8px;margin-bottom:28px;">
+      <button class="tab-btn active" id="tabDesigns" onclick="switchTab('designs')">Saved Designs</button>
+      <button class="tab-btn"        id="tabOrders"  onclick="switchTab('orders')">Orders</button>
+    </div>
+
+    <!-- Designs panel -->
+    <div id="panelDesigns">
+      <div id="designsLoading" style="text-align:center;padding:48px;color:#9ca3af;font-family:Inter,sans-serif;font-size:14px;">Loading designs…</div>
+      <div id="designsEmpty"   style="display:none;text-align:center;padding:48px;">
+        <span class="material-symbols-outlined" style="font-size:40px;color:#d1d5db;">diamond</span>
+        <p style="font-family:Inter,sans-serif;font-size:14px;color:#9ca3af;margin-top:12px;">No saved designs yet.<br>Head to the <a href="ailab.html" style="color:#3c6474;">AI Lab</a> to create your first piece.</p>
+      </div>
+      <div id="designsGrid" class="card-grid" style="display:none;"></div>
+    </div>
+
+    <!-- Orders panel -->
+    <div id="panelOrders" style="display:none;">
+      <div id="ordersLoading" style="text-align:center;padding:48px;color:#9ca3af;font-family:Inter,sans-serif;font-size:14px;">Loading orders…</div>
+      <div id="ordersEmpty"   style="display:none;text-align:center;padding:48px;">
+        <span class="material-symbols-outlined" style="font-size:40px;color:#d1d5db;">local_shipping</span>
+        <p style="font-family:Inter,sans-serif;font-size:14px;color:#9ca3af;margin-top:12px;">No orders yet.<br>Place a bespoke commission in the <a href="ailab.html" style="color:#3c6474;">AI Lab</a>.</p>
+      </div>
+      <div id="ordersList" style="display:none;display:flex;flex-direction:column;gap:14px;"></div>
+    </div>
+
+  </div>
+</main>
+
+<script src="firebase-auth.js"></script>
+<script src="firestore-service.js"></script>
+<script>
+const MAT_LABELS = {
+  '925silver': '925 Sterling Silver',
+  '10ctgold':  '10ct Gold',
+  '14ctgold':  '14ct Gold',
+};
+const GEM_LABELS = {
+  moissanite_vvs:      'Moissanite VVS',
+  lab_diamond_vvs:     'Lab Diamond VVS',
+  lab_diamond:         'Lab Diamond',
+  real_diamond_vsvvs:  'Real Diamond VS/VVS',
+  natural_diamond:     'Natural Diamond',
+};
+
+function matLabel(m) { return MAT_LABELS[m] || m; }
+function gemLabel(g) { return GEM_LABELS[g] || g; }
+
+function fmt(ts) {
+  if (!ts) return '';
+  const d = ts.toDate ? ts.toDate() : new Date(ts);
+  return d.toLocaleDateString('en-CA', { year:'numeric', month:'short', day:'numeric' });
+}
+
+function switchTab(tab) {
+  document.getElementById('tabDesigns').classList.toggle('active', tab === 'designs');
+  document.getElementById('tabOrders').classList.toggle('active', tab === 'orders');
+  document.getElementById('panelDesigns').style.display = tab === 'designs' ? '' : 'none';
+  document.getElementById('panelOrders').style.display  = tab === 'orders'  ? '' : 'none';
+}
+
+function renderDesigns(designs) {
+  document.getElementById('designsLoading').style.display = 'none';
+  if (!designs.length) {
+    document.getElementById('designsEmpty').style.display = '';
+    return;
+  }
+  const grid = document.getElementById('designsGrid');
+  grid.style.display = '';
+  grid.innerHTML = designs.map(d => `
+    <div class="design-card">
+      ${d.imageUrl
+        ? `<img class="design-thumb" src="${d.imageUrl}" alt="design" onerror="this.parentNode.querySelector('.design-thumb-placeholder')&&(this.style.display='none')">`
+        : `<div class="design-thumb-placeholder"><span class="material-symbols-outlined" style="font-size:40px;color:#3c6474;opacity:0.4;">diamond</span></div>`
+      }
+      <div style="padding:16px 18px 18px;">
+        <p style="font-family:'Playfair Display',serif;font-size:16px;font-weight:600;margin:0 0 4px;text-transform:capitalize;">${d.style || ''} ${d.type || ''}</p>
+        <p style="font-family:Inter,sans-serif;font-size:12px;color:#6b7280;margin:0 0 10px;">${matLabel(d.material)} · ${gemLabel(d.gem)}</p>
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <span style="font-family:'Playfair Display',serif;font-size:18px;font-weight:700;color:#3c6474;">${d.price ? '$' + d.price.toFixed(2) : ''}</span>
+          <span style="font-family:Inter,sans-serif;font-size:11px;color:#9ca3af;">${fmt(d.createdAt)}</span>
+        </div>
+        ${d.prompt ? `<p style="font-family:Inter,sans-serif;font-size:11px;color:#9ca3af;margin:8px 0 0;line-height:1.4;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;">${d.prompt}</p>` : ''}
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderOrders(orders) {
+  document.getElementById('ordersLoading').style.display = 'none';
+  if (!orders.length) {
+    document.getElementById('ordersEmpty').style.display = '';
+    return;
+  }
+  const list = document.getElementById('ordersList');
+  list.style.display = 'flex';
+  list.innerHTML = orders.map(o => {
+    const status = o.status || 'pending';
+    const d = o.design || {};
+    return `
+      <div class="order-row">
+        ${d.imageUrl
+          ? `<img src="${d.imageUrl}" style="width:64px;height:64px;border-radius:10px;object-fit:cover;flex-shrink:0;" alt="">`
+          : `<div style="width:64px;height:64px;border-radius:10px;background:linear-gradient(135deg,#e8f4f8,#d4e8f0);display:flex;align-items:center;justify-content:center;flex-shrink:0;"><span class="material-symbols-outlined" style="font-size:24px;color:#3c6474;opacity:0.5;">diamond</span></div>`
+        }
+        <div style="flex:1;min-width:0;">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:4px;">
+            <span style="font-family:'Playfair Display',serif;font-size:16px;font-weight:600;text-transform:capitalize;">${d.style || ''} ${d.type || ''}</span>
+            <span class="status-badge status-${status}">${status}</span>
+          </div>
+          <p style="font-family:Inter,sans-serif;font-size:12px;color:#6b7280;margin:0 0 2px;">${matLabel(d.material)} · ${gemLabel(d.gem)}</p>
+          <p style="font-family:Inter,sans-serif;font-size:11px;color:#9ca3af;margin:0;">Order ${o.orderId || ''} · ${fmt(o.createdAt)}</p>
+        </div>
+        <div style="text-align:right;flex-shrink:0;">
+          <p style="font-family:'Playfair Display',serif;font-size:20px;font-weight:700;color:#3c6474;margin:0;">${d.price ? '$' + d.price.toFixed(2) : ''}</p>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+firebase.auth().onAuthStateChanged(async (user) => {
+  if (!user) {
+    document.getElementById('authGate').style.display = '';
+    return;
+  }
+
+  document.getElementById('accountContent').style.display = '';
+  document.getElementById('profileAvatar').src = user.photoURL || '';
+  document.getElementById('profileName').textContent  = user.displayName || 'Account';
+  document.getElementById('profileEmail').textContent = user.email || '';
+
+  const [designs, orders] = await Promise.all([JWL.getDesigns(), JWL.getOrders()]);
+  renderDesigns(designs);
+  renderOrders(orders);
+});
+</script>
+</body>
+</html>

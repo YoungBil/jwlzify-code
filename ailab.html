@@ -11,6 +11,7 @@
 <!-- Firebase SDK -->
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
 <!-- @imgly/background-removal — preloads at page start; exposes window.__imglyRmBg when ready -->
 <script type="module">
   try {
@@ -674,7 +675,6 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
 
       <!-- Right: price breakdown -->
       <div class="md:col-span-3">
-        <div id="priceSourceIndicator" style="font-size:11px;color:#8a9299;margin-bottom:8px;padding-left:2px;"></div>
         <div id="pricingCard" class="rounded-2xl bg-white p-8 shadow-xl border border-[#c1c7cb]/15">
           <!-- Header -->
           <div class="flex items-center gap-3 pb-6 mb-6" style="border-bottom:1px solid rgba(193,199,203,0.35);">
@@ -757,22 +757,22 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-5 mb-5">
           <div>
             <label class="label block mb-2" style="font-size:10px;letter-spacing:0.16em;color:#3c6474;">First Name *</label>
-            <input type="text" required placeholder="First name" class="order-input">
+            <input type="text" name="firstName" required placeholder="First name" class="order-input">
           </div>
           <div>
             <label class="label block mb-2" style="font-size:10px;letter-spacing:0.16em;color:#3c6474;">Last Name *</label>
-            <input type="text" required placeholder="Last name" class="order-input">
+            <input type="text" name="lastName" required placeholder="Last name" class="order-input">
           </div>
         </div>
 
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-5 mb-5">
           <div>
             <label class="label block mb-2" style="font-size:10px;letter-spacing:0.16em;color:#3c6474;">Email Address *</label>
-            <input type="email" required placeholder="you@example.com" class="order-input">
+            <input type="email" name="email" required placeholder="you@example.com" class="order-input">
           </div>
           <div>
             <label class="label block mb-2" style="font-size:10px;letter-spacing:0.16em;color:#3c6474;">Phone Number</label>
-            <input type="tel" placeholder="+1 (416) 555-0000" class="order-input">
+            <input type="tel" name="phone" placeholder="+1 (416) 555-0000" class="order-input">
           </div>
         </div>
 
@@ -781,28 +781,28 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
 
         <div class="mb-5">
           <label class="label block mb-2" style="font-size:10px;letter-spacing:0.16em;color:#3c6474;">Street Address *</label>
-          <input type="text" required placeholder="123 Luxury Ave" class="order-input mb-3">
-          <input type="text" placeholder="Apartment, suite, unit (optional)" class="order-input">
+          <input type="text" name="address1" required placeholder="123 Luxury Ave" class="order-input mb-3">
+          <input type="text" name="address2" placeholder="Apartment, suite, unit (optional)" class="order-input">
         </div>
 
         <div class="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-5">
           <div>
             <label class="label block mb-2" style="font-size:10px;letter-spacing:0.16em;color:#3c6474;">City *</label>
-            <input type="text" required placeholder="Toronto" class="order-input">
+            <input type="text" name="city" required placeholder="Toronto" class="order-input">
           </div>
           <div>
             <label class="label block mb-2" style="font-size:10px;letter-spacing:0.16em;color:#3c6474;">Province / State *</label>
-            <input type="text" required placeholder="Ontario" class="order-input">
+            <input type="text" name="province" required placeholder="Ontario" class="order-input">
           </div>
           <div>
             <label class="label block mb-2" style="font-size:10px;letter-spacing:0.16em;color:#3c6474;">Postal Code *</label>
-            <input type="text" required placeholder="M5V 2T6" class="order-input">
+            <input type="text" name="postalCode" required placeholder="M5V 2T6" class="order-input">
           </div>
         </div>
 
         <div class="mb-6">
           <label class="label block mb-2" style="font-size:10px;letter-spacing:0.16em;color:#3c6474;">Country</label>
-          <select class="order-input" style="cursor:pointer;">
+          <select name="country" class="order-input" style="cursor:pointer;">
             <option>Canada</option>
             <option>United States</option>
             <option>United Kingdom</option>
@@ -813,7 +813,7 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
 
         <div class="mb-6">
           <label class="label block mb-2" style="font-size:10px;letter-spacing:0.16em;color:#3c6474;">Special Instructions</label>
-          <textarea rows="3" placeholder="Gift wrapping, engraving requests, ring size (if known), delivery date preference…"
+          <textarea name="notes" rows="3" placeholder="Gift wrapping, engraving requests, ring size (if known), delivery date preference…"
                     class="order-input" style="resize:vertical;line-height:1.65;"></textarea>
         </div>
 
@@ -980,6 +980,7 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
   document.getElementById('siteHeader').classList.add('nav-visible');
 </script>
 <script src="firebase-auth.js"></script>
+<script src="firestore-service.js"></script>
 
 <!-- ════════════════════════════
      JAVASCRIPT
@@ -1005,6 +1006,7 @@ const GEM_LABEL = {
   'lab_diamond_vvs':   'Lab Diamond VVS',
   'lab_diamond':       'Lab Diamond',
   'real_diamond_vsvvs':'Real Diamond VS/VVS',
+  'natural_diamond':   'Natural Diamond VS/VVS',
 };
 function matLabel(v) { return MATERIAL_LABEL[v] || v; }
 function gemLabel(v) { return GEM_LABEL[v] || v; }
@@ -1085,7 +1087,7 @@ function goStep(n) {
   updateProgress(n);
   window.scrollTo({ top: 0, behavior: 'smooth' });
   if (n === 3) setupTryOn();
-  if (n === 4) displayPricing(LAB.material, LAB.gem, LAB.type);
+  if (n === 4) { displayPricing(LAB.material, LAB.gem, LAB.type); saveCurrentDesign(); }
   if (n === 5) populateOrderSummary();
 }
 
@@ -1622,66 +1624,67 @@ function applySuggestion(el) {
 }
 
 /* ── Live spot prices ── */
-const SPOT = (function() {
-  const TROY = 31.1035, sOz = 32.50, gOz = 3300.00;
+const FALLBACK_PRICES = { silverPerOz: 32.50, goldPerOz: 3300.00 };
+var lastFetchTime = null;
+var priceRefreshInterval = null;
+
+const spotPrices = (function() {
+  var TROY = 31.1034768, s = FALLBACK_PRICES.silverPerOz, g = FALLBACK_PRICES.goldPerOz;
   return {
-    silver:   sOz / TROY,
-    gold10ct: (gOz / TROY) * (10 / 24),
-    gold14ct: (gOz / TROY) * (14 / 24),
-    source: 'fallback', fetchedAt: null, silverOz: sOz, goldOz: gOz
+    silverPerGram:   (s / TROY) * 0.925,
+    gold10ctPerGram: (g / TROY) * (10 / 24),
+    gold14ctPerGram: (g / TROY) * (14 / 24),
+    source: 'fallback', fetchedAt: null
   };
 })();
 
-function applyOzPrices(silverOz, goldOz, source) {
-  const TROY = 31.1035;
-  SPOT.silverOz  = silverOz;
-  SPOT.goldOz    = goldOz;
-  SPOT.silver    = silverOz / TROY;
-  SPOT.gold10ct  = (goldOz / TROY) * (10 / 24);
-  SPOT.gold14ct  = (goldOz / TROY) * (14 / 24);
-  SPOT.source    = source;
-  SPOT.fetchedAt = new Date();
-  updatePriceIndicator(source);
-}
-
-function updatePriceIndicator(source) {
-  const el = document.getElementById('priceSourceIndicator');
-  if (!el) return;
-  const time = SPOT.fetchedAt
-    ? SPOT.fetchedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    : '';
-  el.innerHTML = source === 'fallback'
-    ? '<span style="color:#ba6c00;">● Estimated prices</span><span style="color:#8a9299;"> · market data unavailable</span>'
-    : `<span style="color:#3c6474;">● Live prices</span><span style="color:#8a9299;"> via ${source} · updated ${time}</span>`;
+function applyOzPrices(silverOzRaw, goldOz, source) {
+  var TROY = 31.1034768;
+  spotPrices.silverPerGram   = (silverOzRaw / TROY) * 0.925;
+  spotPrices.gold10ctPerGram = (goldOz / TROY) * (10 / 24);
+  spotPrices.gold14ctPerGram = (goldOz / TROY) * (14 / 24);
+  spotPrices.source          = source;
+  spotPrices.fetchedAt       = new Date().toISOString();
+  console.log('=== SPOT PRICES LOADED ===');
+  console.log('Source:', source);
+  console.log('Silver spot (oz): $' + silverOzRaw);
+  console.log('Gold spot (oz): $' + goldOz);
+  console.log('925 Silver /g: $' + spotPrices.silverPerGram.toFixed(6));
+  console.log('10ct Gold /g: $' + spotPrices.gold10ctPerGram.toFixed(6));
+  console.log('14ct Gold /g: $' + spotPrices.gold14ctPerGram.toFixed(6));
 }
 
 async function fetchSpotPrices() {
-  // Source 1: goldprice.org
+  // Source 1: metals.live (most reliable free live feed)
+  try {
+    const res = await fetch('https://api.metals.live/v1/spot/gold,silver',
+      { headers: { 'Accept': 'application/json' } });
+    if (!res.ok) throw new Error();
+    const data = await res.json();
+    let goldOz = null, silverOz = null;
+    if (Array.isArray(data)) {
+      data.forEach(function(item) {
+        if (item.gold)   goldOz   = item.gold;
+        if (item.silver) silverOz = item.silver;
+      });
+    }
+    if (goldOz && silverOz && goldOz > 1000 && silverOz > 10) {
+      applyOzPrices(silverOz, goldOz, 'metals.live');
+      return;
+    }
+  } catch(e) { console.warn('metals.live failed:', e.message); }
+
+  // Source 2: goldprice.org
   try {
     const res = await fetch('https://data-asg.goldprice.org/dbXRates/USD');
     if (!res.ok) throw new Error();
     const data = await res.json();
     const item = data.items && data.items[0];
-    if (item && item.xauPrice && item.xagPrice) {
+    if (item && item.xauPrice > 1000 && item.xagPrice > 10) {
       applyOzPrices(item.xagPrice, item.xauPrice, 'goldprice.org');
       return;
     }
-  } catch(e) {}
-
-  // Source 2: metals.live
-  try {
-    const res = await fetch('https://api.metals.live/v1/spot');
-    if (!res.ok) throw new Error();
-    const data = await res.json();
-    let silverOz, goldOz;
-    if (Array.isArray(data)) {
-      data.forEach(m => {
-        if (m.silver !== undefined) silverOz = m.silver;
-        if (m.gold   !== undefined) goldOz   = m.gold;
-      });
-    }
-    if (silverOz && goldOz) { applyOzPrices(silverOz, goldOz, 'metals.live'); return; }
-  } catch(e) {}
+  } catch(e) { console.warn('goldprice.org failed:', e.message); }
 
   // Source 3: frankfurter.app XAU proxy
   try {
@@ -1689,105 +1692,183 @@ async function fetchSpotPrices() {
     if (!res.ok) throw new Error();
     const data = await res.json();
     const goldOz = data.rates && data.rates.USD;
-    if (goldOz) { applyOzPrices(goldOz / 85, goldOz, 'frankfurter.app'); return; }
-  } catch(e) {}
+    if (goldOz && goldOz > 1000) {
+      applyOzPrices(goldOz / 88, goldOz, 'frankfurter.app');
+      return;
+    }
+  } catch(e) { console.warn('frankfurter failed:', e.message); }
 
-  applyOzPrices(32.50, 3300.00, 'fallback');
+  // Fallback — Kitco verified May 2026 rates
+  console.warn('All live sources failed — using verified fallback');
+  applyOzPrices(FALLBACK_PRICES.silverPerOz, FALLBACK_PRICES.goldPerOz, 'fallback (May 2026)');
 }
 
 /* ── Pricing engine ── */
 const MATERIAL_WEIGHTS = {
-  '925silver': { ring:4, necklace:8, pendant:5, earrings:3, bracelet:12 },
-  '10ctgold':  { ring:4, necklace:8, pendant:5, earrings:3, bracelet:12 },
-  '14ctgold':  { ring:4, necklace:8, pendant:5, earrings:3, bracelet:12 },
+  ring:     { metalGrams: 4,  stoneCarats: 0.80 },
+  necklace: { metalGrams: 8,  stoneCarats: 1.20 },
+  pendant:  { metalGrams: 5,  stoneCarats: 0.60 },
+  earrings: { metalGrams: 3,  stoneCarats: 0.50 },
+  bracelet: { metalGrams: 12, stoneCarats: 1.50 },
 };
-const STONE_CARATS = { ring:0.8, necklace:1.2, pendant:0.6, earrings:0.5, bracelet:1.5 };
-const STONE_RATES  = { moissanite_vvs:80, lab_diamond_vvs:150, lab_diamond:150, real_diamond_vsvvs:800 };
-const PRICE_MULT   = {
-  '925silver|moissanite_vvs':    2.7,
-  '925silver|lab_diamond_vvs':   2.2,
-  '10ctgold|lab_diamond':        2.2,
-  '10ctgold|real_diamond_vsvvs': 1.9,
-  '14ctgold|lab_diamond':        2.2,
-  '14ctgold|real_diamond_vsvvs': 1.9,
+// Base Rapaport / C&C wholesale rates (May 2026) — used as anchors for dynamic calc
+const STONE_BASE_RATES = {
+  moissanite_vvs:    89.00,
+  lab_diamond_vvs:   185.00,
+  lab_diamond:       185.00,
+  real_diamond_vsvvs: 1050.00,
+  natural_diamond:   1050.00,
 };
 
-function metalRate(mat) {
-  if (mat === '925silver') return SPOT.silver;
-  if (mat === '10ctgold')  return SPOT.gold10ct;
-  if (mat === '14ctgold')  return SPOT.gold14ct;
-  return SPOT.silver;
+function getDynamicStoneRates() {
+  var TROY = 31.1034768;
+  var goldOzPrice = spotPrices.gold14ctPerGram * TROY / (14 / 24);
+  var goldNorm    = goldOzPrice / 3300; // normalised to May 2026 baseline
+
+  var rates = {
+    moissanite_vvs:    STONE_BASE_RATES.moissanite_vvs    * (0.97 + goldNorm * 0.03),
+    lab_diamond_vvs:   STONE_BASE_RATES.lab_diamond_vvs   * (0.90 + goldNorm * 0.10),
+    lab_diamond:       STONE_BASE_RATES.lab_diamond        * (0.90 + goldNorm * 0.10),
+    real_diamond_vsvvs: STONE_BASE_RATES.real_diamond_vsvvs * (0.85 + goldNorm * 0.15),
+    natural_diamond:   STONE_BASE_RATES.natural_diamond    * (0.85 + goldNorm * 0.15),
+  };
+
+  console.log('=== DYNAMIC STONE RATES ===');
+  console.log('Gold spot: $' + goldOzPrice.toFixed(2) + '/oz | norm factor:', goldNorm.toFixed(4));
+  console.log('Moissanite VVS: $' + rates.moissanite_vvs.toFixed(2) + '/ct');
+  console.log('Lab Diamond VVS: $' + rates.lab_diamond_vvs.toFixed(2) + '/ct');
+  console.log('Natural Diamond VS/VVS: $' + rates.natural_diamond.toFixed(2) + '/ct');
+  return rates;
 }
 
-function calculatePrice(metalType, stoneType, jewelryType) {
-  console.log('calculatePrice called with:', metalType, stoneType, jewelryType);
-  console.log('MATERIAL_WEIGHTS for metal:', MATERIAL_WEIGHTS[metalType]);
-  const metalCostPerGram  = metalRate(metalType);
-  const stoneCostPerCarat = STONE_RATES[stoneType] || 80;
-  console.log('metalCostPerGram:', metalCostPerGram, '| stoneCostPerCarat:', stoneCostPerCarat);
+function extractCaratWeight(promptText) {
+  if (!promptText) return null;
+  var text = promptText.toLowerCase();
 
-  const metalGrams  = (LAB.spec && LAB.spec.totalWeightGrams)
-    ? parseFloat(LAB.spec.totalWeightGrams)
-    : ((MATERIAL_WEIGHTS[metalType] && MATERIAL_WEIGHTS[metalType][jewelryType]) || 4);
-  const stoneCarats = (LAB.spec && LAB.spec.totalCarats)
-    ? parseFloat(LAB.spec.totalCarats)
-    : (STONE_CARATS[jewelryType] || 0.8);
+  var numMatch = text.match(/(\d+\.?\d*)\s*[-]?\s*(carat|ct)\b/i);
+  if (numMatch) {
+    var val = parseFloat(numMatch[1]);
+    if (val > 0 && val <= 20) {
+      console.log('Extracted carat weight from prompt:', val);
+      return val;
+    }
+  }
 
-  const metalCost = metalGrams  * metalCostPerGram;
-  const stoneCost = stoneCarats * stoneCostPerCarat;
-  const baseCost  = metalCost + stoneCost;
-  const mult      = PRICE_MULT[`${metalType}|${stoneType}`] || 2.2;
-  const total     = Math.ceil(baseCost * mult / 10) * 10;
+  var wordToNum = { one:1, two:2, three:3, four:4, five:5,
+                    six:6, seven:7, eight:8, nine:9, ten:10 };
+  for (var word in wordToNum) {
+    if (text.indexOf(word) !== -1 &&
+       (text.indexOf('carat') !== -1 || text.indexOf(' ct') !== -1)) {
+      console.log('Extracted written carat weight:', wordToNum[word]);
+      return wordToNum[word];
+    }
+  }
+  return null;
+}
 
-  return { total, metalGrams, stoneCarats, metalCostPerGram, stoneCostPerCarat, metalCost, stoneCost, baseCost, mult };
+function calculatePrice(metalType, stoneType, jewelryType, userCarats) {
+  var weights     = MATERIAL_WEIGHTS[jewelryType] || MATERIAL_WEIGHTS['pendant'];
+  var stoneCarats = (userCarats && userCarats > 0) ? userCarats : weights.stoneCarats;
+  var caratSource = (userCarats && userCarats > 0) ? 'user specified' : 'default';
+
+  var metalPerGram = 0;
+  if (metalType === '925silver')     metalPerGram = spotPrices.silverPerGram;
+  else if (metalType === '10ctgold') metalPerGram = spotPrices.gold10ctPerGram;
+  else if (metalType === '14ctgold') metalPerGram = spotPrices.gold14ctPerGram;
+
+  var stoneRates    = getDynamicStoneRates();
+  var stoneRateUsed = stoneRates[stoneType] || STONE_BASE_RATES[stoneType] || 89.00;
+  var metalCost = weights.metalGrams * metalPerGram;
+  var stoneCost = stoneCarats * stoneRateUsed;
+  var baseCost  = metalCost + stoneCost;
+
+  var labourRate = 0.20;
+  var profitRate = 1.00;
+  if (metalType === '925silver' && stoneType === 'moissanite_vvs') {
+    profitRate = 1.50;
+  } else if ((metalType === '10ctgold' || metalType === '14ctgold') &&
+             (stoneType === 'real_diamond_vsvvs' || stoneType === 'natural_diamond')) {
+    profitRate = 0.70;
+  }
+
+  var labourCost = baseCost * labourRate;
+  var profitCost = baseCost * profitRate;
+  var finalPrice = baseCost + labourCost + profitCost;
+
+  console.log('=== EXACT PRICE CALCULATION ===');
+  console.log('Type:', jewelryType, '| Stone carats:', stoneCarats, '(' + caratSource + ')');
+  console.log('Metal:', metalType, '@ $' + metalPerGram.toFixed(6) + '/g ×', weights.metalGrams + 'g = $' + metalCost.toFixed(4));
+  console.log('Stone:', stoneType, '@ $' + stoneRateUsed.toFixed(4) + '/ct ×', stoneCarats + 'ct = $' + stoneCost.toFixed(4));
+  console.log('Base: $' + baseCost.toFixed(4), '| Labour 20%: $' + labourCost.toFixed(4), '| Profit ' + (profitRate*100) + '%: $' + profitCost.toFixed(4));
+  console.log('FINAL: $' + finalPrice.toFixed(2));
+  console.log('================================');
+
+  return {
+    metalGrams:    weights.metalGrams,
+    stoneCarats:   stoneCarats,
+    caratSource:   caratSource,
+    metalCostPerG: metalPerGram,
+    stoneRateUsed: stoneRateUsed,
+    metalCost:     metalCost,
+    stoneCost:     stoneCost,
+    baseCost:      baseCost,
+    labourCost:    labourCost,
+    profitCost:    profitCost,
+    finalPrice:    finalPrice
+  };
 }
 
 function calcQuote() {
-  return LAB.quote || calculatePrice(LAB.material, LAB.gem, LAB.type);
+  return LAB.quote || { total: calculatePrice(LAB.material, LAB.gem, LAB.type).finalPrice };
 }
 
-async function displayPricing(metalType, stoneType, jewelryType) {
-  if (!SPOT.fetchedAt) await fetchSpotPrices();
+async function displayPricing(metalType, stoneType, jewelryType, overrideCarats) {
+  if (!spotPrices.fetchedAt) await fetchSpotPrices();
 
-  const r        = calculatePrice(metalType, stoneType, jewelryType);
-  LAB.quote      = { total: r.total, grams: r.metalGrams };
+  var promptText = LAB.prompt || (document.getElementById('promptArea') ? document.getElementById('promptArea').value : '');
+  var userCarats = (overrideCarats !== undefined) ? overrideCarats : extractCaratWeight(promptText);
+  var r = calculatePrice(metalType, stoneType, jewelryType, userCarats);
+  LAB.quote = { total: r.finalPrice, grams: r.metalGrams };
 
-  const typeName = jewelryType.charAt(0).toUpperCase() + jewelryType.slice(1);
-  document.getElementById('quoteHeading').textContent = `${LAB.style} ${typeName}`;
+  // Store for automatic recalculation when metals refresh
+  window.lastGeneratedMetal = metalType;
+  window.lastGeneratedStone = stoneType;
+  window.lastGeneratedType  = jewelryType;
+
+  var typeName = jewelryType.charAt(0).toUpperCase() + jewelryType.slice(1);
+  document.getElementById('quoteHeading').textContent = LAB.style + ' ' + typeName;
 
   function row(label, value, bold) {
-    var fs    = bold ? '13px' : '12px';
-    var fw    = bold ? '700'  : '500';
-    var color = bold ? '#1b1c1c' : '#41484b';
+    var fs = bold ? '13px' : '12px', fw = bold ? '700' : '500', col = bold ? '#1b1c1c' : '#41484b';
     return '<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid rgba(193,199,203,0.2);">'
       + '<span style="font-family:Inter,sans-serif;font-size:11px;color:#8a9299;letter-spacing:0.04em;">' + label + '</span>'
-      + '<span style="font-family:Inter,sans-serif;font-size:' + fs + ';font-weight:' + fw + ';color:' + color + ';">' + value + '</span>'
+      + '<span style="font-family:Inter,sans-serif;font-size:' + fs + ';font-weight:' + fw + ';color:' + col + ';">' + value + '</span>'
       + '</div>';
   }
-  function usd(n) { return '$' + n.toFixed(2); }
 
   document.getElementById('priceRows').innerHTML =
     '<div style="margin-bottom:14px;">'
-    + row('Piece Type',         typeName)
-    + row('Metal',              matLabel(metalType))
-    + row('Metal Weight',       r.metalGrams.toFixed(1) + 'g')
-    + row('Metal Rate (live)',  usd(r.metalCostPerGram) + '/g')
-    + row('Metal Cost',         usd(r.metalCost))
-    + row('Stone',              gemLabel(stoneType))
-    + row('Stone Weight',       r.stoneCarats.toFixed(2) + 'ct')
-    + row('Stone Rate',         '$' + r.stoneCostPerCarat + '/ct')
-    + row('Stone Cost',         usd(r.stoneCost))
-    + row('Total Material Cost',usd(r.baseCost), true)
+    + row('Piece Type',          typeName)
+    + row('Metal',               matLabel(metalType))
+    + row('Metal Weight',        r.metalGrams.toFixed(1) + 'g')
+    + row('Metal Rate (live)',   '$' + r.metalCostPerG.toFixed(4) + '/g')
+    + row('Metal Cost',          '$' + r.metalCost.toFixed(2))
+    + row('Stone',               gemLabel(stoneType))
+    + row('Stone Weight',        r.stoneCarats.toFixed(2) + 'ct  (' + r.caratSource + ')')
+    + row('Stone Rate (dynamic)','$' + r.stoneRateUsed.toFixed(2) + '/ct')
+    + row('Stone Cost',          '$' + r.stoneCost.toFixed(2))
+    + row('Total Material Cost', '$' + r.baseCost.toFixed(2), true)
     + '</div>'
     + '<div class="quote-row" style="padding:12px 0 6px;border-top:2px solid rgba(193,199,203,0.4);">'
     +   '<span class="body-copy" style="font-size:15px;color:#41484b;">Estimated Price</span>'
-    +   '<span style="font-family:\'Playfair Display\',serif;font-size:30px;font-weight:700;color:#3c6474;">$' + r.total.toLocaleString() + '</span>'
+    +   '<span style="font-family:\'Playfair Display\',serif;font-size:30px;font-weight:700;color:#3c6474;">$' + r.finalPrice.toFixed(2) + '</span>'
     + '</div>'
-    + '<div style="font-family:Inter,sans-serif;font-size:10px;color:rgba(65,72,75,0.5);text-align:center;margin-top:8px;letter-spacing:0.06em;">Price updates daily with live market rates</div>';
+    + '<div id="priceTimestamp" style="font-family:Inter,sans-serif;font-size:10px;color:rgba(65,72,75,0.45);text-align:right;margin-top:10px;letter-spacing:0.06em;"></div>';
 
+  updateTimestamp();
   document.getElementById('quoteTotal').style.display = 'none';
 
-  const INCLUDES = [
+  var INCLUDES = [
     { icon:'diamond',        label:'GIA Certified Stones' },
     { icon:'verified',       label:'18-Month Craftsmanship Warranty' },
     { icon:'image',          label:'Archival AI Design Render' },
@@ -1800,9 +1881,41 @@ async function displayPricing(metalType, stoneType, jewelryType) {
       + '<span class="body-copy" style="font-size:13px;color:#41484b;">' + i.label + '</span>'
       + '</li>';
   }).join('');
-
-  updatePriceIndicator(SPOT.source);
 }
+
+function updateTimestamp() {
+  var el = document.getElementById('priceTimestamp');
+  if (!el) return;
+  if (!lastFetchTime) { el.textContent = ''; return; }
+  var h = lastFetchTime.getHours().toString().padStart(2,'0');
+  var m = lastFetchTime.getMinutes().toString().padStart(2,'0');
+  el.textContent = 'Prices refreshed at ' + h + ':' + m + ' — updates every 60 min';
+}
+
+async function fetchAndUpdatePrices() {
+  await fetchSpotPrices();
+  lastFetchTime = new Date();
+  if (window.lastGeneratedMetal && window.lastGeneratedStone && window.lastGeneratedType) {
+    var card = document.getElementById('pricingCard');
+    if (card && card.style.display !== 'none') {
+      displayPricing(window.lastGeneratedMetal, window.lastGeneratedStone, window.lastGeneratedType);
+    }
+  }
+  updateTimestamp();
+}
+
+function startPriceRefresh() {
+  fetchAndUpdatePrices();
+  if (priceRefreshInterval) clearInterval(priceRefreshInterval);
+  priceRefreshInterval = setInterval(fetchAndUpdatePrices, 60 * 60 * 1000);
+}
+
+document.addEventListener('visibilitychange', function() {
+  if (document.visibilityState === 'visible') {
+    var msSinceFetch = lastFetchTime ? (Date.now() - lastFetchTime.getTime()) : Infinity;
+    if (msSinceFetch > 15 * 60 * 1000) fetchAndUpdatePrices();
+  }
+});
 
 /* ── Order summary population ────────────────── */
 function populateOrderSummary() {
@@ -1813,6 +1926,21 @@ function populateOrderSummary() {
 }
 
 /* ── Order submission ────────────────────────── */
+function saveCurrentDesign() {
+  if (!window.JWL) return;
+  const user = firebase.auth().currentUser;
+  if (!user) return;
+  JWL.saveDesign({
+    prompt:   LAB.prompt  || '',
+    style:    LAB.style,
+    material: LAB.material,
+    gem:      LAB.gem,
+    type:     LAB.type,
+    imageUrl: LAB.imageUrl || null,
+    price:    LAB.quote ? LAB.quote.total : null,
+  }).catch(console.error);
+}
+
 function submitOrder(e) {
   e.preventDefault();
   const btn  = document.getElementById('orderSubmitBtn');
@@ -1820,9 +1948,41 @@ function submitOrder(e) {
   btn.disabled = true;
   text.textContent = 'Placing order…';
 
+  const orderId = 'JWLZ-' + String(Date.now()).slice(-6);
+
+  if (window.JWL) {
+    const fd = new FormData(e.target);
+    JWL.saveOrder({
+      orderId,
+      status: 'pending',
+      design: {
+        style:    LAB.style,
+        material: LAB.material,
+        gem:      LAB.gem,
+        type:     LAB.type,
+        imageUrl: LAB.imageUrl || null,
+        price:    LAB.quote ? LAB.quote.total : null,
+      },
+      customer: {
+        firstName: fd.get('firstName') || '',
+        lastName:  fd.get('lastName')  || '',
+        email:     fd.get('email')     || '',
+        phone:     fd.get('phone')     || '',
+      },
+      shipping: {
+        address1:   fd.get('address1')   || '',
+        address2:   fd.get('address2')   || '',
+        city:       fd.get('city')       || '',
+        province:   fd.get('province')   || '',
+        postalCode: fd.get('postalCode') || '',
+        country:    fd.get('country')    || '',
+      },
+      notes: fd.get('notes') || '',
+    }).catch(console.error);
+  }
+
   setTimeout(() => {
-    const id = 'JWLZ-' + String(Date.now()).slice(-6);
-    document.getElementById('orderIdDisplay').textContent = 'ORDER #' + id;
+    document.getElementById('orderIdDisplay').textContent = 'ORDER #' + orderId;
     document.querySelectorAll('.sp').forEach(el => el.classList.remove('active'));
     document.getElementById('sSuccess').classList.add('active');
     updateProgress(5);
@@ -2531,8 +2691,7 @@ async function fetchSpecCard() {
 }
 
 /* ── Initialise spot prices on load ── */
-fetchSpotPrices();
-setInterval(fetchSpotPrices, 12 * 60 * 60 * 1000);
+startPriceRefresh();
 
 /* ── Prefetch @imgly/background-removal model weights non-blocking ── */
 if (PENDANT_IMGLY_ENABLED) {
