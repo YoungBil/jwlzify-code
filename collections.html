@@ -34,7 +34,22 @@ tailwind.config = {
 <style>
 /* ── Collections hero ── */
 .collections-hero {
-  background: linear-gradient(135deg, #aec8d8 0%, #f4f9fb 100%);
+  position: relative;
+  background-image: url('community page pic.png');
+  background-size: cover;
+  background-position: center center;
+  background-repeat: no-repeat;
+}
+.collections-hero::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  z-index: 1;
+}
+.collections-hero-content {
+  position: relative;
+  z-index: 2;
 }
 
 /* ── Gallery card ── */
@@ -189,10 +204,10 @@ input[type="range"].price-range::-moz-range-thumb {
      HERO
 ════════════════════════════ -->
 <section class="collections-hero py-24 text-center">
-  <div class="max-w-[1600px] mx-auto px-4 md:px-16">
-    <span class="eyebrow">COLLECTIVE BRILLIANCE</span>
-    <h1 style="font-family:'Playfair Display',serif;font-size:clamp(44px,6vw,74px);font-weight:600;line-height:1.08;letter-spacing:-0.022em;color:#1b1c1c;margin-bottom:20px;">Community Gallery</h1>
-    <p class="body-lg mx-auto" style="max-width:540px;color:#41484b;">
+  <div class="collections-hero-content max-w-[1600px] mx-auto px-4 md:px-16">
+    <span class="eyebrow" style="color:rgba(255,255,255,0.75);">COLLECTIVE BRILLIANCE</span>
+    <h1 style="font-family:'Playfair Display',serif;font-size:clamp(44px,6vw,74px);font-weight:600;line-height:1.08;letter-spacing:-0.022em;color:rgba(255,255,255,0.95);margin-bottom:20px;">Community Gallery</h1>
+    <p class="body-lg mx-auto" style="max-width:540px;color:rgba(255,255,255,0.95);">
       Explore a curated collection of AI-synthesized high jewelry designed by our global community.
     </p>
   </div>
