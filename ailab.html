@@ -1656,53 +1656,31 @@ function applyOzPrices(silverOzRaw, goldOz, source) {
 
 async function fetchSpotPrices() {
   try {
-    // Use allorigins proxy to fetch silverprice.org
-    const silverUrl = 'https://api.allorigins.win/get?url=' +
-      encodeURIComponent('https://www.silverprice.org/silver-price-per-gram.html');
-    const goldUrl = 'https://api.allorigins.win/get?url=' +
-      encodeURIComponent('https://www.silverprice.org/gold-price-per-gram.html');
-
-    const [silverRes, goldRes] = await Promise.all([
-      fetch(silverUrl),
-      fetch(goldUrl)
-    ]);
-
-    const silverData = await silverRes.json();
-    const goldData   = await goldRes.json();
-
-    // Parse silver price per gram from HTML
-    const silverMatch = silverData.contents.match(
-      /Price per Gram[^$]*\$\s*([\d.]+)/i
-    );
-    const goldMatch = goldData.contents.match(
-      /Price per Gram[^$]*\$\s*([\d.]+)/i
-    );
-
-    if (silverMatch && goldMatch) {
-      const silverPerGram = parseFloat(silverMatch[1]);
-      const goldPerGram   = parseFloat(goldMatch[1]);
-
-      spotPrices.silverPerGram   = silverPerGram * 0.925;
-      spotPrices.gold10ctPerGram = goldPerGram * (10/24);
-      spotPrices.gold14ctPerGram = goldPerGram * (14/24);
-      spotPrices.source          = 'silverprice.org';
-      spotPrices.fetchedAt       = new Date().toISOString();
-
+    const res  = await fetch('https://api.metals.live/v1/spot/silver,gold');
+    const data = await res.json();
+    let silverOz = null, goldOz = null;
+    data.forEach(item => {
+      if (item.silver) silverOz = item.silver;
+      if (item.gold)   goldOz   = item.gold;
+    });
+    if (silverOz && goldOz) {
+      spotPrices.silverPerGram   = (silverOz / 31.1035) * 0.925;
+      spotPrices.gold10ctPerGram = (goldOz / 31.1035) * (10/24);
+      spotPrices.gold14ctPerGram = (goldOz / 31.1035) * (14/24);
+      spotPrices.source          = 'metals.live';
       console.log('Silver /g: $' + spotPrices.silverPerGram.toFixed(4));
       console.log('10ct Gold /g: $' + spotPrices.gold10ctPerGram.toFixed(4));
       console.log('14ct Gold /g: $' + spotPrices.gold14ctPerGram.toFixed(4));
       return;
     }
-    throw new Error('Could not parse prices');
-
-  } catch (err) {
-    console.warn('silverprice.org failed:', err.message);
-    // Fallback
-    spotPrices.silverPerGram   = 1.02;
-    spotPrices.gold10ctPerGram = 26.50;
-    spotPrices.gold14ctPerGram = 37.10;
-    spotPrices.source          = 'fallback';
+  } catch(e) {
+    console.warn('metals.live failed:', e.message);
   }
+  // Fallback
+  spotPrices.silverPerGram   = 1.02;
+  spotPrices.gold10ctPerGram = 26.50;
+  spotPrices.gold14ctPerGram = 37.10;
+  spotPrices.source          = 'fallback';
 }
 
 /* ── Pricing engine ── */
@@ -2006,7 +1984,11 @@ async function getSegmenter() {
   if (_segmenter) return _segmenter;
   _segmenter = await bodySegmentation.createSegmenter(
     bodySegmentation.SupportedModels.MediaPipeSelfieSegmentation,
-    { runtime: 'tfjs', modelType: 'general' }
+    {
+      runtime: 'mediapipe',
+      solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation',
+      modelType: 'general'
+    }
   );
   return _segmenter;
 }
