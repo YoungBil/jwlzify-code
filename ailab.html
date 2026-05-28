@@ -1777,6 +1777,16 @@ function calculatePrice(metalType, stoneType, jewelryType, userCarats) {
   var profitCost = baseCost * profitRate;
   var finalPrice = baseCost + labourCost + profitCost;
 
+  console.log('DEBUG metalPerGram:', metalPerGram);
+  console.log('DEBUG metalGrams:', weights.metalGrams);
+  console.log('DEBUG metalCost:', metalCost);
+  console.log('DEBUG stoneCarats:', stoneCarats);
+  console.log('DEBUG stoneRate:', STONE_RATES[stoneType]);
+  console.log('DEBUG stoneCost:', stoneCost);
+  console.log('DEBUG baseCost:', baseCost);
+  console.log('DEBUG profitRate:', profitRate);
+  console.log('DEBUG finalPrice:', finalPrice);
+
   console.log('=== EXACT PRICE CALCULATION ===');
   console.log('Type:', jewelryType, '| Stone carats:', stoneCarats, '(' + caratSource + ')');
   console.log('Metal:', metalType, '@ $' + metalPerGram.toFixed(6) + '/g ×', weights.metalGrams + 'g = $' + metalCost.toFixed(4));
