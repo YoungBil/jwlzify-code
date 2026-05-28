@@ -12,12 +12,6 @@
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
-<!-- TensorFlow.js + MediaPipe body segmentation -->
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core@4.10.0/dist/tf-core.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl@4.10.0/dist/tf-backend-webgl.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/body-segmentation@1.0.1/dist/body-segmentation.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation@0.1.1675465747/selfie_segmentation.js"
-  crossorigin="anonymous"></script>
 <!-- @imgly/background-removal — preloads at page start; exposes window.__imglyRmBg when ready -->
 <script type="module">
   try {
@@ -1094,7 +1088,12 @@ async function goStep(n) {
   window.scrollTo({ top: 0, behavior: 'smooth' });
   if (n === 3) setupTryOn();
   if (n === 4) {
-    if (!spotPrices.fetchedAt) await fetchSpotPrices();
+    if (!spotPrices.fetchedAt ||
+        spotPrices.source === 'fallback' ||
+        spotPrices.source === 'fallback-may2026' ||
+        spotPrices.source === 'fallback-cad-may2026') {
+      await fetchSpotPrices();
+    }
     await displayPricing(LAB.material, LAB.gem, LAB.type);
     saveCurrentDesign();
   }
@@ -1665,58 +1664,46 @@ function applyOzPrices(silverOzRaw, goldOz, source) {
 }
 
 async function fetchSpotPrices() {
-
-  // SOURCE 1: frankfurter.app — reliable CORS enabled
   try {
-    const res = await fetch(
-      'https://api.frankfurter.app/latest?from=XAU&to=USD'
-    );
-    const data = await res.json();
-    if (data?.rates?.USD > 1000) {
-      const goldOz   = data.rates.USD;
-      const silverOz = goldOz / 85;
-      spotPrices.silverPerGram   = (silverOz / 31.1035) * 0.925;
-      spotPrices.gold10ctPerGram = (goldOz / 31.1035) * (10/24);
-      spotPrices.gold14ctPerGram = (goldOz / 31.1035) * (14/24);
-      spotPrices.source          = 'frankfurter.app';
+    const [silverRes, goldRes] = await Promise.all([
+      fetch('https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/xag.json'),
+      fetch('https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/xau.json')
+    ]);
+
+    const silverData = await silverRes.json();
+    const goldData   = await goldRes.json();
+
+    // Get CAD prices directly
+    const silverOzCAD = silverData?.xag?.cad;
+    const goldOzCAD   = goldData?.xau?.cad;
+
+    if (silverOzCAD > 10 && goldOzCAD > 1000) {
+      // Convert troy oz to per gram, apply 925 purity
+      spotPrices.silverPerGram   = (silverOzCAD / 31.1035) * 0.925;
+      spotPrices.gold10ctPerGram = (goldOzCAD / 31.1035) * (10/24);
+      spotPrices.gold14ctPerGram = (goldOzCAD / 31.1035) * (14/24);
+      spotPrices.source          = 'fawazahmed0-cad';
       spotPrices.fetchedAt       = new Date().toISOString();
-      console.log('Silver /g: $' + spotPrices.silverPerGram.toFixed(4));
-      console.log('10ct Gold /g: $' + spotPrices.gold10ctPerGram.toFixed(4));
-      console.log('14ct Gold /g: $' + spotPrices.gold14ctPerGram.toFixed(4));
+
+      console.log('Silver oz CAD: $' + silverOzCAD.toFixed(2));
+      console.log('925 Silver /g CAD: $' + spotPrices.silverPerGram.toFixed(4));
+      console.log('10ct Gold /g CAD: $' + spotPrices.gold10ctPerGram.toFixed(4));
+      console.log('14ct Gold /g CAD: $' + spotPrices.gold14ctPerGram.toFixed(4));
       return;
     }
   } catch(e) {
-    console.warn('frankfurter failed:', e.message);
+    console.warn('CAD price fetch failed:', e.message);
   }
 
-  // SOURCE 2: exchangerate.host
-  try {
-    const res = await fetch(
-      'https://api.exchangerate.host/latest?base=XAU&symbols=USD'
-    );
-    const data = await res.json();
-    if (data?.rates?.USD > 1000) {
-      const goldOz   = data.rates.USD;
-      const silverOz = goldOz / 85;
-      spotPrices.silverPerGram   = (silverOz / 31.1035) * 0.925;
-      spotPrices.gold10ctPerGram = (goldOz / 31.1035) * (10/24);
-      spotPrices.gold14ctPerGram = (goldOz / 31.1035) * (14/24);
-      spotPrices.source          = 'exchangerate.host';
-      spotPrices.fetchedAt       = new Date().toISOString();
-      console.log('Silver /g: $' + spotPrices.silverPerGram.toFixed(4));
-      return;
-    }
-  } catch(e) {
-    console.warn('exchangerate.host failed:', e.message);
-  }
-
-  // FALLBACK — May 2026 verified rates
-  console.warn('All APIs failed — using fallback');
-  spotPrices.silverPerGram   = 3.35;
-  spotPrices.gold10ctPerGram = 26.50;
-  spotPrices.gold14ctPerGram = 37.10;
-  spotPrices.source          = 'fallback';
+  // Fallback — verified May 28 2026 CAD rates
+  // Silver: ~$104/oz CAD ÷ 31.1035 × 0.925 = ~$3.09/g
+  // Gold: ~$4550/oz CAD
+  spotPrices.silverPerGram   = 3.09;
+  spotPrices.gold10ctPerGram = 60.89;
+  spotPrices.gold14ctPerGram = 85.25;
+  spotPrices.source          = 'fallback-cad-may2026';
   spotPrices.fetchedAt       = new Date().toISOString();
+  console.log('Using CAD fallback prices');
 }
 
 /* ── Pricing engine ── */
@@ -1863,7 +1850,7 @@ async function displayPricing(metalType, stoneType, jewelryType, overrideCarats)
     + '</div>'
     + '<div id="priceTimestamp" style="font-family:Inter,sans-serif;font-size:10px;color:rgba(65,72,75,0.45);text-align:right;margin-top:10px;letter-spacing:0.06em;"></div>';
 
-  document.getElementById('quoteTotal').textContent = '$' + r.finalPrice.toFixed(2);
+  document.getElementById('quoteTotal').textContent = '$' + r.finalPrice.toFixed(2) + ' CAD';
   updateTimestamp();
 
   var INCLUDES = [
@@ -2020,14 +2007,21 @@ let _segmenter = null;
 
 async function getSegmenter() {
   if (_segmenter) return _segmenter;
-  _segmenter = await bodySegmentation.createSegmenter(
-    bodySegmentation.SupportedModels.MediaPipeSelfieSegmentation,
-    {
-      runtime: 'mediapipe',
-      solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation@0.1.1675465747',
-      modelType: 'general'
-    }
-  );
+  try {
+    _segmenter = await bodySegmentation.createSegmenter(
+      bodySegmentation.SupportedModels.MediaPipeSelfieSegmentation,
+      {
+        runtime: 'mediapipe',
+        solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation',
+        modelType: 'general'
+      }
+    );
+    console.log('Segmenter loaded successfully');
+  } catch(e) {
+    console.warn('Segmenter failed:', e.message);
+    _segmenter = null;
+    throw e;
+  }
   return _segmenter;
 }
 
@@ -2701,6 +2695,13 @@ if (PENDANT_IMGLY_ENABLED) {
 }
 </script>
 
+
+<!-- TensorFlow.js + MediaPipe body segmentation — must load after page scripts -->
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core@3.21.0/dist/tf-core.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl@3.21.0/dist/tf-backend-webgl.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/selfie_segmentation.js"
+  crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/body-segmentation@1.0.1/dist/body-segmentation.js"></script>
 
 </body>
 </html>
