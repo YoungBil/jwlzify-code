@@ -1069,7 +1069,7 @@ function updateProgress(n) {
 }
 
 /* ── Step navigation ─────────────────────────── */
-function goStep(n) {
+async function goStep(n) {
   // Kill camera when leaving step 3
   if (LAB.step === 3 && n !== 3) {
     isTryOnActive = false;
@@ -1087,7 +1087,11 @@ function goStep(n) {
   updateProgress(n);
   window.scrollTo({ top: 0, behavior: 'smooth' });
   if (n === 3) setupTryOn();
-  if (n === 4) { displayPricing(LAB.material, LAB.gem, LAB.type); saveCurrentDesign(); }
+  if (n === 4) {
+    if (!spotPrices.fetchedAt) await fetchSpotPrices();
+    await displayPricing(LAB.material, LAB.gem, LAB.type);
+    saveCurrentDesign();
+  }
   if (n === 5) populateOrderSummary();
 }
 
@@ -1668,6 +1672,7 @@ async function fetchSpotPrices() {
       spotPrices.gold10ctPerGram = (goldOz / 31.1035) * (10/24);
       spotPrices.gold14ctPerGram = (goldOz / 31.1035) * (14/24);
       spotPrices.source          = 'metals.live';
+      spotPrices.fetchedAt       = new Date().toISOString();
       console.log('Silver /g: $' + spotPrices.silverPerGram.toFixed(4));
       console.log('10ct Gold /g: $' + spotPrices.gold10ctPerGram.toFixed(4));
       console.log('14ct Gold /g: $' + spotPrices.gold14ctPerGram.toFixed(4));
@@ -1681,6 +1686,7 @@ async function fetchSpotPrices() {
   spotPrices.gold10ctPerGram = 26.50;
   spotPrices.gold14ctPerGram = 37.10;
   spotPrices.source          = 'fallback';
+  spotPrices.fetchedAt       = new Date().toISOString();
 }
 
 /* ── Pricing engine ── */
@@ -1727,6 +1733,8 @@ function extractCaratWeight(promptText) {
 }
 
 function calculatePrice(metalType, stoneType, jewelryType, userCarats) {
+  console.log('Using silver price:', spotPrices.silverPerGram);
+  console.log('Source:', spotPrices.source);
   var weights     = MATERIAL_WEIGHTS[jewelryType] || MATERIAL_WEIGHTS['pendant'];
   var stoneCarats = (userCarats && userCarats > 0) ? userCarats : weights.stoneCarats;
   var caratSource = (userCarats && userCarats > 0) ? 'user specified' : 'default';
