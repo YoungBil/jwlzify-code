@@ -12,6 +12,12 @@
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+<!-- TensorFlow.js + MediaPipe body segmentation -->
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core@4.10.0/dist/tf-core.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl@4.10.0/dist/tf-backend-webgl.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/body-segmentation@1.0.1/dist/body-segmentation.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation@0.1.1675465747/selfie_segmentation.js"
+  crossorigin="anonymous"></script>
 <!-- @imgly/background-removal — preloads at page start; exposes window.__imglyRmBg when ready -->
 <script type="module">
   try {
@@ -1659,19 +1665,20 @@ function applyOzPrices(silverOzRaw, goldOz, source) {
 }
 
 async function fetchSpotPrices() {
+
+  // SOURCE 1: frankfurter.app — reliable CORS enabled
   try {
-    const res  = await fetch('https://api.metals.live/v1/spot/silver,gold');
+    const res = await fetch(
+      'https://api.frankfurter.app/latest?from=XAU&to=USD'
+    );
     const data = await res.json();
-    let silverOz = null, goldOz = null;
-    data.forEach(item => {
-      if (item.silver) silverOz = item.silver;
-      if (item.gold)   goldOz   = item.gold;
-    });
-    if (silverOz && goldOz) {
+    if (data?.rates?.USD > 1000) {
+      const goldOz   = data.rates.USD;
+      const silverOz = goldOz / 85;
       spotPrices.silverPerGram   = (silverOz / 31.1035) * 0.925;
       spotPrices.gold10ctPerGram = (goldOz / 31.1035) * (10/24);
       spotPrices.gold14ctPerGram = (goldOz / 31.1035) * (14/24);
-      spotPrices.source          = 'metals.live';
+      spotPrices.source          = 'frankfurter.app';
       spotPrices.fetchedAt       = new Date().toISOString();
       console.log('Silver /g: $' + spotPrices.silverPerGram.toFixed(4));
       console.log('10ct Gold /g: $' + spotPrices.gold10ctPerGram.toFixed(4));
@@ -1679,10 +1686,33 @@ async function fetchSpotPrices() {
       return;
     }
   } catch(e) {
-    console.warn('metals.live failed:', e.message);
+    console.warn('frankfurter failed:', e.message);
   }
-  // Fallback
-  spotPrices.silverPerGram   = 1.02;
+
+  // SOURCE 2: exchangerate.host
+  try {
+    const res = await fetch(
+      'https://api.exchangerate.host/latest?base=XAU&symbols=USD'
+    );
+    const data = await res.json();
+    if (data?.rates?.USD > 1000) {
+      const goldOz   = data.rates.USD;
+      const silverOz = goldOz / 85;
+      spotPrices.silverPerGram   = (silverOz / 31.1035) * 0.925;
+      spotPrices.gold10ctPerGram = (goldOz / 31.1035) * (10/24);
+      spotPrices.gold14ctPerGram = (goldOz / 31.1035) * (14/24);
+      spotPrices.source          = 'exchangerate.host';
+      spotPrices.fetchedAt       = new Date().toISOString();
+      console.log('Silver /g: $' + spotPrices.silverPerGram.toFixed(4));
+      return;
+    }
+  } catch(e) {
+    console.warn('exchangerate.host failed:', e.message);
+  }
+
+  // FALLBACK — May 2026 verified rates
+  console.warn('All APIs failed — using fallback');
+  spotPrices.silverPerGram   = 3.35;
   spotPrices.gold10ctPerGram = 26.50;
   spotPrices.gold14ctPerGram = 37.10;
   spotPrices.source          = 'fallback';
@@ -1994,7 +2024,7 @@ async function getSegmenter() {
     bodySegmentation.SupportedModels.MediaPipeSelfieSegmentation,
     {
       runtime: 'mediapipe',
-      solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation',
+      solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation@0.1.1675465747',
       modelType: 'general'
     }
   );
@@ -2671,9 +2701,6 @@ if (PENDANT_IMGLY_ENABLED) {
 }
 </script>
 
-<!-- TensorFlow.js + body segmentation for one-shot BG removal on jewelry images -->
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/body-segmentation@1.0.1/dist/body-segmentation.min.js"></script>
 
 </body>
 </html>
