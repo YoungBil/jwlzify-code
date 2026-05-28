@@ -690,8 +690,8 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
 
           <!-- Total -->
           <div class="quote-total mt-2 pt-5" style="border-top:2px solid #1b1c1c;">
-            <span style="font-family:'Playfair Display',serif;font-size:20px;font-weight:600;color:#1b1c1c;">Estimated Total</span>
-            <span style="font-family:'Playfair Display',serif;font-size:32px;font-weight:700;color:#3c6474;" id="quoteTotal">$0</span>
+            <span style="font-family:'Playfair Display',serif;font-size:20px;font-weight:600;color:#1b1c1c;">Total Cost</span>
+            <span style="font-family:'Playfair Display',serif;font-size:32px;font-weight:700;color:#3c6474;" id="quoteTotal"></span>
           </div>
 
           <!-- Crafting time -->
@@ -1830,19 +1830,15 @@ async function displayPricing(metalType, stoneType, jewelryType, overrideCarats)
 
   document.getElementById('priceRows').innerHTML =
     '<div style="margin-bottom:14px;">'
-    + row('Metal',               matLabel(metalType))
-    + row('Metal Weight',        r.metalGrams.toFixed(1) + 'g')
-    + row('Gemstone',            gemLabel(stoneType))
-    + row('Gemstone Weight',     r.stoneCarats.toFixed(2) + 'ct')
-    + '</div>'
-    + '<div class="quote-row" style="padding:12px 0 6px;border-top:2px solid rgba(193,199,203,0.4);">'
-    +   '<span class="body-copy" style="font-size:15px;color:#41484b;">Total Cost</span>'
-    +   '<span style="font-family:\'Playfair Display\',serif;font-size:30px;font-weight:700;color:#3c6474;">$' + r.finalPrice.toFixed(2) + '</span>'
+    + row('Metal',           matLabel(metalType))
+    + row('Metal Weight',    r.metalGrams.toFixed(1) + 'g')
+    + row('Gemstone',        gemLabel(stoneType))
+    + row('Gemstone Weight', r.stoneCarats.toFixed(2) + 'ct')
     + '</div>'
     + '<div id="priceTimestamp" style="font-family:Inter,sans-serif;font-size:10px;color:rgba(65,72,75,0.45);text-align:right;margin-top:10px;letter-spacing:0.06em;"></div>';
 
+  document.getElementById('quoteTotal').textContent = '$' + r.finalPrice.toFixed(2);
   updateTimestamp();
-  document.getElementById('quoteTotal').style.display = 'none';
 
   var INCLUDES = [
     { icon:'diamond',        label:'GIA Certified Stones' },
