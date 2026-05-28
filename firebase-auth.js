@@ -1,11 +1,12 @@
-var firebaseConfig = {
-  apiKey:            "AIzaSyAUzGJOBj7atcEX2XkS_LXpUs1wbWnWaV0",
-  authDomain:        "jwlzify.firebaseapp.com",
-  projectId:         "jwlzify",
-  storageBucket:     "jwlzify.firebasestorage.app",
-  messagingSenderId: "885878261157",
-  appId:             "1:885878261157:web:e6f16655b6a2875983144c"
-};
+const firebaseConfig = {
+    apiKey:            "AIzaSyAYybU6DQay5CfuoaCt5gSbtzPBWbQixfI",
+    authDomain:        "jwlzify-193c2.firebaseapp.com",
+    projectId:         "jwlzify-193c2",
+    storageBucket:     "jwlzify-193c2.firebasestorage.app",
+    messagingSenderId: "840627245145",
+    appId:             "1:840627245145:web:3d5ebe7c499ed8ff526148",
+    measurementId:     "G-PV2G27NW4N"
+  };
 
 if (!firebase.apps.length) {
   firebase.initializeApp(firebaseConfig);
