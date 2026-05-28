@@ -1984,7 +1984,11 @@ async function getSegmenter() {
   if (_segmenter) return _segmenter;
   _segmenter = await bodySegmentation.createSegmenter(
     bodySegmentation.SupportedModels.MediaPipeSelfieSegmentation,
-    { runtime: 'tfjs', modelType: 'general' }
+    {
+      runtime: 'mediapipe',
+      solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation',
+      modelType: 'general'
+    }
   );
   return _segmenter;
 }
