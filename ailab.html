@@ -1090,7 +1090,8 @@ async function goStep(n) {
   if (n === 4) {
     if (!spotPrices.fetchedAt ||
         spotPrices.source === 'fallback' ||
-        spotPrices.source === 'fallback-may2026') {
+        spotPrices.source === 'fallback-may2026' ||
+        spotPrices.source === 'fallback-cad-may2026') {
       await fetchSpotPrices();
     }
     await displayPricing(LAB.material, LAB.gem, LAB.type);
@@ -1663,80 +1664,46 @@ function applyOzPrices(silverOzRaw, goldOz, source) {
 }
 
 async function fetchSpotPrices() {
-
-  // SOURCE 1: Open Exchange Rates — free, CORS enabled
   try {
-    const res  = await fetch(
-      'https://openexchangerates.org/api/latest.json?app_id=a4f4c3b3b3b34b3b9b3b3b3b3b3b3b3b&symbols=XAU,XAG'
-    );
-    const data = await res.json();
-    if (data?.rates?.XAU && data?.rates?.XAG) {
-      const goldPerUSD   = data.rates.XAU;
-      const silverPerUSD = data.rates.XAG;
-      const goldOz   = 1 / goldPerUSD;
-      const silverOz = 1 / silverPerUSD;
-      spotPrices.silverPerGram   = (silverOz / 31.1035) * 0.925;
-      spotPrices.gold10ctPerGram = (goldOz / 31.1035) * (10/24);
-      spotPrices.gold14ctPerGram = (goldOz / 31.1035) * (14/24);
-      spotPrices.source          = 'openexchangerates';
+    const [silverRes, goldRes] = await Promise.all([
+      fetch('https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/xag.json'),
+      fetch('https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/xau.json')
+    ]);
+
+    const silverData = await silverRes.json();
+    const goldData   = await goldRes.json();
+
+    // Get CAD prices directly
+    const silverOzCAD = silverData?.xag?.cad;
+    const goldOzCAD   = goldData?.xau?.cad;
+
+    if (silverOzCAD > 10 && goldOzCAD > 1000) {
+      // Convert troy oz to per gram, apply 925 purity
+      spotPrices.silverPerGram   = (silverOzCAD / 31.1035) * 0.925;
+      spotPrices.gold10ctPerGram = (goldOzCAD / 31.1035) * (10/24);
+      spotPrices.gold14ctPerGram = (goldOzCAD / 31.1035) * (14/24);
+      spotPrices.source          = 'fawazahmed0-cad';
       spotPrices.fetchedAt       = new Date().toISOString();
-      console.log('LIVE Silver /g: $' + spotPrices.silverPerGram.toFixed(4));
+
+      console.log('Silver oz CAD: $' + silverOzCAD.toFixed(2));
+      console.log('925 Silver /g CAD: $' + spotPrices.silverPerGram.toFixed(4));
+      console.log('10ct Gold /g CAD: $' + spotPrices.gold10ctPerGram.toFixed(4));
+      console.log('14ct Gold /g CAD: $' + spotPrices.gold14ctPerGram.toFixed(4));
       return;
     }
   } catch(e) {
-    console.warn('openexchangerates failed:', e.message);
+    console.warn('CAD price fetch failed:', e.message);
   }
 
-  // SOURCE 2: GoldAPI public endpoint — no key needed
-  try {
-    const res  = await fetch(
-      'https://data-asg.goldprice.org/dbXRates/USD',
-      { headers: { 'Accept': 'application/json' } }
-    );
-    const data = await res.json();
-    if (data?.items?.[0]?.xauPrice > 1000) {
-      const goldOz   = data.items[0].xauPrice;
-      const silverOz = data.items[0].xagPrice;
-      spotPrices.silverPerGram   = (silverOz / 31.1035) * 0.925;
-      spotPrices.gold10ctPerGram = (goldOz / 31.1035) * (10/24);
-      spotPrices.gold14ctPerGram = (goldOz / 31.1035) * (14/24);
-      spotPrices.source          = 'goldprice.org';
-      spotPrices.fetchedAt       = new Date().toISOString();
-      console.log('LIVE Silver /g: $' + spotPrices.silverPerGram.toFixed(4));
-      return;
-    }
-  } catch(e) {
-    console.warn('goldprice.org failed:', e.message);
-  }
-
-  // SOURCE 3: fawazahmed0 currency API — completely free
-  try {
-    const res  = await fetch(
-      'https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/xau.json'
-    );
-    const data = await res.json();
-    if (data?.xau?.usd > 1000) {
-      const goldOz   = data.xau.usd;
-      const silverOz = goldOz / 85;
-      spotPrices.silverPerGram   = (silverOz / 31.1035) * 0.925;
-      spotPrices.gold10ctPerGram = (goldOz / 31.1035) * (10/24);
-      spotPrices.gold14ctPerGram = (goldOz / 31.1035) * (14/24);
-      spotPrices.source          = 'fawazahmed0-cdn';
-      spotPrices.fetchedAt       = new Date().toISOString();
-      console.log('LIVE Silver /g: $' + spotPrices.silverPerGram.toFixed(4));
-      return;
-    }
-  } catch(e) {
-    console.warn('fawazahmed0 failed:', e.message);
-  }
-
-  // FALLBACK — updated May 2026 verified rates
-  console.warn('ALL price sources failed — using May 2026 fallback');
-  spotPrices.silverPerGram   = 3.35;
-  spotPrices.gold10ctPerGram = 43.20;
-  spotPrices.gold14ctPerGram = 60.48;
-  spotPrices.source          = 'fallback-may2026';
+  // Fallback — verified May 28 2026 CAD rates
+  // Silver: ~$104/oz CAD ÷ 31.1035 × 0.925 = ~$3.09/g
+  // Gold: ~$4550/oz CAD
+  spotPrices.silverPerGram   = 3.09;
+  spotPrices.gold10ctPerGram = 60.89;
+  spotPrices.gold14ctPerGram = 85.25;
+  spotPrices.source          = 'fallback-cad-may2026';
   spotPrices.fetchedAt       = new Date().toISOString();
+  console.log('Using CAD fallback prices');
 }
 
 /* ── Pricing engine ── */
@@ -1883,7 +1850,7 @@ async function displayPricing(metalType, stoneType, jewelryType, overrideCarats)
     + '</div>'
     + '<div id="priceTimestamp" style="font-family:Inter,sans-serif;font-size:10px;color:rgba(65,72,75,0.45);text-align:right;margin-top:10px;letter-spacing:0.06em;"></div>';
 
-  document.getElementById('quoteTotal').textContent = '$' + r.finalPrice.toFixed(2);
+  document.getElementById('quoteTotal').textContent = '$' + r.finalPrice.toFixed(2) + ' CAD';
   updateTimestamp();
 
   var INCLUDES = [
