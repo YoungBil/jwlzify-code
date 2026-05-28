@@ -12,18 +12,6 @@
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
-<!-- @imgly/background-removal — preloads at page start; exposes window.__imglyRmBg when ready -->
-<script type="module">
-  try {
-    const lib = await import('https://cdn.jsdelivr.net/npm/@imgly/background-removal/+esm');
-    window.__imglyRmBg = lib.removeBackground ?? lib.default?.removeBackground;
-    if (!window.__imglyRmBg) throw new Error('removeBackground not in exports');
-    console.log('[JWLZIFY] imgly preloaded OK');
-  } catch (e) {
-    window.__imglyFailed = true;
-    console.warn('[JWLZIFY] imgly preload failed:', e);
-  }
-</script>
 <script>
 tailwind.config={darkMode:"class",theme:{extend:{colors:{
   "primary":"#3c6474","on-primary":"#ffffff",
@@ -992,9 +980,6 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
 /* ── Claude API key (fill in to enable AI spec cards) ── */
 const CLAUDE_API_KEY = '';
 
-/* Set false to skip background removal without changing code (instant rollback) */
-const PENDANT_IMGLY_ENABLED = true;
-
 /* ── Display name maps ── */
 const MATERIAL_LABEL = {
   '925silver':  '925 Sterling Silver',
@@ -1343,96 +1328,6 @@ function validateCutout(px, W, H) {
   return { ok: true, opaqueRatio: (opaque / N).toFixed(3) };
 }
 
-/* ── @imgly/background-removal lazy loader ─────── */
-let _imglyMod    = null;
-let _imglyLoading = null;
-async function _getImglyLib() {
-  if (_imglyMod)    return _imglyMod;
-  if (_imglyLoading) return _imglyLoading;   // de-dupe concurrent calls
-  _imglyLoading = (async () => {
-    // Primary: poll for the <script type="module"> preload (exits early on failure flag)
-    const t0 = Date.now();
-    while (!window.__imglyRmBg && !window.__imglyFailed && Date.now() - t0 < 20000) {
-      await new Promise(r => setTimeout(r, 250));
-    }
-    if (window.__imglyRmBg) {
-      _imglyMod = { removeBackground: window.__imglyRmBg };
-      return _imglyMod;
-    }
-    // Fallback: fresh dynamic import attempt (different CDN path as secondary try)
-    console.log('[JWLZIFY] imgly preload missed — trying dynamic import');
-    const mod = await import('https://cdn.jsdelivr.net/npm/@imgly/background-removal/+esm');
-    const fn  = mod.removeBackground ?? mod.default?.removeBackground;
-    if (typeof fn !== 'function') throw new Error('removeBackground not found in module');
-    _imglyMod = { removeBackground: fn };
-    return _imglyMod;
-  })();
-  return _imglyLoading;
-}
-
-/* ── Pendant subject isolation (@imgly/background-removal) ─────── */
-async function isolatePendantSubject(pollinationsUrl) {
-  if (!PENDANT_IMGLY_ENABLED) return null;
-  if (_birefnetCache.has(pollinationsUrl)) return _birefnetCache.get(pollinationsUrl);
-  try {
-    const mod = await _getImglyLib();
-    // Handle both named export (v1) and default export (v2+)
-    const removeBackground = mod.removeBackground ?? mod.default?.removeBackground;
-    if (typeof removeBackground !== 'function') throw new Error('removeBackground not found in module');
-
-    // Fetch as blob ourselves so we control CORS; pass blob to avoid worker fetch CORS issues
-    const srcResp = await fetch(pollinationsUrl, { mode: 'cors', credentials: 'omit' });
-    if (!srcResp.ok) throw new Error('source-fetch-' + srcResp.status);
-    const srcBlob = await srcResp.blob();
-
-    // publicPath must match the CDN serving the JS so model file names align.
-    // isnet_quint8 = INT8 quantized model — smaller download, same quality for jewelry.
-    const cutoutBlob = await removeBackground(srcBlob, {
-      publicPath: 'https://cdn.jsdelivr.net/npm/@imgly/background-removal/dist/',
-      model: 'isnet_quint8',
-      output: { format: 'image/png', quality: 1.0 },
-    });
-
-    const cutoutUrl = URL.createObjectURL(cutoutBlob);
-    const cutoutImg = await new Promise((resolve, reject) => {
-      const img = new Image();
-      img.onload  = () => { URL.revokeObjectURL(cutoutUrl); resolve(img); };
-      img.onerror = () => { URL.revokeObjectURL(cutoutUrl); reject(new Error('cutout load failed')); };
-      img.src = cutoutUrl;
-    });
-    const W = cutoutImg.naturalWidth, H = cutoutImg.naturalHeight;
-    const canvas = document.createElement('canvas');
-    canvas.width = W; canvas.height = H;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(cutoutImg, 0, 0);
-    const frame = ctx.getImageData(0, 0, W, H);
-    const px    = frame.data;
-
-    // Alpha cleanup pipeline — order matters: threshold first (kills halos before
-    // component analysis), then cleanup, then decontaminate, then feather.
-    sweepAlphaThreshold(px, W * H);       // <15% → 0, >95% → 255; kills grayish halos
-    cleanupComponents(px, W, H);          // remove stray fragments outside main subject
-    decontaminateWhiteEdges(px, W, H);    // strip white-bg color from edge pixels
-    featherAlpha(px, W, H);               // soften step-edges left by threshold
-
-    const bailNormX = computeBailNormX(px, W, H);  // where the chain attaches
-
-    const v = validateCutout(px, W, H);
-    if (!v.ok) console.warn('[JWLZIFY] cutout validation:', v);
-    else       console.log('[JWLZIFY] imgly bg-removal complete', { ...v, bailNormX: bailNormX.toFixed(3) });
-
-    ctx.putImageData(frame, 0, 0);
-    // Crop to bounding box + re-pad to 1024×1024 centered. Returns {blobUrl, bailNormX}
-    // where bailNormX is the bail's X position as a fraction of the 1024px canvas width.
-    const result = await padToStandardCanvas(canvas, px, W, H, bailNormX);
-    _birefnetCache.set(pollinationsUrl, result);
-    return result;  // { blobUrl, bailNormX }
-  } catch (e) {
-    console.error('[JWLZIFY] background removal failed:', e);
-    return null;
-  }
-}
-
 /* ── Image generation ────────────────────────── */
 async function startGeneration(isTweak) {
   generationId++;
@@ -1468,16 +1363,6 @@ async function startGeneration(isTweak) {
   const seed = (Date.now() + Math.floor(Math.random() * 9999)) % 99999;
   let url =
     `https://image.pollinations.ai/prompt/${encodeURIComponent(fullPrompt)}?width=800&height=800&nologo=true&seed=${seed}&model=flux&enhance=${isPendantGen ? 'false' : 'true'}${negParam}`;
-
-  // BiRefNet post-processing: subject-isolates the pendant universally.
-  // Returns { blobUrl, bailNormX } on success, null on any error (graceful fallback).
-  if (isPendantGen) {
-    const cutout = await isolatePendantSubject(url);
-    if (thisGen !== generationId) { setGenLoading(false); return; }
-    if (cutout) {
-      url = cutout.blobUrl;
-    }
-  }
 
   LAB.imageUrl = url;
 
@@ -1665,43 +1550,37 @@ function applyOzPrices(silverOzRaw, goldOz, source) {
 
 async function fetchSpotPrices() {
   try {
-    const [silverRes, goldRes] = await Promise.all([
-      fetch('https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/xag.json'),
-      fetch('https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/xau.json')
-    ]);
+    // goldpricez.com — free, CORS enabled, CAD support
+    // Returns silver and gold prices per gram in CAD
+    const res  = await fetch(
+      'https://goldpricez.com/api/rates/currency/cad/measure/gram',
+      { headers: { 'X-API-KEY': 'free' } }
+    );
+    const data = await res.json();
 
-    const silverData = await silverRes.json();
-    const goldData   = await goldRes.json();
-
-    // Get CAD prices directly
-    const silverOzCAD = silverData?.xag?.cad;
-    const goldOzCAD   = goldData?.xau?.cad;
-
-    if (silverOzCAD > 10 && goldOzCAD > 1000) {
-      // Convert troy oz to per gram, apply 925 purity
-      spotPrices.silverPerGram   = (silverOzCAD / 31.1035) * 0.925;
-      spotPrices.gold10ctPerGram = (goldOzCAD / 31.1035) * (10/24);
-      spotPrices.gold14ctPerGram = (goldOzCAD / 31.1035) * (14/24);
-      spotPrices.source          = 'fawazahmed0-cad';
+    if (data?.silver_gram_cad && data?.gold_gram_cad) {
+      // Apply 925 purity to silver
+      spotPrices.silverPerGram   = data.silver_gram_cad * 0.925;
+      // Apply karat purity to gold
+      spotPrices.gold10ctPerGram = data.gold_gram_cad * (10/24);
+      spotPrices.gold14ctPerGram = data.gold_gram_cad * (14/24);
+      spotPrices.source          = 'goldpricez-cad';
       spotPrices.fetchedAt       = new Date().toISOString();
 
-      console.log('Silver oz CAD: $' + silverOzCAD.toFixed(2));
-      console.log('925 Silver /g CAD: $' + spotPrices.silverPerGram.toFixed(4));
-      console.log('10ct Gold /g CAD: $' + spotPrices.gold10ctPerGram.toFixed(4));
-      console.log('14ct Gold /g CAD: $' + spotPrices.gold14ctPerGram.toFixed(4));
+      console.log('CAD Silver /g: $' + spotPrices.silverPerGram.toFixed(4));
+      console.log('CAD 10ct Gold /g: $' + spotPrices.gold10ctPerGram.toFixed(4));
+      console.log('CAD 14ct Gold /g: $' + spotPrices.gold14ctPerGram.toFixed(4));
       return;
     }
   } catch(e) {
-    console.warn('CAD price fetch failed:', e.message);
+    console.warn('goldpricez failed:', e.message);
   }
 
-  // Fallback — verified May 28 2026 CAD rates
-  // Silver: ~$113/oz CAD ÷ 31.1035 × 0.925 = ~$3.35/g
-  // Gold: ~$4550/oz CAD
+  // Fallback — May 28 2026 CAD verified rates
   spotPrices.silverPerGram   = 3.35;
-  spotPrices.gold10ctPerGram = 60.89;
-  spotPrices.gold14ctPerGram = 85.25;
-  spotPrices.source          = 'fallback-cad-may2026';
+  spotPrices.gold10ctPerGram = 75.40;
+  spotPrices.gold14ctPerGram = 105.56;
+  spotPrices.source          = 'fallback-cad';
   spotPrices.fetchedAt       = new Date().toISOString();
   console.log('Using CAD fallback prices');
 }
@@ -2238,39 +2117,20 @@ async function removeBackground(imageUrl) {
   return new Promise((resolve) => {
     const img = new Image();
     img.crossOrigin = 'anonymous';
-
     img.onload = async () => {
-      const W = img.naturalWidth;
-      const H = img.naturalHeight;
-
+      // Try TF segmentation first
       try {
-        const tfResult = await Promise.race([
-          tfSegmentationRemoval(img, W, H),
-          new Promise((_, rej) =>
-            setTimeout(() => rej(new Error('TF timeout')), 6000)
-          ),
-        ]);
-
-        const quality = await checkRemovalQuality(tfResult);
-        if (quality.transparentRatio > 0.08) {
-          resolve(tfResult);
+        if (_segmenter) {
+          const result = await tfSegmentationRemoval(img);
+          resolve(result);
           return;
         }
-        throw new Error('TF result quality too low');
-
-      } catch (tfErr) {
-        console.warn('TF stage failed:', tfErr.message);
+      } catch(e) {
+        console.warn('TF removal failed:', e.message);
       }
-
-      try {
-        const floodResult = await advancedFloodFill(img, W, H);
-        resolve(floodResult);
-      } catch (floodErr) {
-        console.warn('Flood fill failed:', floodErr);
-        resolve(imageUrl);
-      }
+      // Fall back to flood fill
+      resolve(await floodFillRemoveBackground(imageUrl));
     };
-
     img.onerror = () => resolve(imageUrl);
     img.src = imageUrl;
   });
@@ -2689,10 +2549,7 @@ async function fetchSpecCard() {
 /* ── Initialise spot prices on load ── */
 startPriceRefresh();
 
-/* ── Prefetch @imgly/background-removal model weights non-blocking ── */
-if (PENDANT_IMGLY_ENABLED) {
-  setTimeout(() => _getImglyLib().catch(() => {}), 1000);
-}
+
 </script>
 
 
