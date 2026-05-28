@@ -338,7 +338,7 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
           <div>
             <label class="label block mb-2" style="font-size:10px;letter-spacing:0.18em;color:#3c6474;">Primary Stone</label>
             <select id="gemSelect" class="lab-input" style="cursor:pointer;">
-              <option value="moissanite_vvs">Moissanite VVS</option>
+              <option value="moissanite_vvsd">Moissanite VVSD</option>
               <option value="lab_diamond_vvs">Lab Diamond VVS</option>
             </select>
           </div>
@@ -856,7 +856,7 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
         Your Commission<br>Is Confirmed
       </h2>
       <p class="body-lg mb-4" style="color:#5e5e5b;max-width:440px;margin:0 auto 16px;">
-        You'll receive a confirmation email shortly with your archival AI render, order ID, and crafting timeline.
+        You'll receive a confirmation email shortly with your AI render, order ID, and crafting timeline.
       </p>
       <p class="label mb-12" style="font-size:11px;letter-spacing:0.16em;color:#3c6474;" id="orderIdDisplay">ORDER #JWLZ-000000</p>
 
@@ -898,7 +898,7 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
               <span class="material-symbols-outlined text-white" style="font-size:16px;">local_shipping</span>
             </div>
             <div>
-              <p class="label" style="font-size:11px;color:#1b1c1c;">Week 6 — White-glove insured delivery to your door</p>
+              <p class="label" style="font-size:11px;color:#1b1c1c;">Week 6 — Delivery to your doorstep</p>
             </div>
           </div>
         </div>
@@ -1002,7 +1002,7 @@ const MATERIAL_LABEL = {
   '14ctgold':   '14ct Gold',
 };
 const GEM_LABEL = {
-  'moissanite_vvs':    'Moissanite VVS',
+  'moissanite_vvsd':   'Moissanite VVSD',
   'lab_diamond_vvs':   'Lab Diamond VVS',
   'lab_diamond':       'Lab Diamond',
   'real_diamond_vsvvs':'Real Diamond VS/VVS',
@@ -1013,7 +1013,7 @@ function gemLabel(v) { return GEM_LABEL[v] || v; }
 
 /* ── Metal → gem options ── */
 const GEM_OPTIONS = {
-  '925silver':  [['moissanite_vvs','Moissanite VVS'],['lab_diamond_vvs','Lab Diamond VVS']],
+  '925silver':  [['moissanite_vvsd','Moissanite VVSD'],['lab_diamond_vvs','Lab Diamond VVS']],
   '10ctgold':   [['lab_diamond','Lab Diamond'],['real_diamond_vsvvs','Real Diamond VS/VVS']],
   '14ctgold':   [['lab_diamond','Lab Diamond'],['real_diamond_vsvvs','Real Diamond VS/VVS']],
 };
@@ -1030,7 +1030,7 @@ const LAB = {
   step: 1,
   type: 'ring',
   material: '925silver',
-  gem: 'moissanite_vvs',
+  gem: 'moissanite_vvsd',
   style: 'Art Deco',
   prompt: '',
   imageUrl: null,
@@ -1525,7 +1525,7 @@ const SDATA = {
     'Maximalist': [
       'A cluster of princess-cut stones surrounding the center would elevate the drama significantly.',
       'Full pavé coverage across the entire shank would make this piece unmissable.',
-      'Incorporating a second stone type (e.g. sapphire accents around a diamond center) creates rich contrast.'
+      'Incorporating a second gemstone type (e.g. sapphire accents around a diamond center) creates rich contrast.'
     ],
     'Organic': [
       'Free-form prong work that mimics roots or branches would reinforce the organic narrative.',
@@ -1655,52 +1655,54 @@ function applyOzPrices(silverOzRaw, goldOz, source) {
 }
 
 async function fetchSpotPrices() {
-  // Source 1: metals.live (most reliable free live feed)
   try {
-    const res = await fetch('https://api.metals.live/v1/spot/gold,silver',
-      { headers: { 'Accept': 'application/json' } });
-    if (!res.ok) throw new Error();
-    const data = await res.json();
-    let goldOz = null, silverOz = null;
-    if (Array.isArray(data)) {
-      data.forEach(function(item) {
-        if (item.gold)   goldOz   = item.gold;
-        if (item.silver) silverOz = item.silver;
-      });
-    }
-    if (goldOz && silverOz && goldOz > 1000 && silverOz > 10) {
-      applyOzPrices(silverOz, goldOz, 'metals.live');
+    // Use allorigins proxy to fetch silverprice.org
+    const silverUrl = 'https://api.allorigins.win/get?url=' +
+      encodeURIComponent('https://www.silverprice.org/silver-price-per-gram.html');
+    const goldUrl = 'https://api.allorigins.win/get?url=' +
+      encodeURIComponent('https://www.silverprice.org/gold-price-per-gram.html');
+
+    const [silverRes, goldRes] = await Promise.all([
+      fetch(silverUrl),
+      fetch(goldUrl)
+    ]);
+
+    const silverData = await silverRes.json();
+    const goldData   = await goldRes.json();
+
+    // Parse silver price per gram from HTML
+    const silverMatch = silverData.contents.match(
+      /Price per Gram[^$]*\$\s*([\d.]+)/i
+    );
+    const goldMatch = goldData.contents.match(
+      /Price per Gram[^$]*\$\s*([\d.]+)/i
+    );
+
+    if (silverMatch && goldMatch) {
+      const silverPerGram = parseFloat(silverMatch[1]);
+      const goldPerGram   = parseFloat(goldMatch[1]);
+
+      spotPrices.silverPerGram   = silverPerGram * 0.925;
+      spotPrices.gold10ctPerGram = goldPerGram * (10/24);
+      spotPrices.gold14ctPerGram = goldPerGram * (14/24);
+      spotPrices.source          = 'silverprice.org';
+      spotPrices.fetchedAt       = new Date().toISOString();
+
+      console.log('Silver /g: $' + spotPrices.silverPerGram.toFixed(4));
+      console.log('10ct Gold /g: $' + spotPrices.gold10ctPerGram.toFixed(4));
+      console.log('14ct Gold /g: $' + spotPrices.gold14ctPerGram.toFixed(4));
       return;
     }
-  } catch(e) { console.warn('metals.live failed:', e.message); }
+    throw new Error('Could not parse prices');
 
-  // Source 2: goldprice.org
-  try {
-    const res = await fetch('https://data-asg.goldprice.org/dbXRates/USD');
-    if (!res.ok) throw new Error();
-    const data = await res.json();
-    const item = data.items && data.items[0];
-    if (item && item.xauPrice > 1000 && item.xagPrice > 10) {
-      applyOzPrices(item.xagPrice, item.xauPrice, 'goldprice.org');
-      return;
-    }
-  } catch(e) { console.warn('goldprice.org failed:', e.message); }
-
-  // Source 3: frankfurter.app XAU proxy
-  try {
-    const res = await fetch('https://api.frankfurter.app/latest?from=XAU&to=USD');
-    if (!res.ok) throw new Error();
-    const data = await res.json();
-    const goldOz = data.rates && data.rates.USD;
-    if (goldOz && goldOz > 1000) {
-      applyOzPrices(goldOz / 88, goldOz, 'frankfurter.app');
-      return;
-    }
-  } catch(e) { console.warn('frankfurter failed:', e.message); }
-
-  // Fallback — Kitco verified May 2026 rates
-  console.warn('All live sources failed — using verified fallback');
-  applyOzPrices(FALLBACK_PRICES.silverPerOz, FALLBACK_PRICES.goldPerOz, 'fallback (May 2026)');
+  } catch (err) {
+    console.warn('silverprice.org failed:', err.message);
+    // Fallback
+    spotPrices.silverPerGram   = 1.02;
+    spotPrices.gold10ctPerGram = 26.50;
+    spotPrices.gold14ctPerGram = 37.10;
+    spotPrices.source          = 'fallback';
+  }
 }
 
 /* ── Pricing engine ── */
@@ -1711,34 +1713,14 @@ const MATERIAL_WEIGHTS = {
   earrings: { metalGrams: 3,  stoneCarats: 0.50 },
   bracelet: { metalGrams: 12, stoneCarats: 1.50 },
 };
-// Base Rapaport / C&C wholesale rates (May 2026) — used as anchors for dynamic calc
-const STONE_BASE_RATES = {
-  moissanite_vvs:    89.00,
-  lab_diamond_vvs:   185.00,
-  lab_diamond:       185.00,
-  real_diamond_vsvvs: 1050.00,
-  natural_diamond:   1050.00,
+const STONE_RATES = {
+  moissanite_vvsd: 2.00,
+  lab_diamond:     2.00,
+  natural_diamond: 2.00
 };
 
 function getDynamicStoneRates() {
-  var TROY = 31.1034768;
-  var goldOzPrice = spotPrices.gold14ctPerGram * TROY / (14 / 24);
-  var goldNorm    = goldOzPrice / 3300; // normalised to May 2026 baseline
-
-  var rates = {
-    moissanite_vvs:    STONE_BASE_RATES.moissanite_vvs    * (0.97 + goldNorm * 0.03),
-    lab_diamond_vvs:   STONE_BASE_RATES.lab_diamond_vvs   * (0.90 + goldNorm * 0.10),
-    lab_diamond:       STONE_BASE_RATES.lab_diamond        * (0.90 + goldNorm * 0.10),
-    real_diamond_vsvvs: STONE_BASE_RATES.real_diamond_vsvvs * (0.85 + goldNorm * 0.15),
-    natural_diamond:   STONE_BASE_RATES.natural_diamond    * (0.85 + goldNorm * 0.15),
-  };
-
-  console.log('=== DYNAMIC STONE RATES ===');
-  console.log('Gold spot: $' + goldOzPrice.toFixed(2) + '/oz | norm factor:', goldNorm.toFixed(4));
-  console.log('Moissanite VVS: $' + rates.moissanite_vvs.toFixed(2) + '/ct');
-  console.log('Lab Diamond VVS: $' + rates.lab_diamond_vvs.toFixed(2) + '/ct');
-  console.log('Natural Diamond VS/VVS: $' + rates.natural_diamond.toFixed(2) + '/ct');
-  return rates;
+  return STONE_RATES;
 }
 
 function extractCaratWeight(promptText) {
@@ -1777,14 +1759,14 @@ function calculatePrice(metalType, stoneType, jewelryType, userCarats) {
   else if (metalType === '14ctgold') metalPerGram = spotPrices.gold14ctPerGram;
 
   var stoneRates    = getDynamicStoneRates();
-  var stoneRateUsed = stoneRates[stoneType] || STONE_BASE_RATES[stoneType] || 89.00;
+  var stoneRateUsed = stoneRates[stoneType] || 2.00;
   var metalCost = weights.metalGrams * metalPerGram;
   var stoneCost = stoneCarats * stoneRateUsed;
   var baseCost  = metalCost + stoneCost;
 
   var labourRate = 0.20;
   var profitRate = 1.00;
-  if (metalType === '925silver' && stoneType === 'moissanite_vvs') {
+  if (metalType === '925silver' && stoneType === 'moissanite_vvsd') {
     profitRate = 1.50;
   } else if ((metalType === '10ctgold' || metalType === '14ctgold') &&
              (stoneType === 'real_diamond_vsvvs' || stoneType === 'natural_diamond')) {
@@ -1848,19 +1830,13 @@ async function displayPricing(metalType, stoneType, jewelryType, overrideCarats)
 
   document.getElementById('priceRows').innerHTML =
     '<div style="margin-bottom:14px;">'
-    + row('Piece Type',          typeName)
     + row('Metal',               matLabel(metalType))
     + row('Metal Weight',        r.metalGrams.toFixed(1) + 'g')
-    + row('Metal Rate (live)',   '$' + r.metalCostPerG.toFixed(4) + '/g')
-    + row('Metal Cost',          '$' + r.metalCost.toFixed(2))
-    + row('Stone',               gemLabel(stoneType))
-    + row('Stone Weight',        r.stoneCarats.toFixed(2) + 'ct  (' + r.caratSource + ')')
-    + row('Stone Rate (dynamic)','$' + r.stoneRateUsed.toFixed(2) + '/ct')
-    + row('Stone Cost',          '$' + r.stoneCost.toFixed(2))
-    + row('Total Material Cost', '$' + r.baseCost.toFixed(2), true)
+    + row('Gemstone',            gemLabel(stoneType))
+    + row('Gemstone Weight',     r.stoneCarats.toFixed(2) + 'ct')
     + '</div>'
     + '<div class="quote-row" style="padding:12px 0 6px;border-top:2px solid rgba(193,199,203,0.4);">'
-    +   '<span class="body-copy" style="font-size:15px;color:#41484b;">Estimated Price</span>'
+    +   '<span class="body-copy" style="font-size:15px;color:#41484b;">Total Cost</span>'
     +   '<span style="font-family:\'Playfair Display\',serif;font-size:30px;font-weight:700;color:#3c6474;">$' + r.finalPrice.toFixed(2) + '</span>'
     + '</div>'
     + '<div id="priceTimestamp" style="font-family:Inter,sans-serif;font-size:10px;color:rgba(65,72,75,0.45);text-align:right;margin-top:10px;letter-spacing:0.06em;"></div>';
@@ -1871,9 +1847,9 @@ async function displayPricing(metalType, stoneType, jewelryType, overrideCarats)
   var INCLUDES = [
     { icon:'diamond',        label:'GIA Certified Stones' },
     { icon:'verified',       label:'18-Month Craftsmanship Warranty' },
-    { icon:'image',          label:'Archival AI Design Render' },
-    { icon:'inventory_2',    label:'Premium Archival Packaging' },
-    { icon:'local_shipping', label:'White-Glove Insured Delivery' },
+    { icon:'image',          label:'AI Design Render' },
+    { icon:'inventory_2',    label:'Premium Packaging' },
+    { icon:'local_shipping', label:'Delivery to your doorstep' },
   ];
   document.getElementById('includesList').innerHTML = INCLUDES.map(function(i) {
     return '<li class="flex items-center gap-3">'
