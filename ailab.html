@@ -2113,6 +2113,83 @@ async function advancedFloodFill(img, W, H) {
   return canvasToBlob(canvas);
 }
 
+async function floodFillRemoveBackground(imageUrl) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const c   = document.createElement('canvas');
+      c.width   = img.naturalWidth;
+      c.height  = img.naturalHeight;
+      const ctx = c.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+
+      const frame = ctx.getImageData(0, 0, c.width, c.height);
+      const px    = frame.data;
+      const W     = c.width;
+      const H     = c.height;
+      const N     = W * H;
+
+      // Sample background color from borders
+      const samples = [];
+      for (let x = 0; x < W; x++) {
+        samples.push(x);
+        samples.push((H-1)*W + x);
+      }
+      for (let y = 1; y < H-1; y++) {
+        samples.push(y*W);
+        samples.push(y*W + W-1);
+      }
+
+      const valid = samples.filter(i => {
+        const r=px[i*4],g=px[i*4+1],b=px[i*4+2];
+        return (r*0.299+g*0.587+b*0.114) > 140;
+      });
+
+      const bgR = valid.reduce((s,i)=>s+px[i*4],0)/valid.length;
+      const bgG = valid.reduce((s,i)=>s+px[i*4+1],0)/valid.length;
+      const bgB = valid.reduce((s,i)=>s+px[i*4+2],0)/valid.length;
+
+      const TOL = 52;
+
+      function isBg(i) {
+        const r=px[i*4],g=px[i*4+1],b=px[i*4+2];
+        return Math.sqrt((r-bgR)**2+(g-bgG)**2+(b-bgB)**2) < TOL;
+      }
+
+      const gone  = new Uint8Array(N);
+      const queue = new Int32Array(N*2);
+      let head=0, tail=0;
+
+      function seed(i) {
+        if (i>=0&&i<N&&!gone[i]&&isBg(i)) {
+          gone[i]=1; queue[tail++]=i;
+        }
+      }
+
+      for (let x=0;x<W;x++) { seed(x); seed((H-1)*W+x); }
+      for (let y=1;y<H-1;y++) { seed(y*W); seed(y*W+W-1); }
+
+      while (head<tail) {
+        const i=queue[head++];
+        seed(i-1);seed(i+1);seed(i-W);seed(i+W);
+      }
+
+      for (let i=0;i<N;i++) {
+        px[i*4+3] = gone[i] ? 0 : 255;
+      }
+
+      ctx.putImageData(frame, 0, 0);
+      c.toBlob(
+        blob => resolve(URL.createObjectURL(blob)),
+        'image/png'
+      );
+    };
+    img.onerror = () => resolve(imageUrl);
+    img.src = imageUrl;
+  });
+}
+
 async function removeBackground(imageUrl) {
   return new Promise((resolve) => {
     const img = new Image();
