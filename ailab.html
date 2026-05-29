@@ -491,7 +491,7 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
           <div id="s2SavePanel" style="display:none;padding:14px 16px;background:#f5f3f3;border-radius:12px;">
             <input id="s2DesignName" type="text" placeholder="My Design"
               style="width:100%;font-family:Inter,sans-serif;font-size:13px;padding:9px 12px;border:1px solid #e5e7eb;border-radius:8px;outline:none;color:#1b1c1c;box-sizing:border-box;margin-bottom:10px;">
-            <button onclick="s2ConfirmSave()"
+            <button id="s2ConfirmBtn" onclick="s2ConfirmSave()"
               style="width:100%;font-family:Inter,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.1em;background:#3c6474;color:white;border:none;border-radius:8px;padding:10px;cursor:pointer;">
               Confirm Save
             </button>
@@ -2727,28 +2727,37 @@ window.confirmSaveDesign = async function () {
 
 <!-- Step 2 Save Design — inline logic -->
 <script type="module">
-import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged }
+import { getAuth, signInWithPopup, GoogleAuthProvider }
   from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
 import { getFirestore, collection, addDoc, serverTimestamp }
   from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 
-// Reuse the already-initialised auth and app — no new initializeApp
-function db() { return getFirestore(window._jwlApp); }
+function getDb() {
+  if (!window._jwlApp) { console.error('[JWLZIFY] _jwlApp not ready'); return null; }
+  return getFirestore(window._jwlApp);
+}
+function getAuthInst() {
+  if (window._jwlAuth) return window._jwlAuth;
+  if (!window._jwlApp) { console.error('[JWLZIFY] _jwlApp not ready'); return null; }
+  return getAuth(window._jwlApp);
+}
 
 window.s2SaveDesign = async function () {
-  const auth = window._jwlAuth;
+  const auth = getAuthInst();
+  if (!auth) { console.error('[JWLZIFY] auth unavailable'); return; }
+
   if (!auth.currentUser) {
-    // Not signed in — trigger popup then auto-save on success
     try {
       await signInWithPopup(auth, new GoogleAuthProvider());
-      // popup succeeded; fall through to show panel
     } catch (e) {
-      console.warn('s2 sign-in cancelled:', e.message);
+      if (e.code !== 'auth/popup-closed-by-user' && e.code !== 'auth/cancelled-popup-request') {
+        console.warn('[JWLZIFY] s2 sign-in failed:', e.code, e.message);
+      }
       return;
     }
   }
-  // Show inline name prompt, pre-filled with current design label
-  const defaultName = ([LAB.style, LAB.type].filter(Boolean).join(' ') || 'My Design').trim();
+
+  const defaultName = ([LAB?.style, LAB?.type].filter(Boolean).join(' ') || 'My Design').trim();
   document.getElementById('s2DesignName').value = defaultName;
   document.getElementById('s2SavePanel').style.display = '';
   document.getElementById('s2SaveMsg').style.display   = 'none';
@@ -2756,35 +2765,60 @@ window.s2SaveDesign = async function () {
 };
 
 window.s2ConfirmSave = async function () {
-  const user = window._jwlAuth?.currentUser;
-  if (!user) return;
-  const name     = (document.getElementById('s2DesignName').value.trim() || 'My Design');
-  const imageUrl = document.getElementById('refineImg').src || LAB.imageUrl || '';
-  const msg      = document.getElementById('s2SaveMsg');
+  const auth = getAuthInst();
+  const db   = getDb();
+  if (!auth || !db) return;
+
+  const user = auth.currentUser;
+  if (!user) {
+    console.warn('[JWLZIFY] s2ConfirmSave: no current user');
+    return;
+  }
+
+  const nameEl    = document.getElementById('s2DesignName');
+  const confirmBtn = document.getElementById('s2ConfirmBtn');
+  const msg       = document.getElementById('s2SaveMsg');
+  const name      = (nameEl?.value.trim() || 'My Design');
+
+  // Grab image — prefer LAB.imageUrl (always set), fall back to img src attribute
+  const imageDataUrl = (typeof LAB !== 'undefined' && LAB.imageUrl)
+    ? LAB.imageUrl
+    : (document.getElementById('refineImg')?.getAttribute('src') || '');
+
+  console.log('[JWLZIFY] saving design:', { name, uid: user.uid, imageDataUrl: imageDataUrl.slice(0, 60) });
+
+  if (confirmBtn) confirmBtn.disabled = true;
+
   try {
-    await addDoc(collection(db(), 'users', user.uid, 'savedDesigns'), {
+    await addDoc(collection(db, 'users', user.uid, 'savedDesigns'), {
       designName:   name,
-      imageDataUrl: imageUrl,
-      prompt:       LAB.prompt   || '',
-      material:     LAB.material || '',
-      gem:          LAB.gem      || '',
-      type:         LAB.type     || '',
-      style:        LAB.style    || '',
+      imageDataUrl: imageDataUrl,
+      prompt:       (typeof LAB !== 'undefined' ? LAB.prompt   : '') || '',
+      material:     (typeof LAB !== 'undefined' ? LAB.material : '') || '',
+      gem:          (typeof LAB !== 'undefined' ? LAB.gem      : '') || '',
+      type:         (typeof LAB !== 'undefined' ? LAB.type     : '') || '',
+      style:        (typeof LAB !== 'undefined' ? LAB.style    : '') || '',
       createdAt:    serverTimestamp()
     });
-    document.getElementById('s2DesignName').style.display = 'none';
-    document.querySelector('#s2SavePanel button').style.display = 'none';
+
+    if (nameEl)      nameEl.style.display      = 'none';
+    if (confirmBtn)  confirmBtn.style.display   = 'none';
+    msg.style.color   = '#3c6474';
     msg.textContent   = '✓ Design saved to your account!';
     msg.style.display = '';
+
     setTimeout(() => {
       document.getElementById('s2SavePanel').style.display = 'none';
-      document.getElementById('s2DesignName').style.display = '';
-      document.querySelector('#s2SavePanel button').style.display = '';
+      if (nameEl)     { nameEl.style.display     = ''; }
+      if (confirmBtn) { confirmBtn.style.display  = ''; confirmBtn.disabled = false; }
+      msg.style.display = 'none';
     }, 3000);
+
   } catch (e) {
-    console.error('s2 save failed:', e);
-    msg.textContent   = 'Save failed: ' + e.message;
+    console.error('[JWLZIFY] s2 save failed:', e.code, e.message);
+    if (confirmBtn) confirmBtn.disabled = false;
     msg.style.color   = '#ef4444';
+    msg.textContent   = 'Save failed: ' + (e.message || 'unknown error');
     msg.style.display = '';
   }
 };
