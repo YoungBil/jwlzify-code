@@ -482,6 +482,21 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
                   style="justify-content:center;padding:16px;font-size:11px;letter-spacing:0.16em;">
             Skip to Quote
           </button>
+          <button id="s2SaveBtn" onclick="s2SaveDesign()"
+                  class="btn-outline"
+                  style="justify-content:center;padding:16px;font-size:11px;letter-spacing:0.16em;gap:6px;">
+            ♡&nbsp; Save Design
+          </button>
+          <!-- Inline save panel -->
+          <div id="s2SavePanel" style="display:none;padding:14px 16px;background:#f5f3f3;border-radius:12px;">
+            <input id="s2DesignName" type="text" placeholder="My Design"
+              style="width:100%;font-family:Inter,sans-serif;font-size:13px;padding:9px 12px;border:1px solid #e5e7eb;border-radius:8px;outline:none;color:#1b1c1c;box-sizing:border-box;margin-bottom:10px;">
+            <button onclick="s2ConfirmSave()"
+              style="width:100%;font-family:Inter,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.1em;background:#3c6474;color:white;border:none;border-radius:8px;padding:10px;cursor:pointer;">
+              Confirm Save
+            </button>
+            <p id="s2SaveMsg" style="font-family:Inter,sans-serif;font-size:12px;color:#3c6474;margin:8px 0 0;display:none;text-align:center;"></p>
+          </div>
           <button onclick="goStep(1)"
                   class="btn-ghost justify-center py-3"
                   style="font-size:11px;letter-spacing:0.14em;">
@@ -2706,6 +2721,71 @@ window.confirmSaveDesign = async function () {
   } catch (e) {
     console.error('Save design failed:', e);
     showToast('Failed to save: ' + e.message, true);
+  }
+};
+</script>
+
+<!-- Step 2 Save Design — inline logic -->
+<script type="module">
+import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged }
+  from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+import { getFirestore, collection, addDoc, serverTimestamp }
+  from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+
+// Reuse the already-initialised auth and app — no new initializeApp
+function db() { return getFirestore(window._jwlApp); }
+
+window.s2SaveDesign = async function () {
+  const auth = window._jwlAuth;
+  if (!auth.currentUser) {
+    // Not signed in — trigger popup then auto-save on success
+    try {
+      await signInWithPopup(auth, new GoogleAuthProvider());
+      // popup succeeded; fall through to show panel
+    } catch (e) {
+      console.warn('s2 sign-in cancelled:', e.message);
+      return;
+    }
+  }
+  // Show inline name prompt, pre-filled with current design label
+  const defaultName = ([LAB.style, LAB.type].filter(Boolean).join(' ') || 'My Design').trim();
+  document.getElementById('s2DesignName').value = defaultName;
+  document.getElementById('s2SavePanel').style.display = '';
+  document.getElementById('s2SaveMsg').style.display   = 'none';
+  document.getElementById('s2DesignName').focus();
+};
+
+window.s2ConfirmSave = async function () {
+  const user = window._jwlAuth?.currentUser;
+  if (!user) return;
+  const name     = (document.getElementById('s2DesignName').value.trim() || 'My Design');
+  const imageUrl = document.getElementById('refineImg').src || LAB.imageUrl || '';
+  const msg      = document.getElementById('s2SaveMsg');
+  try {
+    await addDoc(collection(db(), 'users', user.uid, 'savedDesigns'), {
+      designName:   name,
+      imageDataUrl: imageUrl,
+      prompt:       LAB.prompt   || '',
+      material:     LAB.material || '',
+      gem:          LAB.gem      || '',
+      type:         LAB.type     || '',
+      style:        LAB.style    || '',
+      createdAt:    serverTimestamp()
+    });
+    document.getElementById('s2DesignName').style.display = 'none';
+    document.querySelector('#s2SavePanel button').style.display = 'none';
+    msg.textContent   = '✓ Design saved to your account!';
+    msg.style.display = '';
+    setTimeout(() => {
+      document.getElementById('s2SavePanel').style.display = 'none';
+      document.getElementById('s2DesignName').style.display = '';
+      document.querySelector('#s2SavePanel button').style.display = '';
+    }, 3000);
+  } catch (e) {
+    console.error('s2 save failed:', e);
+    msg.textContent   = 'Save failed: ' + e.message;
+    msg.style.color   = '#ef4444';
+    msg.style.display = '';
   }
 };
 </script>
