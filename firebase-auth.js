@@ -1,11 +1,11 @@
 const firebaseConfig = {
-    apiKey:            "AIzaSyAYybU6DQay5CfuoaCt5gSbtzPBWbQixfI",
+    apiKey:            "AIzaSyCj_SX2KRIsxaSI29Lid7CEVyZeKGaHOoo",
     authDomain:        "jwlzify-193c2.firebaseapp.com",
     projectId:         "jwlzify-193c2",
     storageBucket:     "jwlzify-193c2.firebasestorage.app",
     messagingSenderId: "840627245145",
-    appId:             "1:840627245145:web:3d5ebe7c499ed8ff526148",
-    measurementId:     "G-PV2G27NW4N"
+    appId:             "1:840627245145:web:aecf1e85782b1be4526148",
+    measurementId:     "G-96YLG3FSVK"
   };
 
 if (!firebase.apps.length) {
