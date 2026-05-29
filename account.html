@@ -109,12 +109,44 @@ nav, header { background: rgba(255,255,255,0.97) !important; backdrop-filter: bl
 
     <!-- Tabs -->
     <div style="display:flex;gap:8px;margin-bottom:28px;">
-      <button class="tab-btn active" id="tabDesigns" onclick="switchTab('designs')">Saved Designs</button>
-      <button class="tab-btn"        id="tabOrders"  onclick="switchTab('orders')">Orders</button>
+      <button class="tab-btn active" id="tabProfile"  onclick="switchTab('profile')">Profile</button>
+      <button class="tab-btn"        id="tabDesigns"  onclick="switchTab('designs')">Saved Designs</button>
+      <button class="tab-btn"        id="tabOrders"   onclick="switchTab('orders')">Orders</button>
+    </div>
+
+    <!-- Profile panel -->
+    <div id="panelProfile">
+      <div style="max-width:480px;">
+        <!-- Display name -->
+        <div style="margin-bottom:28px;">
+          <label style="font-family:Inter,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.1em;color:#71787c;text-transform:uppercase;display:block;margin-bottom:8px;">Display Name</label>
+          <div style="display:flex;gap:10px;">
+            <input id="editDisplayName" type="text" style="flex:1;font-family:Inter,sans-serif;font-size:14px;padding:10px 14px;border:1px solid #e5e7eb;border-radius:10px;outline:none;color:#1b1c1c;" placeholder="Your name">
+            <button id="saveNameBtn" onclick="saveName()" style="font-family:Inter,sans-serif;font-size:12px;font-weight:600;letter-spacing:0.08em;background:#3c6474;color:white;border:none;border-radius:10px;padding:10px 20px;cursor:pointer;">Save</button>
+          </div>
+          <p id="nameMsg" style="font-family:Inter,sans-serif;font-size:12px;color:#3c6474;margin:6px 0 0;display:none;"></p>
+        </div>
+        <!-- Email (read-only) -->
+        <div style="margin-bottom:28px;">
+          <label style="font-family:Inter,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.1em;color:#71787c;text-transform:uppercase;display:block;margin-bottom:8px;">Email</label>
+          <input id="profileEmailField" type="email" readonly style="width:100%;font-family:Inter,sans-serif;font-size:14px;padding:10px 14px;border:1px solid #e5e7eb;border-radius:10px;background:#f9fafb;color:#6b7280;box-sizing:border-box;">
+        </div>
+        <!-- Change password (email/password users only) -->
+        <div id="passwordSection" style="display:none;">
+          <label style="font-family:Inter,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.1em;color:#71787c;text-transform:uppercase;display:block;margin-bottom:12px;">Change Password</label>
+          <input id="newPassword" type="password" placeholder="New password" style="width:100%;font-family:Inter,sans-serif;font-size:14px;padding:10px 14px;border:1px solid #e5e7eb;border-radius:10px;margin-bottom:10px;box-sizing:border-box;outline:none;">
+          <input id="confirmPassword" type="password" placeholder="Confirm new password" style="width:100%;font-family:Inter,sans-serif;font-size:14px;padding:10px 14px;border:1px solid #e5e7eb;border-radius:10px;margin-bottom:10px;box-sizing:border-box;outline:none;">
+          <button onclick="changePassword()" style="font-family:Inter,sans-serif;font-size:12px;font-weight:600;letter-spacing:0.08em;background:#3c6474;color:white;border:none;border-radius:10px;padding:10px 20px;cursor:pointer;">Update Password</button>
+          <p id="pwMsg" style="font-family:Inter,sans-serif;font-size:12px;margin:6px 0 0;display:none;"></p>
+        </div>
+        <div id="googlePasswordNote" style="display:none;font-family:Inter,sans-serif;font-size:13px;color:#6b7280;padding:14px;background:#f5f3f3;border-radius:10px;">
+          Password is managed by Google — sign in settings can be changed at <a href="https://myaccount.google.com" target="_blank" style="color:#3c6474;">myaccount.google.com</a>.
+        </div>
+      </div>
     </div>
 
     <!-- Designs panel -->
-    <div id="panelDesigns">
+    <div id="panelDesigns" style="display:none;">
       <div id="designsLoading" style="text-align:center;padding:48px;color:#9ca3af;font-family:Inter,sans-serif;font-size:14px;">Loading designs…</div>
       <div id="designsEmpty"   style="display:none;text-align:center;padding:48px;">
         <span class="material-symbols-outlined" style="font-size:40px;color:#d1d5db;">diamond</span>
@@ -162,10 +194,12 @@ function fmt(ts) {
 }
 
 function switchTab(tab) {
-  document.getElementById('tabDesigns').classList.toggle('active', tab === 'designs');
-  document.getElementById('tabOrders').classList.toggle('active', tab === 'orders');
-  document.getElementById('panelDesigns').style.display = tab === 'designs' ? '' : 'none';
-  document.getElementById('panelOrders').style.display  = tab === 'orders'  ? '' : 'none';
+  ['profile','designs','orders'].forEach(t => {
+    document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1))
+      .classList.toggle('active', t === tab);
+    document.getElementById('panel' + t.charAt(0).toUpperCase() + t.slice(1))
+      .style.display = t === tab ? '' : 'none';
+  });
 }
 
 function renderDesigns(designs) {
@@ -228,21 +262,85 @@ function renderOrders(orders) {
   }).join('');
 }
 
-firebase.auth().onAuthStateChanged(async (user) => {
+
+</script>
+
+<script type="module">
+import { onAuthStateChanged, updateProfile, updatePassword }
+  from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+
+// firebase-auth.js (also type=module, listed first) sets window._jwlAuth
+onAuthStateChanged(window._jwlAuth, async (user) => {
   if (!user) {
     document.getElementById('authGate').style.display = '';
     return;
   }
 
   document.getElementById('accountContent').style.display = '';
-  document.getElementById('profileAvatar').src = user.photoURL || '';
+  document.getElementById('profileAvatar').src   = user.photoURL || '';
   document.getElementById('profileName').textContent  = user.displayName || 'Account';
   document.getElementById('profileEmail').textContent = user.email || '';
 
+  // Pre-fill profile fields
+  document.getElementById('editDisplayName').value  = user.displayName || '';
+  document.getElementById('profileEmailField').value = user.email || '';
+
+  // Show password section only for email/password users
+  const isGoogle = user.providerData.some(p => p.providerId === 'google.com');
+  document.getElementById('passwordSection').style.display    = isGoogle ? 'none'  : '';
+  document.getElementById('googlePasswordNote').style.display = isGoogle ? ''      : 'none';
+
+  // Load Firestore data
   const [designs, orders] = await Promise.all([JWL.getDesigns(), JWL.getOrders()]);
   renderDesigns(designs);
   renderOrders(orders);
 });
+
+window.saveName = async function () {
+  const user = window._jwlAuth?.currentUser;
+  if (!user) return;
+  const name = document.getElementById('editDisplayName').value.trim();
+  const msg  = document.getElementById('nameMsg');
+  try {
+    await updateProfile(user, { displayName: name });
+    document.getElementById('profileName').textContent = name || 'Account';
+    msg.textContent = 'Name updated.';
+    msg.style.color = '#3c6474';
+    msg.style.display = '';
+    setTimeout(() => { msg.style.display = 'none'; }, 3000);
+  } catch (e) {
+    msg.textContent = 'Failed: ' + e.message;
+    msg.style.color = '#ef4444';
+    msg.style.display = '';
+  }
+};
+
+window.changePassword = async function () {
+  const user = window._jwlAuth?.currentUser;
+  if (!user) return;
+  const np   = document.getElementById('newPassword').value;
+  const cp   = document.getElementById('confirmPassword').value;
+  const msg  = document.getElementById('pwMsg');
+  if (np !== cp) {
+    msg.textContent = 'Passwords do not match.';
+    msg.style.color = '#ef4444';
+    msg.style.display = '';
+    return;
+  }
+  try {
+    await updatePassword(user, np);
+    msg.textContent = 'Password updated.';
+    msg.style.color = '#3c6474';
+    msg.style.display = '';
+    document.getElementById('newPassword').value = '';
+    document.getElementById('confirmPassword').value = '';
+    setTimeout(() => { msg.style.display = 'none'; }, 3000);
+  } catch (e) {
+    msg.textContent = 'Failed: ' + e.message;
+    msg.style.color = '#ef4444';
+    msg.style.display = '';
+  }
+};
 </script>
 </body>
 </html>
