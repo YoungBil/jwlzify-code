@@ -695,6 +695,12 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
               <span class="material-symbols-outlined" style="font-size:18px;">shopping_bag</span>
               Place This Order
             </button>
+            <button id="saveDesignBtn" onclick="triggerSaveDesign()"
+                    class="btn-outline"
+                    style="justify-content:center;padding:16px;font-size:11px;letter-spacing:0.14em;gap:8px;">
+              <span class="material-symbols-outlined" style="font-size:16px;">bookmark</span>
+              Save Design
+            </button>
             <button onclick="goStep(2)"
                     class="btn-outline"
                     style="justify-content:center;padding:16px;font-size:11px;letter-spacing:0.14em;">
@@ -2625,6 +2631,84 @@ startPriceRefresh();
 
 </script>
 
+
+<!-- Save Design Modal -->
+<div id="saveDesignModal" style="display:none;position:fixed;inset:0;z-index:9998;background:rgba(27,28,28,0.55);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:20px;padding:36px;width:360px;max-width:90vw;box-shadow:0 24px 64px rgba(0,0,0,0.14);">
+    <p style="font-family:'Playfair Display',serif;font-size:20px;font-weight:700;color:#1b1c1c;margin:0 0 6px;">Save Your Design</p>
+    <p style="font-family:Inter,sans-serif;font-size:13px;color:#6b7280;margin:0 0 20px;">Give your design a name to find it later in your account.</p>
+    <input id="saveDesignName" type="text" placeholder="My Design"
+      style="width:100%;font-family:Inter,sans-serif;font-size:14px;padding:11px 14px;border:1px solid #e5e7eb;border-radius:10px;outline:none;color:#1b1c1c;box-sizing:border-box;margin-bottom:16px;">
+    <div style="display:flex;gap:10px;">
+      <button onclick="confirmSaveDesign()"
+        style="flex:1;font-family:Inter,sans-serif;font-size:12px;font-weight:600;letter-spacing:0.1em;background:#3c6474;color:white;border:none;border-radius:10px;padding:12px;cursor:pointer;">Save</button>
+      <button onclick="closeSaveModal()"
+        style="font-family:Inter,sans-serif;font-size:12px;font-weight:500;color:#6b7280;background:transparent;border:1px solid #e5e7eb;border-radius:10px;padding:12px 18px;cursor:pointer;">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { getFirestore, collection, addDoc, serverTimestamp }
+  from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+
+function getDb() { return getFirestore(window._jwlApp); }
+
+function showToast(msg, isError) {
+  let t = document.getElementById('saveToast');
+  if (!t) {
+    t = document.createElement('div');
+    t.id = 'saveToast';
+    t.style.cssText = 'position:fixed;bottom:28px;left:50%;transform:translateX(-50%);padding:12px 24px;border-radius:12px;font-family:Inter,sans-serif;font-size:13px;font-weight:500;z-index:9999;pointer-events:none;transition:opacity 0.4s;';
+    document.body.appendChild(t);
+  }
+  t.textContent = msg;
+  t.style.background = isError ? '#ef4444' : '#1b1c1c';
+  t.style.color = 'white';
+  t.style.opacity = '1';
+  clearTimeout(t._t);
+  t._t = setTimeout(() => { t.style.opacity = '0'; }, 3000);
+}
+
+window.triggerSaveDesign = function () {
+  if (!window._jwlAuth?.currentUser) {
+    // Not signed in — open existing sign-in modal; save will need to be re-triggered after login
+    window.signInWithGoogle();
+    return;
+  }
+  const defaultName = ([LAB.style, LAB.type].filter(Boolean).join(' ') || 'My Design').trim();
+  document.getElementById('saveDesignName').value = defaultName;
+  const modal = document.getElementById('saveDesignModal');
+  modal.style.display = 'flex';
+};
+
+window.closeSaveModal = function () {
+  document.getElementById('saveDesignModal').style.display = 'none';
+};
+
+window.confirmSaveDesign = async function () {
+  const user = window._jwlAuth?.currentUser;
+  if (!user) return;
+  const name = document.getElementById('saveDesignName').value.trim() || 'My Design';
+  closeSaveModal();
+  try {
+    await addDoc(collection(getDb(), 'users', user.uid, 'savedDesigns'), {
+      designName:   name,
+      imageDataUrl: LAB.imageUrl || '',
+      prompt:       LAB.prompt   || '',
+      material:     LAB.material || '',
+      gem:          LAB.gem      || '',
+      type:         LAB.type     || '',
+      style:        LAB.style    || '',
+      createdAt:    serverTimestamp()
+    });
+    showToast('Design saved to your account!');
+  } catch (e) {
+    console.error('Save design failed:', e);
+    showToast('Failed to save: ' + e.message, true);
+  }
+};
+</script>
 
 <!-- TensorFlow.js + MediaPipe body segmentation — must load after page scripts -->
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core@3.21.0/dist/tf-core.min.js"></script>

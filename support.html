@@ -97,10 +97,22 @@ tailwind.config = {
         </div>
         <div>
           <h3 class="h-sub mb-3">Account</h3>
-          <p class="body-copy">Manage your JWLZIFY account, update your profile details, change your password.</p>
+          <p class="body-copy">Manage your profile, saved designs, and past purchases from your account page.</p>
         </div>
-        <div>
-          <button class="btn-ghost" style="font-size:11px;">Open</button>
+        <!-- Signed-in state -->
+        <div id="supportAccountSignedIn" style="display:none;">
+          <p id="supportAccountGreeting" style="font-family:Inter,sans-serif;font-size:13px;color:#6b7280;margin:0 0 14px;"></p>
+          <a href="account.html">
+            <button class="btn-primary" style="font-size:11px;letter-spacing:0.14em;padding:12px 24px;gap:8px;">
+              <span class="material-symbols-outlined" style="font-size:16px;">person</span>
+              Go to My Account
+            </button>
+          </a>
+        </div>
+        <!-- Signed-out state -->
+        <div id="supportAccountSignedOut">
+          <p style="font-family:Inter,sans-serif;font-size:13px;color:#6b7280;margin:0 0 14px;">Sign in to access your designs, orders, and profile settings.</p>
+          <button onclick="signInWithGoogle()" class="btn-ghost" style="font-size:11px;">Sign In</button>
         </div>
       </div>
 
@@ -266,5 +278,21 @@ tailwind.config = {
 </script>
 <script type="module" src="firebase-auth.js"></script>
 <script type="module" src="firestore-service.js"></script>
+<script type="module">
+import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+onAuthStateChanged(window._jwlAuth, (user) => {
+  const signedIn  = document.getElementById('supportAccountSignedIn');
+  const signedOut = document.getElementById('supportAccountSignedOut');
+  const greeting  = document.getElementById('supportAccountGreeting');
+  if (user) {
+    greeting.textContent = 'Signed in as ' + (user.displayName || user.email);
+    signedIn.style.display  = '';
+    signedOut.style.display = 'none';
+  } else {
+    signedIn.style.display  = 'none';
+    signedOut.style.display = '';
+  }
+});
+</script>
 </body>
 </html>
