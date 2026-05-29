@@ -193,6 +193,7 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
 .lab-wrap { max-width:1400px; margin:0 auto; padding:60px 16px 80px; }
 @media(min-width:768px){ .lab-wrap { padding:72px 64px 100px; } }
 </style>
+<script src='https://cdn.jsdelivr.net/npm/deepar/js/deepar.js'></script>
 </head>
 <body class="bg-[#fbf9f9] text-[#1b1c1c]">
 
@@ -612,6 +613,23 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
       </div>
 
 
+      <!-- ── DeepAR Try-On ── -->
+      <div style="width:100%;max-width:780px;">
+        <div style="background:linear-gradient(145deg,#0c1c2a 0%,#1a3348 100%);border-radius:20px;padding:40px 32px;text-align:center;border:1px solid rgba(193,164,90,0.3);box-shadow:0 20px 60px rgba(0,0,0,0.18);">
+          <span style="display:block;font-family:Inter,sans-serif;font-size:10px;letter-spacing:0.22em;color:rgba(193,164,90,0.8);text-transform:uppercase;margin-bottom:14px;">Powered by DeepAR</span>
+          <h3 style="font-family:'Playfair Display',serif;font-size:22px;font-weight:600;color:#ffffff;margin-bottom:8px;">AR Try-On</h3>
+          <p style="font-family:Inter,sans-serif;font-size:13px;color:rgba(255,255,255,0.55);max-width:380px;margin:0 auto 28px;line-height:1.6;">See the look on you in real time — point your camera and the piece appears, live.</p>
+          <button id="deeparBtn" onclick="initDeepAR()"
+                  style="display:inline-flex;align-items:center;gap:10px;font-family:Inter,sans-serif;font-size:12px;font-weight:600;letter-spacing:0.18em;text-transform:uppercase;color:#0c1c2a;background:linear-gradient(135deg,#c1a45a 0%,#e0c97a 50%,#c1a45a 100%);border:none;border-radius:10px;padding:14px 36px;cursor:pointer;box-shadow:0 4px 20px rgba(193,164,90,0.35);transition:opacity 0.2s ease;"
+                  onmouseover="this.style.opacity='0.88'" onmouseout="this.style.opacity='1'">
+            <span class="material-symbols-outlined" style="font-size:18px;">face_retouching_natural</span>
+            Try On
+          </button>
+          <div id="deepar-div"
+               style="display:none;width:640px;height:360px;max-width:100%;margin:28px auto 0;border-radius:14px;overflow:hidden;border:1px solid rgba(193,164,90,0.25);box-shadow:0 8px 32px rgba(0,0,0,0.3);"></div>
+        </div>
+      </div>
+
       <!-- ── Controls below camera ── -->
       <div class="flex gap-3 justify-center flex-wrap" style="width:100%;max-width:720px;">
         <button onclick="goStep(4)"
@@ -965,6 +983,19 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
 </script>
 <script type="module" src="firebase-auth.js"></script>
 <script type="module" src="firestore-service.js"></script>
+<script>
+function initDeepAR() {
+  document.getElementById('deeparBtn').style.display = 'none';
+  document.getElementById('deepar-div').style.display = 'block';
+  (async function() {
+    const deepAR = await deepar.initialize({
+      licenseKey: 'cec7afdc41fdab72f255b75d8c10c30e7bbe1cc50f76045ccad50a6785a4b57ae2ee1e70c791b110',
+      previewElement: document.querySelector('#deepar-div'),
+      effect: 'https://cdn.jsdelivr.net/npm/deepar/effects/aviators'
+    });
+  })();
+}
+</script>
 
 <!-- ════════════════════════════
      JAVASCRIPT
