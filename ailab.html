@@ -482,7 +482,7 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
                   style="justify-content:center;padding:16px;font-size:11px;letter-spacing:0.16em;">
             Skip to Quote
           </button>
-          <button id="s2SaveBtn" onclick="s2SaveDesign()"
+          <button id="s2SaveBtn"
                   class="btn-outline"
                   style="justify-content:center;padding:16px;font-size:11px;letter-spacing:0.16em;gap:6px;">
             ♡&nbsp; Save Design
@@ -491,7 +491,7 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
           <div id="s2SavePanel" style="display:none;padding:14px 16px;background:#f5f3f3;border-radius:12px;">
             <input id="s2DesignName" type="text" placeholder="My Design"
               style="width:100%;font-family:Inter,sans-serif;font-size:13px;padding:9px 12px;border:1px solid #e5e7eb;border-radius:8px;outline:none;color:#1b1c1c;box-sizing:border-box;margin-bottom:10px;">
-            <button id="s2ConfirmBtn" onclick="s2ConfirmSave()"
+            <button id="s2ConfirmBtn"
               style="width:100%;font-family:Inter,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.1em;background:#3c6474;color:white;border:none;border-radius:8px;padding:10px;cursor:pointer;">
               Confirm Save
             </button>
@@ -2742,7 +2742,7 @@ function getAuthInst() {
   return getAuth(window._jwlApp);
 }
 
-window.s2SaveDesign = async function () {
+async function s2SaveDesign() {
   const auth = getAuthInst();
   if (!auth) { console.error('[JWLZIFY] auth unavailable'); return; }
 
@@ -2764,7 +2764,7 @@ window.s2SaveDesign = async function () {
   document.getElementById('s2DesignName').focus();
 };
 
-window.s2ConfirmSave = async function () {
+async function s2ConfirmSave() {
   const auth = getAuthInst();
   const db   = getDb();
   if (!auth || !db) return;
@@ -2775,17 +2775,17 @@ window.s2ConfirmSave = async function () {
     return;
   }
 
-  const nameEl    = document.getElementById('s2DesignName');
+  const nameEl     = document.getElementById('s2DesignName');
   const confirmBtn = document.getElementById('s2ConfirmBtn');
-  const msg       = document.getElementById('s2SaveMsg');
-  const name      = (nameEl?.value.trim() || 'My Design');
+  const msg        = document.getElementById('s2SaveMsg');
+  const name       = (nameEl?.value.trim() || 'My Design');
 
   // Grab image — prefer LAB.imageUrl (always set), fall back to img src attribute
   const imageDataUrl = (typeof LAB !== 'undefined' && LAB.imageUrl)
     ? LAB.imageUrl
     : (document.getElementById('refineImg')?.getAttribute('src') || '');
 
-  console.log('[JWLZIFY] saving design:', { name, uid: user.uid, imageDataUrl: imageDataUrl.slice(0, 60) });
+  console.log('[JWLZIFY] saving design — user:', user.uid, '| name:', name, '| imageDataUrl:', imageDataUrl.slice(0, 80));
 
   if (confirmBtn) confirmBtn.disabled = true;
 
@@ -2801,8 +2801,8 @@ window.s2ConfirmSave = async function () {
       createdAt:    serverTimestamp()
     });
 
-    if (nameEl)      nameEl.style.display      = 'none';
-    if (confirmBtn)  confirmBtn.style.display   = 'none';
+    if (nameEl)     nameEl.style.display     = 'none';
+    if (confirmBtn) confirmBtn.style.display  = 'none';
     msg.style.color   = '#3c6474';
     msg.textContent   = '✓ Design saved to your account!';
     msg.style.display = '';
@@ -2821,7 +2821,11 @@ window.s2ConfirmSave = async function () {
     msg.textContent   = 'Save failed: ' + (e.message || 'unknown error');
     msg.style.display = '';
   }
-};
+}
+
+// Module is deferred — DOM is fully parsed and ready here
+document.getElementById('s2SaveBtn').addEventListener('click', s2SaveDesign);
+document.getElementById('s2ConfirmBtn').addEventListener('click', s2ConfirmSave);
 </script>
 
 <!-- TensorFlow.js + MediaPipe body segmentation — must load after page scripts -->
