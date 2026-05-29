@@ -1,20 +1,28 @@
-const firebaseConfig = {
-    apiKey:            "AIzaSyCj_SX2KRIsxaSI29Lid7CEVyZeKGaHOoo",
-    authDomain:        "jwlzify-193c2.firebaseapp.com",
-    projectId:         "jwlzify-193c2",
-    storageBucket:     "jwlzify-193c2.firebasestorage.app",
-    messagingSenderId: "840627245145",
-    appId:             "1:840627245145:web:aecf1e85782b1be4526148",
-    measurementId:     "G-96YLG3FSVK"
-  };
+import { initializeApp }                                         from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+import { getAuth, signInWithPopup, signInWithRedirect,
+         onAuthStateChanged, signOut as _signOut,
+         GoogleAuthProvider }                                    from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
 
-if (!firebase.apps.length) {
-  firebase.initializeApp(firebaseConfig);
-}
+const firebaseConfig = {
+  apiKey:            'AIzaSyCj_SX2KRIsxaSI29Lid7CEVyZeKGaHOoo',
+  authDomain:        'jwlzify-193c2.firebaseapp.com',
+  projectId:         'jwlzify-193c2',
+  storageBucket:     'jwlzify-193c2.firebasestorage.app',
+  messagingSenderId: '840627245145',
+  appId:             '1:840627245145:web:aecf1e85782b1be4526148',
+  measurementId:     'G-96YLG3FSVK'
+};
+
+const app  = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+
+// Expose for firestore-service.js
+window._jwlApp  = app;
+window._jwlAuth = auth;
 
 /* ── Inject sign-in modal ── */
 (function injectModal() {
-  var modal = document.createElement('div');
+  const modal = document.createElement('div');
   modal.id = 'signInModal';
   modal.style.cssText = [
     'display:none',
@@ -47,54 +55,41 @@ if (!firebase.apps.length) {
         'Continue with Google',
       '</button>',
       '<p style="font-family:Inter,sans-serif;font-size:11px;color:#9ca3af;margin:24px 0 0;line-height:1.5;">',
-        'By signing in you agree to our <a href="legal.html" style="color:#3c6474;text-decoration:none;">Terms & Privacy Policy</a>.',
+        'By signing in you agree to our <a href="legal.html" style="color:#3c6474;text-decoration:none;">Terms &amp; Privacy Policy</a>.',
       '</p>',
     '</div>',
   ].join('');
 
-  modal.addEventListener('click', function(e) {
-    if (e.target === modal) closeSignInModal();
-  });
-
-  document.addEventListener('DOMContentLoaded', function() {
-    document.body.appendChild(modal);
-  });
+  modal.addEventListener('click', e => { if (e.target === modal) closeSignInModal(); });
+  document.addEventListener('DOMContentLoaded', () => document.body.appendChild(modal));
 })();
 
-window.signInWithGoogle = function() {
-  var modal = document.getElementById('signInModal');
-  if (modal) {
-    modal.style.display = 'flex';
-    document.body.style.overflow = 'hidden';
+window.signInWithGoogle = function () {
+  const modal = document.getElementById('signInModal');
+  if (modal) { modal.style.display = 'flex'; document.body.style.overflow = 'hidden'; }
+};
+
+window.closeSignInModal = function () {
+  const modal = document.getElementById('signInModal');
+  if (modal) { modal.style.display = 'none'; document.body.style.overflow = ''; }
+};
+
+window.doGoogleSignIn = async function () {
+  const provider = new GoogleAuthProvider();
+  try {
+    const result = await signInWithPopup(auth, provider);
+    closeSignInModal();
+    console.log('Signed in:', result.user.displayName);
+  } catch (error) {
+    if (error.code === 'auth/popup-blocked') {
+      await signInWithRedirect(auth, provider);
+    } else {
+      console.error('Auth error:', error.code, error.message);
+    }
   }
 };
 
-window.closeSignInModal = function() {
-  var modal = document.getElementById('signInModal');
-  if (modal) {
-    modal.style.display = 'none';
-    document.body.style.overflow = '';
-  }
-};
-
-window.doGoogleSignIn = function() {
-  const auth     = firebase.auth();
-  const provider = new firebase.auth.GoogleAuthProvider();
-  auth.signInWithPopup(provider)
-    .then((result) => {
-      closeSignInModal();
-      console.log('Success:', result.user.displayName);
-    })
-    .catch((error) => {
-      if (error.code === 'auth/popup-blocked') {
-        auth.signInWithRedirect(provider);
-      } else {
-        console.error('Error:', error.code, error.message);
-      }
-    });
-};
-
-firebase.auth().onAuthStateChanged((user) => {
+onAuthStateChanged(auth, (user) => {
   const signInBtn  = document.getElementById('signInBtn');
   const userMenu   = document.getElementById('userMenu');
   const userAvatar = document.getElementById('userAvatar');
@@ -107,15 +102,15 @@ firebase.auth().onAuthStateChanged((user) => {
     if (userName)   userName.textContent =
       user.displayName?.split(' ')[0] || 'Account';
 
-    var dd = document.getElementById('userDropdown');
+    const dd = document.getElementById('userDropdown');
     if (dd && !dd.querySelector('[data-jwl-account]')) {
-      var btn = document.createElement('button');
+      const btn = document.createElement('button');
       btn.setAttribute('data-jwl-account', '');
-      btn.onclick = function() { window.location.href = 'account.html'; };
+      btn.onclick = () => { window.location.href = 'account.html'; };
       btn.style.cssText = 'width:100%;text-align:left;padding:10px 14px;font-family:Inter;font-size:13px;color:#1b1c1c;background:transparent;border:none;border-radius:8px;cursor:pointer;transition:background 0.15s ease;';
       btn.textContent = 'My Account';
-      btn.onmouseover = function() { this.style.background = '#f5f3f3'; };
-      btn.onmouseout  = function() { this.style.background = 'transparent'; };
+      btn.onmouseover = function () { this.style.background = '#f5f3f3'; };
+      btn.onmouseout  = function () { this.style.background = 'transparent'; };
       dd.insertBefore(btn, dd.firstChild);
     }
   } else {
@@ -124,25 +119,20 @@ firebase.auth().onAuthStateChanged((user) => {
   }
 });
 
-window.signOut = function() {
-  firebase.auth().signOut();
-  var dd = document.getElementById('userDropdown');
+window.signOut = () => _signOut(auth).then(() => {
+  const dd = document.getElementById('userDropdown');
   if (dd) dd.style.display = 'none';
-};
+});
 
-window.toggleDropdown = function() {
-  var dd = document.getElementById('userDropdown');
+window.toggleDropdown = function () {
+  const dd = document.getElementById('userDropdown');
   if (dd) dd.style.display = dd.style.display === 'block' ? 'none' : 'block';
 };
 
-document.addEventListener('click', function(e) {
-  var menu = document.getElementById('userMenu');
-  var dd   = document.getElementById('userDropdown');
-  if (menu && dd && !menu.contains(e.target)) {
-    dd.style.display = 'none';
-  }
+document.addEventListener('click', e => {
+  const menu = document.getElementById('userMenu');
+  const dd   = document.getElementById('userDropdown');
+  if (menu && dd && !menu.contains(e.target)) dd.style.display = 'none';
 });
 
-document.addEventListener('keydown', function(e) {
-  if (e.key === 'Escape') closeSignInModal();
-});
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSignInModal(); });

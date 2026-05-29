@@ -1,60 +1,57 @@
-// Requires firebase-app-compat, firebase-firestore-compat, firebase-auth-compat
-(function() {
-  function db() { return firebase.firestore(); }
+import { getFirestore, collection, addDoc,
+         query, orderBy, limit, getDocs,
+         serverTimestamp }
+  from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 
-  window.JWL = window.JWL || {};
+// _jwlApp is set synchronously by firebase-auth.js (also type="module", runs first)
+const db = () => getFirestore(window._jwlApp);
 
-  JWL.saveDesign = async function(data) {
-    const user = firebase.auth().currentUser;
-    if (!user) return null;
-    try {
-      const ref = await db()
-        .collection('users').doc(user.uid)
-        .collection('designs').add({
-          ...data,
-          uid: user.uid,
-          createdAt: firebase.firestore.FieldValue.serverTimestamp()
-        });
-      return ref.id;
-    } catch (e) { console.error('saveDesign:', e); return null; }
-  };
+window.JWL = window.JWL || {};
 
-  JWL.saveOrder = async function(data) {
-    const user = firebase.auth().currentUser;
-    if (!user) return null;
-    try {
-      const ref = await db()
-        .collection('users').doc(user.uid)
-        .collection('orders').add({
-          ...data,
-          uid: user.uid,
-          createdAt: firebase.firestore.FieldValue.serverTimestamp()
-        });
-      return ref.id;
-    } catch (e) { console.error('saveOrder:', e); return null; }
-  };
+JWL.saveDesign = async function (data) {
+  const user = window._jwlAuth?.currentUser;
+  if (!user) return null;
+  try {
+    const ref = await addDoc(
+      collection(db(), 'users', user.uid, 'designs'),
+      { ...data, uid: user.uid, createdAt: serverTimestamp() }
+    );
+    return ref.id;
+  } catch (e) { console.error('saveDesign:', e); return null; }
+};
 
-  JWL.getDesigns = async function() {
-    const user = firebase.auth().currentUser;
-    if (!user) return [];
-    try {
-      const snap = await db()
-        .collection('users').doc(user.uid)
-        .collection('designs')
-        .orderBy('createdAt', 'desc').limit(20).get();
-      return snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    } catch (e) { console.error('getDesigns:', e); return []; }
-  };
+JWL.saveOrder = async function (data) {
+  const user = window._jwlAuth?.currentUser;
+  if (!user) return null;
+  try {
+    const ref = await addDoc(
+      collection(db(), 'users', user.uid, 'orders'),
+      { ...data, uid: user.uid, createdAt: serverTimestamp() }
+    );
+    return ref.id;
+  } catch (e) { console.error('saveOrder:', e); return null; }
+};
 
-  JWL.getOrders = async function() {
-    const user = firebase.auth().currentUser;
-    if (!user) return [];
-    try {
-      const snap = await db()
-        .collection('users').doc(user.uid)
-        .collection('orders')
-        .orderBy('createdAt', 'desc').limit(20).get();
-      return snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    } catch (e) { console.error('getOrders:', e); return []; }
-  };
-})();
+JWL.getDesigns = async function () {
+  const user = window._jwlAuth?.currentUser;
+  if (!user) return [];
+  try {
+    const snap = await getDocs(
+      query(collection(db(), 'users', user.uid, 'designs'),
+            orderBy('createdAt', 'desc'), limit(20))
+    );
+    return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  } catch (e) { console.error('getDesigns:', e); return []; }
+};
+
+JWL.getOrders = async function () {
+  const user = window._jwlAuth?.currentUser;
+  if (!user) return [];
+  try {
+    const snap = await getDocs(
+      query(collection(db(), 'users', user.uid, 'orders'),
+            orderBy('createdAt', 'desc'), limit(20))
+    );
+    return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  } catch (e) { console.error('getOrders:', e); return []; }
+};
