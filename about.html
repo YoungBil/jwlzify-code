@@ -8,10 +8,6 @@
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
-<!-- Firebase SDK -->
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
 <script>
 tailwind.config = {
   darkMode:"class",
@@ -371,7 +367,7 @@ tailwind.config = {
 <script>
   document.getElementById('siteHeader').classList.add('nav-visible');
 </script>
-<script src="firebase-auth.js"></script>
-<script src="firestore-service.js"></script>
+<script type="module" src="firebase-auth.js"></script>
+<script type="module" src="firestore-service.js"></script>
 </body>
 </html>
