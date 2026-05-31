@@ -192,7 +192,21 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
 /* ── Step section container ── */
 .lab-wrap { max-width:1400px; margin:0 auto; padding:60px 16px 80px; }
 @media(min-width:768px){ .lab-wrap { padding:72px 64px 100px; } }
+/* ── AR loading overlay pulse ── */
+@keyframes arPulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
+#arLoading p { animation: arPulse 2.4s ease-in-out infinite; }
 </style>
+<!-- Three.js importmap (must precede all module scripts) -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/"
+  }
+}
+</script>
+<!-- MediaPipe Pose (classic global — sets window.Pose) -->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
 </head>
 <body class="bg-[#fbf9f9] text-[#1b1c1c]">
 
@@ -609,6 +623,16 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
           <span class="label" style="font-size:8.5px;letter-spacing:0.14em;color:rgba(255,255,255,0.4);">WIN+SHIFT+S TO SCREENSHOT</span>
         </div>
 
+        <!-- ── AR pipeline loading overlay ── -->
+        <div id="arLoading" class="hidden absolute inset-0 flex flex-col items-center justify-center gap-6"
+             style="background:rgba(10,24,32,0.92);backdrop-filter:blur(10px);z-index:20;">
+          <div style="width:52px;height:52px;border-radius:50%;border:3px solid rgba(193,164,90,0.22);border-top-color:#c1a45a;animation:tryOnSpin 0.9s linear infinite;"></div>
+          <div class="text-center">
+            <p style="font-family:'Playfair Display',serif;font-size:19px;font-style:italic;color:rgba(193,164,90,0.92);margin:0;">Preparing your piece…</p>
+            <p id="arLoadingDetail" style="font-family:Inter,sans-serif;font-size:10px;letter-spacing:0.14em;color:rgba(255,255,255,0.38);margin-top:10px;"></p>
+          </div>
+        </div>
+
       </div>
 
 
@@ -965,6 +989,7 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
 </script>
 <script type="module" src="firebase-auth.js"></script>
 <script type="module" src="firestore-service.js"></script>
+<script type="module" src="ar-tryon.js"></script>
 
 <!-- ════════════════════════════
      JAVASCRIPT
@@ -1055,6 +1080,7 @@ async function goStep(n) {
   if (LAB.step === 3 && n !== 3) {
     isTryOnActive = false;
     isProcessing  = false;
+    window.teardownARPipeline?.();
     if (LAB.cameraStream) {
       LAB.cameraStream.getTracks().forEach(t => t.stop());
       LAB.cameraStream = null;
@@ -1085,6 +1111,9 @@ async function goStep(n) {
 function setType(btn, type) {
   document.querySelectorAll('.type-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
+  if (LAB.step === 3 && LAB.type === 'pendant' && type !== 'pendant') {
+    window.teardownARPipeline?.();
+  }
   LAB.type = type;
 }
 
@@ -2516,6 +2545,12 @@ async function setupTryOn() {
   ['camGuide','jewBadge','camHint'].forEach(id =>
     document.getElementById(id).classList.add('hidden'));
   hideAllOverlays();
+
+  // ── 3D AR pipeline for pendant type ──────────────
+  if (LAB.type === 'pendant' && typeof window.initARPipeline === 'function') {
+    await window.initARPipeline();
+    return;
+  }
 
   try {
     await startCamera();
