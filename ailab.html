@@ -46,6 +46,30 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
 .prog-line { flex:1; height:1px; background:#c1c7cb; transition:background 0.3s ease; }
 .prog-line.done { background:#3c6474; }
 
+/* ── Spec step ── */
+.spec-card-btn {
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap:6px; padding:18px 10px; border-radius:14px;
+  border:1.5px solid rgba(193,199,203,0.45); background:#fff; cursor:pointer;
+  text-align:center; font-family:'Inter',sans-serif; font-size:12px; font-weight:600;
+  color:#41484b; transition:all 0.2s ease;
+}
+.spec-card-btn:hover { border-color:#3c6474; color:#3c6474; }
+.spec-card-btn.active {
+  background:linear-gradient(135deg,rgba(185,226,245,0.3),rgba(255,255,255,0.9));
+  border-color:#3c6474; color:#3c6474; box-shadow:0 4px 16px rgba(60,100,116,0.14);
+}
+.spec-toggle {
+  padding:8px 16px; border-radius:100px; border:1.5px solid rgba(193,199,203,0.45);
+  background:#fff; font-family:'Inter',sans-serif; font-size:11px; font-weight:600;
+  letter-spacing:0.06em; color:#41484b; cursor:pointer; transition:all 0.2s ease;
+}
+.spec-toggle:hover { border-color:#3c6474; color:#3c6474; }
+.spec-toggle.active {
+  background:linear-gradient(135deg,rgba(185,226,245,0.35),rgba(255,255,255,0.8));
+  border-color:#3c6474; color:#3c6474; box-shadow:0 2px 10px rgba(185,226,245,0.4);
+}
+
 /* ── Type selector buttons ── */
 .type-btn {
   display:flex; flex-direction:column; align-items:center; justify-content:center;
@@ -264,9 +288,12 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
       <div id="dot4" class="prog-dot">4</div>
       <div id="line45" class="prog-line"></div>
       <div id="dot5" class="prog-dot">5</div>
+      <div id="line56" class="prog-line"></div>
+      <div id="dot6" class="prog-dot">6</div>
     </div>
     <div class="flex justify-between mt-2">
       <span class="label text-[#3c6474]" style="font-size:9px;letter-spacing:0.12em;">DESIGN</span>
+      <span class="label text-[#71787c]" style="font-size:9px;letter-spacing:0.12em;">SPECS</span>
       <span class="label text-[#71787c]" style="font-size:9px;letter-spacing:0.12em;">REFINE</span>
       <span class="label text-[#71787c]" style="font-size:9px;letter-spacing:0.12em;">TRY ON</span>
       <span class="label text-[#71787c]" style="font-size:9px;letter-spacing:0.12em;">QUOTE</span>
@@ -425,9 +452,95 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
 
 
 <!-- ════════════════════════════
-     STEP 2 — REFINE
+     STEP 2 — SPECIFICATIONS
 ════════════════════════════ -->
 <div id="s2" class="sp">
+  <div class="lab-wrap">
+    <div class="mb-10">
+      <span class="eyebrow">Customise Your Piece</span>
+      <h2 style="font-family:'Playfair Display',serif;font-size:clamp(28px,3.5vw,42px);font-weight:600;line-height:1.12;color:#1b1c1c;">
+        Specifications
+      </h2>
+    </div>
+
+    <div class="grid lg:grid-cols-2 gap-12">
+
+      <!-- LEFT: Ring Weight -->
+      <div>
+        <h3 style="font-family:'Playfair Display',serif;font-size:20px;font-weight:600;color:#1b1c1c;margin-bottom:20px;">Ring Weight</h3>
+        <div class="grid grid-cols-3 gap-3 mb-6">
+          <div class="spec-card-btn spec-weight-btn" data-preset="light" onclick="setSpecWeight('light',2.5)">
+            <span class="material-symbols-outlined" style="font-size:22px;color:#b0bec5;">radio_button_unchecked</span>
+            <p style="font-family:Inter,sans-serif;font-size:13px;font-weight:600;color:#1b1c1c;margin:4px 0 0;">Light</p>
+            <p style="font-family:Inter,sans-serif;font-size:11px;color:#9ca3af;margin:0;">2–3g</p>
+          </div>
+          <div class="spec-card-btn spec-weight-btn active" data-preset="medium" onclick="setSpecWeight('medium',4.5)">
+            <span class="material-symbols-outlined" style="font-size:22px;color:#3c6474;">diamond</span>
+            <p style="font-family:Inter,sans-serif;font-size:13px;font-weight:600;color:#1b1c1c;margin:4px 0 0;">Medium</p>
+            <p style="font-family:Inter,sans-serif;font-size:11px;color:#9ca3af;margin:0;">4–6g</p>
+          </div>
+          <div class="spec-card-btn spec-weight-btn" data-preset="heavy" onclick="setSpecWeight('heavy',8.5)">
+            <span class="material-symbols-outlined" style="font-size:22px;color:#b0bec5;">circle</span>
+            <p style="font-family:Inter,sans-serif;font-size:13px;font-weight:600;color:#1b1c1c;margin:4px 0 0;">Heavy</p>
+            <p style="font-family:Inter,sans-serif;font-size:11px;color:#9ca3af;margin:0;">7–10g</p>
+          </div>
+        </div>
+        <label style="font-family:Inter,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.1em;color:#71787c;text-transform:uppercase;display:block;margin-bottom:8px;">Or enter exact weight (g)</label>
+        <input id="specWeightInput" type="number" min="0.5" max="50" step="0.5" placeholder="e.g. 4.5"
+          style="width:100%;font-family:Inter,sans-serif;font-size:14px;padding:10px 14px;border:1.5px solid rgba(193,199,203,0.5);border-radius:10px;outline:none;color:#1b1c1c;box-sizing:border-box;transition:border-color 0.2s;"
+          oninput="setSpecWeightExact(this.value)"
+          onfocus="this.style.borderColor='#3c6474'" onblur="this.style.borderColor='rgba(193,199,203,0.5)'">
+      </div>
+
+      <!-- RIGHT: Stones -->
+      <div>
+        <h3 style="font-family:'Playfair Display',serif;font-size:20px;font-weight:600;color:#1b1c1c;margin-bottom:20px;">Stones</h3>
+
+        <label style="font-family:Inter,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.1em;color:#71787c;text-transform:uppercase;display:block;margin-bottom:10px;">Number of Stones</label>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;">
+          <button class="spec-toggle spec-count-btn active" data-count="1" onclick="setSpecCount(1)">1</button>
+          <button class="spec-toggle spec-count-btn" data-count="2" onclick="setSpecCount(2)">2</button>
+          <button class="spec-toggle spec-count-btn" data-count="3" onclick="setSpecCount(3)">3</button>
+          <button class="spec-toggle spec-count-btn" data-count="4" onclick="setSpecCount(4)">4</button>
+          <button class="spec-toggle spec-count-btn" data-count="custom" onclick="setSpecCount('custom')">Custom</button>
+        </div>
+        <div id="specCountCustomWrap" style="display:none;margin-bottom:20px;">
+          <input id="specCountCustomInput" type="number" min="1" max="20" step="1" placeholder="e.g. 5 (max 20)"
+            style="width:100%;font-family:Inter,sans-serif;font-size:14px;padding:10px 14px;border:1.5px solid rgba(193,199,203,0.5);border-radius:10px;outline:none;color:#1b1c1c;box-sizing:border-box;transition:border-color 0.2s;"
+            oninput="setSpecCountCustom(this.value)"
+            onfocus="this.style.borderColor='#3c6474'" onblur="this.style.borderColor='rgba(193,199,203,0.5)'">
+        </div>
+
+        <label style="font-family:Inter,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.1em;color:#71787c;text-transform:uppercase;display:block;margin-bottom:12px;">Stone Sizes</label>
+        <div id="specStonesContainer" style="display:flex;flex-direction:column;gap:12px;"></div>
+      </div>
+
+    </div>
+
+    <!-- Bottom bar -->
+    <div class="mt-10 p-6 rounded-2xl" style="background:linear-gradient(135deg,rgba(185,226,245,0.12),rgba(255,255,255,0.8));border:1px solid rgba(185,226,245,0.4);">
+      <div class="flex items-center justify-between flex-wrap gap-4">
+        <div>
+          <p class="label" style="font-size:10px;letter-spacing:0.16em;color:#3c6474;">ESTIMATED MATERIAL COST</p>
+          <p id="specCostEstimate" style="font-family:'Playfair Display',serif;font-size:28px;font-weight:700;color:#3c6474;margin:4px 0 2px;">—</p>
+          <p id="specCostDetail" style="font-family:Inter,sans-serif;font-size:11px;color:#9ca3af;"></p>
+        </div>
+        <button onclick="goStep(3)" class="btn-primary btn-glow"
+          style="font-size:12px;letter-spacing:0.16em;padding:16px 32px;gap:8px;">
+          Continue to Refine
+          <span class="material-symbols-outlined" style="font-size:18px;">arrow_forward</span>
+        </button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+
+<!-- ════════════════════════════
+     STEP 3 — REFINE
+════════════════════════════ -->
+<div id="s3" class="sp">
   <div class="lab-wrap">
     <div class="mb-10">
       <span class="eyebrow">Your AI Creation</span>
@@ -485,17 +598,32 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
 
         <!-- Actions -->
         <div class="flex flex-col gap-3">
-          <button onclick="goStep(3)"
+          <button onclick="goStep(4)"
                   class="btn-primary btn-glow"
                   style="justify-content:center;padding:18px;font-size:12px;letter-spacing:0.2em;gap:8px;">
             <span class="material-symbols-outlined" style="font-size:18px;">videocam</span>
             Try It On
           </button>
-          <button onclick="goStep(4)"
+          <button onclick="goStep(5)"
                   class="btn-outline"
                   style="justify-content:center;padding:16px;font-size:11px;letter-spacing:0.16em;">
             Skip to Quote
           </button>
+          <button id="s2SaveBtn"
+                  class="btn-outline"
+                  style="justify-content:center;padding:16px;font-size:11px;letter-spacing:0.16em;gap:6px;">
+            ♡&nbsp; Save Design
+          </button>
+          <!-- Inline save panel -->
+          <div id="s2SavePanel" style="display:none;padding:14px 16px;background:#f5f3f3;border-radius:12px;">
+            <input id="s2DesignName" type="text" placeholder="My Design"
+              style="width:100%;font-family:Inter,sans-serif;font-size:13px;padding:9px 12px;border:1px solid #e5e7eb;border-radius:8px;outline:none;color:#1b1c1c;box-sizing:border-box;margin-bottom:10px;">
+            <button id="s2ConfirmBtn"
+              style="width:100%;font-family:Inter,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.1em;background:#3c6474;color:white;border:none;border-radius:8px;padding:10px;cursor:pointer;">
+              Confirm Save
+            </button>
+            <p id="s2SaveMsg" style="font-family:Inter,sans-serif;font-size:12px;color:#3c6474;margin:8px 0 0;display:none;text-align:center;"></p>
+          </div>
           <button onclick="goStep(1)"
                   class="btn-ghost justify-center py-3"
                   style="font-size:11px;letter-spacing:0.14em;">
@@ -552,9 +680,9 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
 
 
 <!-- ════════════════════════════
-     STEP 3 — TRY ON
+     STEP 4 — TRY ON
 ════════════════════════════ -->
-<div id="s3" class="sp">
+<div id="s4" class="sp">
   <div class="lab-wrap" style="padding-bottom:60px;">
     <div class="text-center mb-8">
       <span class="eyebrow">Virtual Try-On</span>
@@ -638,13 +766,13 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
 
       <!-- ── Controls below camera ── -->
       <div class="flex gap-3 justify-center flex-wrap" style="width:100%;max-width:720px;">
-        <button onclick="goStep(4)"
+        <button onclick="goStep(5)"
                 class="btn-primary btn-glow flex-1"
                 style="justify-content:center;font-size:12px;letter-spacing:0.18em;gap:8px;padding:16px 20px;max-width:280px;">
           <span class="material-symbols-outlined" style="font-size:18px;">receipt_long</span>
           Get My Quote
         </button>
-        <button onclick="goStep(2)" class="btn-outline flex-shrink-0"
+        <button onclick="goStep(3)" class="btn-outline flex-shrink-0"
                 style="font-size:11px;padding:14px 22px;">Back</button>
       </div>
 
@@ -654,9 +782,9 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
 
 
 <!-- ════════════════════════════
-     STEP 4 — QUOTE
+     STEP 5 — QUOTE
 ════════════════════════════ -->
-<div id="s4" class="sp">
+<div id="s5" class="sp">
   <div class="lab-wrap">
     <div class="text-center mb-12">
       <span class="eyebrow">Your Estimate</span>
@@ -713,13 +841,19 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
 
           <!-- CTA -->
           <div class="flex flex-col gap-3 mt-6">
-            <button onclick="goStep(5)"
+            <button onclick="goStep(6)"
                     class="btn-primary btn-glow"
                     style="justify-content:center;padding:18px;font-size:12px;letter-spacing:0.2em;gap:8px;">
               <span class="material-symbols-outlined" style="font-size:18px;">shopping_bag</span>
               Place This Order
             </button>
-            <button onclick="goStep(2)"
+            <button id="saveDesignBtn" onclick="triggerSaveDesign()"
+                    class="btn-outline"
+                    style="justify-content:center;padding:16px;font-size:11px;letter-spacing:0.14em;gap:8px;">
+              <span class="material-symbols-outlined" style="font-size:16px;">bookmark</span>
+              Save Design
+            </button>
+            <button onclick="goStep(3)"
                     class="btn-outline"
                     style="justify-content:center;padding:16px;font-size:11px;letter-spacing:0.14em;">
               Make Changes to Design
@@ -734,9 +868,9 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
 
 
 <!-- ════════════════════════════
-     STEP 5 — ORDER FORM
+     STEP 6 — ORDER FORM
 ════════════════════════════ -->
-<div id="s5" class="sp">
+<div id="s6" class="sp">
   <div class="lab-wrap">
     <div class="text-center mb-12">
       <span class="eyebrow">Complete Your Order</span>
@@ -1062,13 +1196,13 @@ function setGenLoading(on) {
 
 /* ── Progress bar ────────────────────────────── */
 function updateProgress(n) {
-  for (let i = 1; i <= 5; i++) {
+  for (let i = 1; i <= 6; i++) {
     const dot = document.getElementById('dot' + i);
     dot.className = 'prog-dot';
     if (i < n)  dot.classList.add('done');
     if (i === n) dot.classList.add('current');
   }
-  for (let i = 1; i <= 4; i++) {
+  for (let i = 1; i <= 5; i++) {
     const line = document.getElementById('line' + i + (i+1));
     if (line) line.className = 'prog-line' + (i < n ? ' done' : '');
   }
@@ -1076,8 +1210,8 @@ function updateProgress(n) {
 
 /* ── Step navigation ─────────────────────────── */
 async function goStep(n) {
-  // Kill camera when leaving step 3
-  if (LAB.step === 3 && n !== 3) {
+  // Kill camera when leaving step 4 (Try On)
+  if (LAB.step === 4 && n !== 4) {
     isTryOnActive = false;
     isProcessing  = false;
     window.teardownARPipeline?.();
@@ -1093,18 +1227,14 @@ async function goStep(n) {
   LAB.step = n;
   updateProgress(n);
   window.scrollTo({ top: 0, behavior: 'smooth' });
-  if (n === 3) setupTryOn();
-  if (n === 4) {
-    if (!spotPrices.fetchedAt ||
-        spotPrices.source === 'fallback' ||
-        spotPrices.source === 'fallback-may2026' ||
-        spotPrices.source === 'fallback-cad-may2026') {
-      await fetchSpotPrices();
-    }
+  if (n === 2) { _renderStoneRows(); updateSpecCostEstimate(); }
+  if (n === 4) setupTryOn();
+  if (n === 5) {
+    await fetchSpotPrices(); // always fetch live price at quote time
     await displayPricing(LAB.material, LAB.gem, LAB.type);
     saveCurrentDesign();
   }
-  if (n === 5) populateOrderSummary();
+  if (n === 6) populateOrderSummary();
 }
 
 /* ── Jewelry type selector ───────────────────── */
@@ -1573,41 +1703,208 @@ function applyOzPrices(silverOzRaw, goldOz, source) {
   console.log('14ct Gold /g: $' + spotPrices.gold14ctPerGram.toFixed(6));
 }
 
+const KARAT_PURITY = {
+  '14ct': 0.583,
+  '10ct': 0.417
+};
+
 async function fetchSpotPrices() {
-  try {
-    // goldpricez.com — free, CORS enabled, CAD support
-    // Returns silver and gold prices per gram in CAD
-    const res  = await fetch(
-      'https://goldpricez.com/api/rates/currency/cad/measure/gram',
-      { headers: { 'X-API-KEY': 'free' } }
-    );
-    const data = await res.json();
+  let silverOk = false, goldOk = false;
 
-    if (data?.silver_gram_cad && data?.gold_gram_cad) {
-      // Apply 925 purity to silver
-      spotPrices.silverPerGram   = data.silver_gram_cad * 0.925;
-      // Apply karat purity to gold
-      spotPrices.gold10ctPerGram = data.gold_gram_cad * (10/24);
-      spotPrices.gold14ctPerGram = data.gold_gram_cad * (14/24);
-      spotPrices.source          = 'goldpricez-cad';
-      spotPrices.fetchedAt       = new Date().toISOString();
+  // Fetch silver and gold in parallel
+  const [silverResult, goldResult] = await Promise.allSettled([
+    fetch('https://silver-price.sarkd333.workers.dev').then(r => r.json()),
+    fetch('https://gold-price.sarkd333.workers.dev').then(r => r.json())
+  ]);
 
-      console.log('CAD Silver /g: $' + spotPrices.silverPerGram.toFixed(4));
-      console.log('CAD 10ct Gold /g: $' + spotPrices.gold10ctPerGram.toFixed(4));
-      console.log('CAD 14ct Gold /g: $' + spotPrices.gold14ctPerGram.toFixed(4));
-      return;
+  if (silverResult.status === 'fulfilled') {
+    const silverPerGram = silverResult.value?.price;
+    if (silverPerGram > 0) {
+      spotPrices.silverPerGram = silverPerGram * 0.925; // 925 purity
+      console.log('[JWLZIFY] silver price CAD/g:', spotPrices.silverPerGram.toFixed(4));
+      silverOk = true;
     }
-  } catch(e) {
-    console.warn('goldpricez failed:', e.message);
+  } else {
+    console.warn('[JWLZIFY] silver-price worker failed:', silverResult.reason?.message);
   }
 
-  // Fallback — May 28 2026 CAD verified rates
-  spotPrices.silverPerGram   = 3.35;
-  spotPrices.gold10ctPerGram = 75.40;
-  spotPrices.gold14ctPerGram = 105.56;
-  spotPrices.source          = 'fallback-cad';
-  spotPrices.fetchedAt       = new Date().toISOString();
-  console.log('Using CAD fallback prices');
+  if (goldResult.status === 'fulfilled') {
+    console.log('[JWLZIFY] raw gold worker response:', JSON.stringify(goldResult.value));
+    const goldPerGram = goldResult.value?.price; // pure 24ct CAD/g
+    if (goldPerGram > 0) {
+      console.log('[JWLZIFY] raw 24ct gold CAD/g:', goldPerGram);
+      console.log('[JWLZIFY] 10kt price:', goldPerGram * 0.417);
+      console.log('[JWLZIFY] 14kt price:', goldPerGram * 0.583);
+      spotPrices.gold10ctPerGram = goldPerGram * KARAT_PURITY['10ct'];
+      spotPrices.gold14ctPerGram = goldPerGram * KARAT_PURITY['14ct'];
+      goldOk = true;
+    }
+  } else {
+    console.warn('[JWLZIFY] gold-price worker failed:', goldResult.reason?.message);
+  }
+
+  if (silverOk || goldOk) {
+    spotPrices.source    = 'cloudflare-worker-cad';
+    spotPrices.fetchedAt = new Date().toISOString();
+  }
+
+  // Apply fallback for any value that didn't load
+  if (!silverOk) {
+    spotPrices.silverPerGram = 3.33;
+    console.log('[JWLZIFY] Using silver fallback: 3.33 CAD/g');
+  }
+  if (!goldOk) {
+    spotPrices.gold10ctPerGram = 75.40;
+    spotPrices.gold14ctPerGram = 105.56;
+    console.log('[JWLZIFY] Using gold fallback: 10ct=75.40 14ct=105.56 CAD/g');
+  }
+  if (!spotPrices.fetchedAt) {
+    spotPrices.source    = 'fallback-cad';
+    spotPrices.fetchedAt = new Date().toISOString();
+  }
+}
+
+/* ── Specifications step ── */
+window.jwlSpecifications = {
+  metalGrams:  4.5,
+  stoneCount:  1,
+  stones:      [1.0],   // per-stone carats array
+  totalCarats: 1.0
+};
+
+const _SPEC_SIZES = [0.5, 1, 1.5, 2];
+
+function setSpecWeight(preset, grams) {
+  window.jwlSpecifications.metalGrams = grams;
+  document.getElementById('specWeightInput').value = '';
+  document.querySelectorAll('.spec-weight-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.preset === preset));
+  updateSpecCostEstimate();
+}
+
+function setSpecWeightExact(val) {
+  const g = parseFloat(val);
+  if (g > 0) {
+    window.jwlSpecifications.metalGrams = g;
+    document.querySelectorAll('.spec-weight-btn').forEach(b => b.classList.remove('active'));
+    updateSpecCostEstimate();
+  }
+}
+
+function setSpecCount(count) {
+  const isCustom = count === 'custom';
+  const wrap = document.getElementById('specCountCustomWrap');
+  if (wrap) wrap.style.display = isCustom ? '' : 'none';
+  document.querySelectorAll('.spec-count-btn').forEach(b =>
+    b.classList.toggle('active', String(b.dataset.count) === String(count)));
+  if (!isCustom) _applySpecCount(count);
+}
+
+function setSpecCountCustom(val) {
+  const n = Math.max(1, Math.min(20, parseInt(val) || 1));
+  _applySpecCount(n);
+}
+
+function _applySpecCount(n) {
+  n = parseInt(n);
+  const s = window.jwlSpecifications;
+  while (s.stones.length < n) s.stones.push(1.0);
+  s.stones = s.stones.slice(0, n);
+  s.stoneCount = n;
+  _recalcTotalCarats();
+  _renderStoneRows();
+  updateSpecCostEstimate();
+}
+
+function setStoneSize(idx, ct) {
+  window.jwlSpecifications.stones[idx] = ct;
+  const customInput = document.getElementById('specStoneCustom' + idx);
+  if (customInput) { customInput.style.display = 'none'; customInput.value = ''; }
+  document.querySelectorAll('.spec-stone-size-btn[data-idx="' + idx + '"]').forEach(b =>
+    b.classList.toggle('active', b.dataset.ct !== 'custom' && parseFloat(b.dataset.ct) === ct));
+  _recalcTotalCarats();
+  updateSpecCostEstimate();
+}
+
+function toggleStoneCustom(idx) {
+  const input = document.getElementById('specStoneCustom' + idx);
+  if (!input) return;
+  const show = input.style.display === 'none';
+  input.style.display = show ? 'inline-block' : 'none';
+  document.querySelectorAll('.spec-stone-size-btn[data-idx="' + idx + '"]').forEach(b => {
+    if (b.dataset.ct !== 'custom') b.classList.remove('active');
+    else b.classList.toggle('active', show);
+  });
+  if (show) { input.value = ''; input.focus(); }
+}
+
+function setStoneCustom(idx, val) {
+  const ct = parseFloat(val);
+  if (ct > 0 && ct <= 20) {
+    window.jwlSpecifications.stones[idx] = +ct.toFixed(2);
+    _recalcTotalCarats();
+    updateSpecCostEstimate();
+  }
+}
+
+function _recalcTotalCarats() {
+  const total = window.jwlSpecifications.stones.reduce((a, b) => a + b, 0);
+  window.jwlSpecifications.totalCarats = +total.toFixed(2);
+}
+
+function _renderStoneRows() {
+  const container = document.getElementById('specStonesContainer');
+  if (!container) return;
+  const stones = window.jwlSpecifications.stones;
+  container.style.opacity = '0';
+  container.style.transition = 'opacity 0.25s ease';
+  setTimeout(() => {
+    container.innerHTML = stones.map((ct, i) => {
+      const isCustom = !_SPEC_SIZES.includes(ct);
+      return `
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 0;border-bottom:1px solid rgba(193,199,203,0.18);">
+          <span style="font-family:Inter,sans-serif;font-size:11px;font-weight:600;color:#71787c;letter-spacing:0.06em;white-space:nowrap;min-width:52px;">Stone ${i + 1}</span>
+          <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">
+            ${_SPEC_SIZES.map(s => `
+              <button class="spec-toggle spec-stone-size-btn${ct === s ? ' active' : ''}"
+                data-idx="${i}" data-ct="${s}"
+                onclick="setStoneSize(${i},${s})">${s}ct</button>
+            `).join('')}
+            <button class="spec-toggle spec-stone-size-btn${isCustom ? ' active' : ''}"
+              data-idx="${i}" data-ct="custom"
+              onclick="toggleStoneCustom(${i})">Custom</button>
+            <input id="specStoneCustom${i}" type="number" min="0.1" max="20" step="0.1"
+              placeholder="ct" value="${isCustom ? ct : ''}"
+              style="display:${isCustom ? 'inline-block' : 'none'};width:64px;font-family:Inter,sans-serif;font-size:13px;padding:6px 10px;border:1.5px solid #3c6474;border-radius:8px;outline:none;color:#1b1c1c;box-sizing:border-box;"
+              oninput="setStoneCustom(${i},this.value)">
+          </div>
+        </div>`;
+    }).join('');
+    container.style.opacity = '1';
+  }, 40);
+}
+
+function updateSpecCostEstimate() {
+  const s  = window.jwlSpecifications;
+  const mt = LAB.material || '925silver';
+  let metalRate = 0;
+  if      (mt === '925silver')  metalRate = spotPrices.silverPerGram   || 3.33;
+  else if (mt === '10ctgold')   metalRate = spotPrices.gold10ctPerGram || 75.40;
+  else if (mt === '14ctgold')   metalRate = spotPrices.gold14ctPerGram || 105.56;
+
+  const metalCost = s.metalGrams * metalRate;
+  const stoneCost = s.totalCarats * 2.00;
+  const total     = metalCost + stoneCost;
+
+  const el     = document.getElementById('specCostEstimate');
+  const detail = document.getElementById('specCostDetail');
+  if (el) el.textContent = total > 0 ? '$' + total.toFixed(2) + ' CAD' : '—';
+  if (detail) {
+    const breakdown = s.stones.map(c => c + 'ct').join(' + ');
+    detail.textContent = s.metalGrams + 'g metal · '
+      + s.stones.length + ' stone' + (s.stones.length > 1 ? 's' : '')
+      + ' (' + breakdown + ' = ' + s.totalCarats + 'ct total)';
+  }
 }
 
 /* ── Pricing engine ── */
@@ -1656,9 +1953,18 @@ function extractCaratWeight(promptText) {
 function calculatePrice(metalType, stoneType, jewelryType, userCarats) {
   console.log('Using silver price:', spotPrices.silverPerGram);
   console.log('Source:', spotPrices.source);
-  var weights     = MATERIAL_WEIGHTS[jewelryType] || MATERIAL_WEIGHTS['pendant'];
-  var stoneCarats = (userCarats && userCarats > 0) ? userCarats : weights.stoneCarats;
-  var caratSource = (userCarats && userCarats > 0) ? 'user specified' : 'default';
+  var weights     = Object.assign({}, MATERIAL_WEIGHTS[jewelryType] || MATERIAL_WEIGHTS['pendant']);
+  var specs       = window.jwlSpecifications;
+
+  // Override weights from Specifications step if user made selections
+  if (specs && specs.metalGrams > 0) weights.metalGrams = specs.metalGrams;
+
+  var stoneCarats = (userCarats && userCarats > 0) ? userCarats
+    : (specs && specs.totalCarats > 0)             ? specs.totalCarats
+    : weights.stoneCarats;
+  var caratSource = (userCarats && userCarats > 0) ? 'user specified'
+    : (specs && specs.totalCarats > 0)             ? 'specifications'
+    : 'default';
 
   var metalPerGram = 0;
   if (metalType === '925silver')     metalPerGram = spotPrices.silverPerGram;
@@ -1817,7 +2123,7 @@ function populateOrderSummary() {
 /* ── Order submission ────────────────────────── */
 function saveCurrentDesign() {
   if (!window.JWL) return;
-  const user = firebase.auth().currentUser;
+  const user = window._jwlAuth?.currentUser;
   if (!user) return;
   JWL.saveDesign({
     prompt:   LAB.prompt  || '',
@@ -1874,7 +2180,7 @@ function submitOrder(e) {
     document.getElementById('orderIdDisplay').textContent = 'ORDER #' + orderId;
     document.querySelectorAll('.sp').forEach(el => el.classList.remove('active'));
     document.getElementById('sSuccess').classList.add('active');
-    updateProgress(5);
+    updateProgress(6);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, 1800);
 }
@@ -2540,8 +2846,7 @@ async function startCamera() {
 
 async function setupTryOn() {
   isTryOnActive = true;
-
-  if (!LAB.imageUrl) { goStep(4); return; }
+  if (!LAB.imageUrl) { goStep(5); return; }
 
   ['camGuide','jewBadge','camHint'].forEach(id =>
     document.getElementById(id).classList.add('hidden'));
@@ -2661,6 +2966,187 @@ startPriceRefresh();
 
 </script>
 
+
+<!-- Save Design Modal -->
+<div id="saveDesignModal" style="display:none;position:fixed;inset:0;z-index:9998;background:rgba(27,28,28,0.55);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:20px;padding:36px;width:360px;max-width:90vw;box-shadow:0 24px 64px rgba(0,0,0,0.14);">
+    <p style="font-family:'Playfair Display',serif;font-size:20px;font-weight:700;color:#1b1c1c;margin:0 0 6px;">Save Your Design</p>
+    <p style="font-family:Inter,sans-serif;font-size:13px;color:#6b7280;margin:0 0 20px;">Give your design a name to find it later in your account.</p>
+    <input id="saveDesignName" type="text" placeholder="My Design"
+      style="width:100%;font-family:Inter,sans-serif;font-size:14px;padding:11px 14px;border:1px solid #e5e7eb;border-radius:10px;outline:none;color:#1b1c1c;box-sizing:border-box;margin-bottom:16px;">
+    <div style="display:flex;gap:10px;">
+      <button onclick="confirmSaveDesign()"
+        style="flex:1;font-family:Inter,sans-serif;font-size:12px;font-weight:600;letter-spacing:0.1em;background:#3c6474;color:white;border:none;border-radius:10px;padding:12px;cursor:pointer;">Save</button>
+      <button onclick="closeSaveModal()"
+        style="font-family:Inter,sans-serif;font-size:12px;font-weight:500;color:#6b7280;background:transparent;border:1px solid #e5e7eb;border-radius:10px;padding:12px 18px;cursor:pointer;">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { getFirestore, collection, addDoc, serverTimestamp }
+  from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+
+function getDb() { return getFirestore(window._jwlApp); }
+
+function showToast(msg, isError) {
+  let t = document.getElementById('saveToast');
+  if (!t) {
+    t = document.createElement('div');
+    t.id = 'saveToast';
+    t.style.cssText = 'position:fixed;bottom:28px;left:50%;transform:translateX(-50%);padding:12px 24px;border-radius:12px;font-family:Inter,sans-serif;font-size:13px;font-weight:500;z-index:9999;pointer-events:none;transition:opacity 0.4s;';
+    document.body.appendChild(t);
+  }
+  t.textContent = msg;
+  t.style.background = isError ? '#ef4444' : '#1b1c1c';
+  t.style.color = 'white';
+  t.style.opacity = '1';
+  clearTimeout(t._t);
+  t._t = setTimeout(() => { t.style.opacity = '0'; }, 3000);
+}
+
+window.triggerSaveDesign = function () {
+  if (!window._jwlAuth?.currentUser) {
+    // Not signed in — open existing sign-in modal; save will need to be re-triggered after login
+    window.signInWithGoogle();
+    return;
+  }
+  const defaultName = ([LAB.style, LAB.type].filter(Boolean).join(' ') || 'My Design').trim();
+  document.getElementById('saveDesignName').value = defaultName;
+  const modal = document.getElementById('saveDesignModal');
+  modal.style.display = 'flex';
+};
+
+window.closeSaveModal = function () {
+  document.getElementById('saveDesignModal').style.display = 'none';
+};
+
+window.confirmSaveDesign = async function () {
+  const user = window._jwlAuth?.currentUser;
+  if (!user) return;
+  const name = document.getElementById('saveDesignName').value.trim() || 'My Design';
+  closeSaveModal();
+  try {
+    await addDoc(collection(getDb(), 'users', user.uid, 'savedDesigns'), {
+      designName:   name,
+      imageDataUrl: LAB.imageUrl || '',
+      prompt:       LAB.prompt   || '',
+      material:     LAB.material || '',
+      gem:          LAB.gem      || '',
+      type:         LAB.type     || '',
+      style:        LAB.style    || '',
+      createdAt:    serverTimestamp()
+    });
+    showToast('Design saved to your account!');
+  } catch (e) {
+    console.error('Save design failed:', e);
+    showToast('Failed to save: ' + e.message, true);
+  }
+};
+</script>
+
+<!-- Step 2 Save Design — inline logic -->
+<script type="module">
+import { getAuth, signInWithPopup, GoogleAuthProvider }
+  from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+import { getFirestore, collection, addDoc, serverTimestamp }
+  from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+
+function getDb() {
+  if (!window._jwlApp) { console.error('[JWLZIFY] _jwlApp not ready'); return null; }
+  return getFirestore(window._jwlApp);
+}
+function getAuthInst() {
+  if (window._jwlAuth) return window._jwlAuth;
+  if (!window._jwlApp) { console.error('[JWLZIFY] _jwlApp not ready'); return null; }
+  return getAuth(window._jwlApp);
+}
+
+async function s2SaveDesign() {
+  const auth = getAuthInst();
+  if (!auth) { console.error('[JWLZIFY] auth unavailable'); return; }
+
+  if (!auth.currentUser) {
+    try {
+      await signInWithPopup(auth, new GoogleAuthProvider());
+    } catch (e) {
+      if (e.code !== 'auth/popup-closed-by-user' && e.code !== 'auth/cancelled-popup-request') {
+        console.warn('[JWLZIFY] s2 sign-in failed:', e.code, e.message);
+      }
+      return;
+    }
+  }
+
+  const defaultName = ([LAB?.style, LAB?.type].filter(Boolean).join(' ') || 'My Design').trim();
+  document.getElementById('s2DesignName').value = defaultName;
+  document.getElementById('s2SavePanel').style.display = '';
+  document.getElementById('s2SaveMsg').style.display   = 'none';
+  document.getElementById('s2DesignName').focus();
+};
+
+async function s2ConfirmSave() {
+  const auth = getAuthInst();
+  const db   = getDb();
+  if (!auth || !db) return;
+
+  const user = auth.currentUser;
+  if (!user) {
+    console.warn('[JWLZIFY] s2ConfirmSave: no current user');
+    return;
+  }
+
+  const nameEl     = document.getElementById('s2DesignName');
+  const confirmBtn = document.getElementById('s2ConfirmBtn');
+  const msg        = document.getElementById('s2SaveMsg');
+  const name       = (nameEl?.value.trim() || 'My Design');
+
+  // Grab image — prefer LAB.imageUrl (always set), fall back to img src attribute
+  const imageDataUrl = (typeof LAB !== 'undefined' && LAB.imageUrl)
+    ? LAB.imageUrl
+    : (document.getElementById('refineImg')?.getAttribute('src') || '');
+
+  console.log('[JWLZIFY] saving design — user:', user.uid, '| name:', name, '| imageDataUrl:', imageDataUrl.slice(0, 80));
+
+  if (confirmBtn) confirmBtn.disabled = true;
+
+  try {
+    await addDoc(collection(db, 'users', user.uid, 'savedDesigns'), {
+      designName:   name,
+      imageDataUrl: imageDataUrl,
+      prompt:       (typeof LAB !== 'undefined' ? LAB.prompt   : '') || '',
+      material:     (typeof LAB !== 'undefined' ? LAB.material : '') || '',
+      gem:          (typeof LAB !== 'undefined' ? LAB.gem      : '') || '',
+      type:         (typeof LAB !== 'undefined' ? LAB.type     : '') || '',
+      style:        (typeof LAB !== 'undefined' ? LAB.style    : '') || '',
+      createdAt:    serverTimestamp()
+    });
+
+    if (nameEl)     nameEl.style.display     = 'none';
+    if (confirmBtn) confirmBtn.style.display  = 'none';
+    msg.style.color   = '#3c6474';
+    msg.textContent   = '✓ Design saved to your account!';
+    msg.style.display = '';
+
+    setTimeout(() => {
+      document.getElementById('s2SavePanel').style.display = 'none';
+      if (nameEl)     { nameEl.style.display     = ''; }
+      if (confirmBtn) { confirmBtn.style.display  = ''; confirmBtn.disabled = false; }
+      msg.style.display = 'none';
+    }, 3000);
+
+  } catch (e) {
+    console.error('[JWLZIFY] s2 save failed:', e.code, e.message);
+    if (confirmBtn) confirmBtn.disabled = false;
+    msg.style.color   = '#ef4444';
+    msg.textContent   = 'Save failed: ' + (e.message || 'unknown error');
+    msg.style.display = '';
+  }
+}
+
+// Module is deferred — DOM is fully parsed and ready here
+document.getElementById('s2SaveBtn').addEventListener('click', s2SaveDesign);
+document.getElementById('s2ConfirmBtn').addEventListener('click', s2ConfirmSave);
+</script>
 
 <!-- TensorFlow.js + MediaPipe body segmentation — must load after page scripts -->
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core@3.21.0/dist/tf-core.min.js"></script>

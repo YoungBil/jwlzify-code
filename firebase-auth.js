@@ -98,9 +98,24 @@ onAuthStateChanged(auth, (user) => {
   if (user) {
     if (signInBtn)  signInBtn.style.display  = 'none';
     if (userMenu)   userMenu.style.display   = 'flex';
-    if (userAvatar) userAvatar.src = user.photoURL || '';
-    if (userName)   userName.textContent =
-      user.displayName?.split(' ')[0] || 'Account';
+    if (userAvatar) {
+      userAvatar.src = user.photoURL || '';
+      if (!userAvatar._jwlLinked) {
+        userAvatar.style.cursor = 'pointer';
+        userAvatar.title = 'My Account';
+        userAvatar.addEventListener('click', (e) => { e.stopPropagation(); location.href = 'account.html'; });
+        userAvatar._jwlLinked = true;
+      }
+    }
+    if (userName) {
+      userName.textContent = user.displayName?.split(' ')[0] || 'Account';
+      if (!userName._jwlLinked) {
+        userName.style.cursor = 'pointer';
+        userName.title = 'My Account';
+        userName.addEventListener('click', (e) => { e.stopPropagation(); location.href = 'account.html'; });
+        userName._jwlLinked = true;
+      }
+    }
 
     const dd = document.getElementById('userDropdown');
     if (dd && !dd.querySelector('[data-jwl-account]')) {
