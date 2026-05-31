@@ -1090,12 +1090,7 @@ async function goStep(n) {
   window.scrollTo({ top: 0, behavior: 'smooth' });
   if (n === 3) setupTryOn();
   if (n === 4) {
-    if (!spotPrices.fetchedAt ||
-        spotPrices.source === 'fallback' ||
-        spotPrices.source === 'fallback-may2026' ||
-        spotPrices.source === 'fallback-cad-may2026') {
-      await fetchSpotPrices();
-    }
+    await fetchSpotPrices(); // always fetch live price at quote time
     await displayPricing(LAB.material, LAB.gem, LAB.type);
     saveCurrentDesign();
   }
@@ -1567,39 +1562,36 @@ function applyOzPrices(silverOzRaw, goldOz, source) {
 
 async function fetchSpotPrices() {
   try {
-    // goldpricez.com — free, CORS enabled, CAD support
-    // Returns silver and gold prices per gram in CAD
     const res  = await fetch(
-      'https://goldpricez.com/api/rates/currency/cad/measure/gram',
-      { headers: { 'X-API-KEY': 'free' } }
+      'https://metals.dev/api/latest?api_key=METALS_DEV_API_KEY&currency=CAD&unit=g'
     );
     const data = await res.json();
+    const silverPerGram = data?.metals?.silver; // already in CAD per gram
+    const goldPerGram   = data?.metals?.gold;   // already in CAD per gram
 
-    if (data?.silver_gram_cad && data?.gold_gram_cad) {
-      // Apply 925 purity to silver
-      spotPrices.silverPerGram   = data.silver_gram_cad * 0.925;
-      // Apply karat purity to gold
-      spotPrices.gold10ctPerGram = data.gold_gram_cad * (10/24);
-      spotPrices.gold14ctPerGram = data.gold_gram_cad * (14/24);
-      spotPrices.source          = 'goldpricez-cad';
+    if (silverPerGram > 0 && goldPerGram > 0) {
+      spotPrices.silverPerGram   = silverPerGram * 0.925; // 925 purity
+      spotPrices.gold10ctPerGram = goldPerGram * (10/24);
+      spotPrices.gold14ctPerGram = goldPerGram * (14/24);
+      spotPrices.source          = 'metals.dev-cad';
       spotPrices.fetchedAt       = new Date().toISOString();
 
-      console.log('CAD Silver /g: $' + spotPrices.silverPerGram.toFixed(4));
-      console.log('CAD 10ct Gold /g: $' + spotPrices.gold10ctPerGram.toFixed(4));
-      console.log('CAD 14ct Gold /g: $' + spotPrices.gold14ctPerGram.toFixed(4));
+      console.log('[JWLZIFY] silver price CAD/g:', spotPrices.silverPerGram.toFixed(4));
+      console.log('[JWLZIFY] 10ct gold CAD/g:', spotPrices.gold10ctPerGram.toFixed(4));
+      console.log('[JWLZIFY] 14ct gold CAD/g:', spotPrices.gold14ctPerGram.toFixed(4));
       return;
     }
   } catch(e) {
-    console.warn('goldpricez failed:', e.message);
+    console.warn('[JWLZIFY] metals.dev failed:', e.message);
   }
 
-  // Fallback — May 28 2026 CAD verified rates
-  spotPrices.silverPerGram   = 3.35;
+  // Fallback — May 2026 CAD verified rates
+  spotPrices.silverPerGram   = 3.33;
   spotPrices.gold10ctPerGram = 75.40;
   spotPrices.gold14ctPerGram = 105.56;
   spotPrices.source          = 'fallback-cad';
   spotPrices.fetchedAt       = new Date().toISOString();
-  console.log('Using CAD fallback prices');
+  console.log('[JWLZIFY] Using CAD fallback prices');
 }
 
 /* ── Pricing engine ── */
