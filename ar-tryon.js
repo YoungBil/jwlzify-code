@@ -158,6 +158,57 @@ function loadGLB(arrayBuffer, scene) {
 
     loader.parse(arrayBuffer, '', (gltf) => {
       const group = gltf.scene;
+
+      // ── 1. Collect all meshes with their bounding boxes ──────────────────
+      const meshes = [];
+      group.traverse((child) => {
+        if (!child.isMesh) return;
+        child.geometry.computeBoundingBox();
+        const bb  = child.geometry.boundingBox;
+        const sz  = new THREE.Vector3();
+        bb.getSize(sz);
+        meshes.push({ mesh: child, sz });
+      });
+
+      // ── 2. Identify base/ground meshes to remove ─────────────────────────
+      const BASE_NAMES = /base|ground|floor|plane|platform|background/i;
+      const toRemove = new Set();
+
+      for (const { mesh, sz } of meshes) {
+        // Name-based check
+        if (BASE_NAMES.test(mesh.name)) {
+          toRemove.add(mesh);
+          continue;
+        }
+        // Flatness check: Y extent < 15% of max(X, Z) extent → flat slab
+        const maxHoriz = Math.max(sz.x, sz.z);
+        if (maxHoriz > 0 && sz.y / maxHoriz < 0.15) {
+          toRemove.add(mesh);
+        }
+      }
+
+      // ── 3. Fallback: if heuristics would remove everything, keep the
+      //      single largest mesh by vertex count instead ───────────────────
+      const survivors = meshes.filter(({ mesh }) => !toRemove.has(mesh));
+      if (survivors.length === 0 && meshes.length > 0) {
+        toRemove.clear();
+        let biggest = meshes[0];
+        for (const entry of meshes) {
+          const verts = entry.mesh.geometry.attributes.position?.count ?? 0;
+          const bestV = biggest.mesh.geometry.attributes.position?.count ?? 0;
+          if (verts > bestV) biggest = entry;
+        }
+        for (const { mesh } of meshes) {
+          if (mesh !== biggest.mesh) toRemove.add(mesh);
+        }
+      }
+
+      // ── 4. Remove unwanted meshes from the scene graph ───────────────────
+      for (const mesh of toRemove) {
+        mesh.parent?.remove(mesh);
+      }
+
+      // ── 5. Apply gold PBR material to remaining meshes ───────────────────
       group.traverse((child) => {
         if (!child.isMesh) return;
         child.material = new THREE.MeshStandardMaterial({
@@ -166,9 +217,14 @@ function loadGLB(arrayBuffer, scene) {
           roughness:       0.15,
           envMapIntensity: CONFIG.ENV_MAP_INTENSITY,
         });
-        child.castShadow    = true;
-        child.receiveShadow = true;
       });
+
+      // ── 6. Re-center the cleaned model on its bounding box centroid ──────
+      const box = new THREE.Box3().setFromObject(group);
+      const center = new THREE.Vector3();
+      box.getCenter(center);
+      group.position.sub(center);
+
       scene.add(group);
       resolve(group);
     }, reject);
