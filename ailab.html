@@ -482,31 +482,23 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
       <div>
         <h3 style="font-family:'Playfair Display',serif;font-size:20px;font-weight:600;color:#1b1c1c;margin-bottom:20px;">Stones</h3>
 
-        <label style="font-family:Inter,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.1em;color:#71787c;text-transform:uppercase;display:block;margin-bottom:10px;">Setting Style</label>
-        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:22px;">
-          <button class="spec-toggle spec-layout-btn active" data-layout="solitaire" onclick="setSpecLayout('solitaire',1)">Solitaire</button>
-          <button class="spec-toggle spec-layout-btn" data-layout="three-stone" onclick="setSpecLayout('three-stone',3)">Three Stone</button>
-          <button class="spec-toggle spec-layout-btn" data-layout="five-stone" onclick="setSpecLayout('five-stone',5)">Five Stone</button>
-          <button class="spec-toggle spec-layout-btn" data-layout="halo" onclick="setSpecLayout('halo',1)">Halo</button>
-          <button class="spec-toggle spec-layout-btn" data-layout="pave" onclick="setSpecLayout('pave',20)">Pavé</button>
+        <label style="font-family:Inter,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.1em;color:#71787c;text-transform:uppercase;display:block;margin-bottom:10px;">Number of Stones</label>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;">
+          <button class="spec-toggle spec-count-btn active" data-count="1" onclick="setSpecCount(1)">1</button>
+          <button class="spec-toggle spec-count-btn" data-count="2" onclick="setSpecCount(2)">2</button>
+          <button class="spec-toggle spec-count-btn" data-count="3" onclick="setSpecCount(3)">3</button>
+          <button class="spec-toggle spec-count-btn" data-count="4" onclick="setSpecCount(4)">4</button>
+          <button class="spec-toggle spec-count-btn" data-count="custom" onclick="setSpecCount('custom')">Custom</button>
+        </div>
+        <div id="specCountCustomWrap" style="display:none;margin-bottom:20px;">
+          <input id="specCountCustomInput" type="number" min="1" max="20" step="1" placeholder="e.g. 5 (max 20)"
+            style="width:100%;font-family:Inter,sans-serif;font-size:14px;padding:10px 14px;border:1.5px solid rgba(193,199,203,0.5);border-radius:10px;outline:none;color:#1b1c1c;box-sizing:border-box;transition:border-color 0.2s;"
+            oninput="setSpecCountCustom(this.value)"
+            onfocus="this.style.borderColor='#3c6474'" onblur="this.style.borderColor='rgba(193,199,203,0.5)'">
         </div>
 
-        <label style="font-family:Inter,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.1em;color:#71787c;text-transform:uppercase;display:block;margin-bottom:10px;">Stone Size (per stone)</label>
-        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:22px;">
-          <button class="spec-toggle spec-size-btn" data-size="0.25ct" onclick="setSpecSize('0.25ct',0.25)">0.25ct</button>
-          <button class="spec-toggle spec-size-btn active" data-size="0.5ct" onclick="setSpecSize('0.5ct',0.5)">0.5ct</button>
-          <button class="spec-toggle spec-size-btn" data-size="0.75ct" onclick="setSpecSize('0.75ct',0.75)">0.75ct</button>
-          <button class="spec-toggle spec-size-btn" data-size="1ct" onclick="setSpecSize('1ct',1.0)">1ct</button>
-          <button class="spec-toggle spec-size-btn" data-size="1.5ct" onclick="setSpecSize('1.5ct',1.5)">1.5ct</button>
-          <button class="spec-toggle spec-size-btn" data-size="2ct+" onclick="setSpecSize('2ct+',2.0)">2ct+</button>
-        </div>
-
-        <label style="font-family:Inter,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.1em;color:#71787c;text-transform:uppercase;display:block;margin-bottom:10px;">Stone Type</label>
-        <div style="display:flex;flex-wrap:wrap;gap:8px;">
-          <button class="spec-toggle spec-type-btn active" data-type="moissanite_vvsd" onclick="setSpecStoneType('moissanite_vvsd')">Moissanite <span style="color:#3c6474;font-size:10px;opacity:0.8;">$</span></button>
-          <button class="spec-toggle spec-type-btn" data-type="lab_diamond" onclick="setSpecStoneType('lab_diamond')">Lab Diamond <span style="color:#3c6474;font-size:10px;opacity:0.8;">$$</span></button>
-          <button class="spec-toggle spec-type-btn" data-type="natural_diamond" onclick="setSpecStoneType('natural_diamond')">Natural Diamond <span style="color:#3c6474;font-size:10px;opacity:0.8;">$$$</span></button>
-        </div>
+        <label style="font-family:Inter,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.1em;color:#71787c;text-transform:uppercase;display:block;margin-bottom:12px;">Stone Sizes</label>
+        <div id="specStonesContainer" style="display:flex;flex-direction:column;gap:12px;"></div>
       </div>
 
     </div>
@@ -1209,7 +1201,7 @@ async function goStep(n) {
   LAB.step = n;
   updateProgress(n);
   window.scrollTo({ top: 0, behavior: 'smooth' });
-  if (n === 2) updateSpecCostEstimate();
+  if (n === 2) { _renderStoneRows(); updateSpecCostEstimate(); }
   if (n === 4) setupTryOn();
   if (n === 5) {
     await fetchSpotPrices(); // always fetch live price at quote time
@@ -1745,13 +1737,13 @@ async function fetchSpotPrices() {
 
 /* ── Specifications step ── */
 window.jwlSpecifications = {
-  metalGrams:        4.5,
-  stoneCarats:       0.5,
-  stoneCount:        1,
-  stoneLayout:       'solitaire',
-  stoneSizePerStone: 0.5,
-  stoneType:         'moissanite_vvsd'
+  metalGrams:  4.5,
+  stoneCount:  1,
+  stones:      [1.0],   // per-stone carats array
+  totalCarats: 1.0
 };
+
+const _SPEC_SIZES = [0.5, 1, 1.5, 2];
 
 function setSpecWeight(preset, grams) {
   window.jwlSpecifications.metalGrams = grams;
@@ -1770,42 +1762,97 @@ function setSpecWeightExact(val) {
   }
 }
 
-function setSpecLayout(layout, count) {
-  window.jwlSpecifications.stoneLayout = layout;
-  window.jwlSpecifications.stoneCount  = count;
-  _recalcSpecCarats();
-  document.querySelectorAll('.spec-layout-btn').forEach(b =>
-    b.classList.toggle('active', b.dataset.layout === layout));
-  updateSpecCostEstimate();
+function setSpecCount(count) {
+  const isCustom = count === 'custom';
+  const wrap = document.getElementById('specCountCustomWrap');
+  if (wrap) wrap.style.display = isCustom ? '' : 'none';
+  document.querySelectorAll('.spec-count-btn').forEach(b =>
+    b.classList.toggle('active', String(b.dataset.count) === String(count)));
+  if (!isCustom) _applySpecCount(count);
 }
 
-function setSpecSize(preset, ctPerStone) {
-  window.jwlSpecifications.stoneSizePerStone = ctPerStone;
-  _recalcSpecCarats();
-  document.querySelectorAll('.spec-size-btn').forEach(b =>
-    b.classList.toggle('active', b.dataset.size === preset));
-  updateSpecCostEstimate();
+function setSpecCountCustom(val) {
+  const n = Math.max(1, Math.min(20, parseInt(val) || 1));
+  _applySpecCount(n);
 }
 
-function setSpecStoneType(type) {
-  window.jwlSpecifications.stoneType = type;
-  LAB.gem = type; // keep LAB in sync so quote uses the same stone
-  document.querySelectorAll('.spec-type-btn').forEach(b =>
-    b.classList.toggle('active', b.dataset.type === type));
-  updateSpecCostEstimate();
-}
-
-function _recalcSpecCarats() {
+function _applySpecCount(n) {
+  n = parseInt(n);
   const s = window.jwlSpecifications;
-  if (s.stoneLayout === 'halo') {
-    // center stone + halo accent ring ≈ 0.30ct
-    s.stoneCarats = +(s.stoneSizePerStone + 0.30).toFixed(2);
-  } else if (s.stoneLayout === 'pave') {
-    // many tiny stones — use count × 0.02ct each
-    s.stoneCarats = +(s.stoneCount * 0.02).toFixed(2);
-  } else {
-    s.stoneCarats = +(s.stoneSizePerStone * s.stoneCount).toFixed(2);
+  while (s.stones.length < n) s.stones.push(1.0);
+  s.stones = s.stones.slice(0, n);
+  s.stoneCount = n;
+  _recalcTotalCarats();
+  _renderStoneRows();
+  updateSpecCostEstimate();
+}
+
+function setStoneSize(idx, ct) {
+  window.jwlSpecifications.stones[idx] = ct;
+  const customInput = document.getElementById('specStoneCustom' + idx);
+  if (customInput) { customInput.style.display = 'none'; customInput.value = ''; }
+  document.querySelectorAll('.spec-stone-size-btn[data-idx="' + idx + '"]').forEach(b =>
+    b.classList.toggle('active', b.dataset.ct !== 'custom' && parseFloat(b.dataset.ct) === ct));
+  _recalcTotalCarats();
+  updateSpecCostEstimate();
+}
+
+function toggleStoneCustom(idx) {
+  const input = document.getElementById('specStoneCustom' + idx);
+  if (!input) return;
+  const show = input.style.display === 'none';
+  input.style.display = show ? 'inline-block' : 'none';
+  document.querySelectorAll('.spec-stone-size-btn[data-idx="' + idx + '"]').forEach(b => {
+    if (b.dataset.ct !== 'custom') b.classList.remove('active');
+    else b.classList.toggle('active', show);
+  });
+  if (show) { input.value = ''; input.focus(); }
+}
+
+function setStoneCustom(idx, val) {
+  const ct = parseFloat(val);
+  if (ct > 0 && ct <= 20) {
+    window.jwlSpecifications.stones[idx] = +ct.toFixed(2);
+    _recalcTotalCarats();
+    updateSpecCostEstimate();
   }
+}
+
+function _recalcTotalCarats() {
+  const total = window.jwlSpecifications.stones.reduce((a, b) => a + b, 0);
+  window.jwlSpecifications.totalCarats = +total.toFixed(2);
+}
+
+function _renderStoneRows() {
+  const container = document.getElementById('specStonesContainer');
+  if (!container) return;
+  const stones = window.jwlSpecifications.stones;
+  container.style.opacity = '0';
+  container.style.transition = 'opacity 0.25s ease';
+  setTimeout(() => {
+    container.innerHTML = stones.map((ct, i) => {
+      const isCustom = !_SPEC_SIZES.includes(ct);
+      return `
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 0;border-bottom:1px solid rgba(193,199,203,0.18);">
+          <span style="font-family:Inter,sans-serif;font-size:11px;font-weight:600;color:#71787c;letter-spacing:0.06em;white-space:nowrap;min-width:52px;">Stone ${i + 1}</span>
+          <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">
+            ${_SPEC_SIZES.map(s => `
+              <button class="spec-toggle spec-stone-size-btn${ct === s ? ' active' : ''}"
+                data-idx="${i}" data-ct="${s}"
+                onclick="setStoneSize(${i},${s})">${s}ct</button>
+            `).join('')}
+            <button class="spec-toggle spec-stone-size-btn${isCustom ? ' active' : ''}"
+              data-idx="${i}" data-ct="custom"
+              onclick="toggleStoneCustom(${i})">Custom</button>
+            <input id="specStoneCustom${i}" type="number" min="0.1" max="20" step="0.1"
+              placeholder="ct" value="${isCustom ? ct : ''}"
+              style="display:${isCustom ? 'inline-block' : 'none'};width:64px;font-family:Inter,sans-serif;font-size:13px;padding:6px 10px;border:1.5px solid #3c6474;border-radius:8px;outline:none;color:#1b1c1c;box-sizing:border-box;"
+              oninput="setStoneCustom(${i},this.value)">
+          </div>
+        </div>`;
+    }).join('');
+    container.style.opacity = '1';
+  }, 40);
 }
 
 function updateSpecCostEstimate() {
@@ -1816,15 +1863,19 @@ function updateSpecCostEstimate() {
   else if (mt === '10ctgold')   metalRate = spotPrices.gold10ctPerGram || 75.40;
   else if (mt === '14ctgold')   metalRate = spotPrices.gold14ctPerGram || 105.56;
 
-  const stoneRate  = { moissanite_vvsd: 2.00, lab_diamond: 2.00, natural_diamond: 2.00 };
-  const metalCost  = s.metalGrams * metalRate;
-  const stoneCost  = s.stoneCarats * (stoneRate[s.stoneType] || 2.00);
-  const total      = metalCost + stoneCost;
+  const metalCost = s.metalGrams * metalRate;
+  const stoneCost = s.totalCarats * 2.00;
+  const total     = metalCost + stoneCost;
 
   const el     = document.getElementById('specCostEstimate');
   const detail = document.getElementById('specCostDetail');
-  if (el)     el.textContent = total > 0 ? '$' + total.toFixed(2) + ' CAD' : '—';
-  if (detail) detail.textContent = s.metalGrams + 'g metal · ' + s.stoneCarats + 'ct stone';
+  if (el) el.textContent = total > 0 ? '$' + total.toFixed(2) + ' CAD' : '—';
+  if (detail) {
+    const breakdown = s.stones.map(c => c + 'ct').join(' + ');
+    detail.textContent = s.metalGrams + 'g metal · '
+      + s.stones.length + ' stone' + (s.stones.length > 1 ? 's' : '')
+      + ' (' + breakdown + ' = ' + s.totalCarats + 'ct total)';
+  }
 }
 
 /* ── Pricing engine ── */
@@ -1880,10 +1931,10 @@ function calculatePrice(metalType, stoneType, jewelryType, userCarats) {
   if (specs && specs.metalGrams > 0) weights.metalGrams = specs.metalGrams;
 
   var stoneCarats = (userCarats && userCarats > 0) ? userCarats
-    : (specs && specs.stoneCarats > 0)             ? specs.stoneCarats
+    : (specs && specs.totalCarats > 0)             ? specs.totalCarats
     : weights.stoneCarats;
   var caratSource = (userCarats && userCarats > 0) ? 'user specified'
-    : (specs && specs.stoneCarats > 0)             ? 'specifications'
+    : (specs && specs.totalCarats > 0)             ? 'specifications'
     : 'default';
 
   var metalPerGram = 0;
