@@ -8,17 +8,6 @@ import { GLTFLoader }  from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { RGBELoader }  from 'three/addons/loaders/RGBELoader.js';
 
-// ── Test mode ────────────────────────────────────────────────────────────────
-const IS_LOCAL = ['localhost', '127.0.0.1', ''].includes(window.location.hostname) ||
-                 window.location.protocol === 'file:';
-
-console.log('[AR] ar-tryon.js module loaded. IS_LOCAL =', IS_LOCAL);
-
-const TEST_PENDANT_URL = './test-pendant.jpg';
-
-// Set bridge synchronously — classic-script setupTryOn reads this before its null check
-if (IS_LOCAL) window.__arTestImageUrl = TEST_PENDANT_URL;
-
 // ── Configuration ────────────────────────────────────────────────────────────
 const CONFIG = {
   FAL_KEY:                    '9284ccc4-a0ff-48dc-ad1f-83bf22a7a6cd:040197e513fab8b9333f46bd5bd19f16',
@@ -311,15 +300,14 @@ async function initARPipeline() {
   arLoad?.classList.remove('hidden');
 
   try {
-    // 1. Resolve pendant image — prefer generated DOM image, fall back to test URL
+    // 1. Resolve generated pendant image from the AI design step
     setArDetail('READING PENDANT IMAGE…');
     const pendantImg = document.querySelector("img[alt='Your AI jewelry design']");
-    const pendantSrc = pendantImg?.src && pendantImg.src !== window.location.href
+    const imageSrc   = pendantImg?.src && pendantImg.src !== window.location.href
       ? pendantImg.src
       : null;
 
-    let imageSrc = pendantSrc || (IS_LOCAL ? TEST_PENDANT_URL : null);
-    if (!imageSrc) throw new Error('No pendant image available');
+    if (!imageSrc) throw new Error('No generated pendant image found');
 
     const imageFile = await srcToFile(imageSrc);
 
@@ -395,23 +383,3 @@ async function teardownARPipeline() {
 // ── Expose to classic scripts ────────────────────────────────────────────────
 window.initARPipeline     = initARPipeline;
 window.teardownARPipeline = teardownARPipeline;
-
-// ── Localhost auto-trigger ────────────────────────────────────────────────────
-// ES modules are deferred — DOM is already ready when this runs.
-// Use setTimeout instead of 'load' event to avoid the race where load fires
-// before the module finishes executing and the listener is never registered.
-if (IS_LOCAL) {
-  setTimeout(() => {
-    console.log('[AR] TEST MODE: auto-triggering pendant AR try-on');
-    const pendantBtn = document.querySelector('[data-type="pendant"]');
-    if (pendantBtn) {
-      document.querySelectorAll('.type-btn').forEach(b => b.classList.remove('active'));
-      pendantBtn.classList.add('active');
-    }
-    if (typeof window.goStep === 'function') {
-      window.goStep(3);
-    } else {
-      console.warn('[AR] TEST MODE: window.goStep not found — check classic script load order');
-    }
-  }, 600);
-}
