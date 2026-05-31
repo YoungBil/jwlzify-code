@@ -1563,7 +1563,7 @@ function applyOzPrices(silverOzRaw, goldOz, source) {
 async function fetchSpotPrices() {
   try {
     const res  = await fetch(
-      'https://metals.dev/api/latest?api_key=METALS_DEV_API_KEY&currency=CAD&unit=g'
+      'https://metals.dev/api/latest?api_key=WXRBFWGMNQYMORXWBRYF344XWBRYF&currency=CAD&unit=g'
     );
     const data = await res.json();
     const silverPerGram = data?.metals?.silver; // already in CAD per gram
