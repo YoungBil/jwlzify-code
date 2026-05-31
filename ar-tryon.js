@@ -159,56 +159,70 @@ function loadGLB(arrayBuffer, scene) {
     loader.parse(arrayBuffer, '', (gltf) => {
       const group = gltf.scene;
 
-      // ── 1. Collect all meshes with their bounding boxes ──────────────────
+      // ── 1. Collect all meshes with world-space bounding boxes ────────────
+      // Force world matrix update so Box3.setFromObject is accurate per-mesh
+      group.updateMatrixWorld(true);
+
       const meshes = [];
       group.traverse((child) => {
         if (!child.isMesh) return;
-        child.geometry.computeBoundingBox();
-        const bb  = child.geometry.boundingBox;
-        const sz  = new THREE.Vector3();
+        const bb = new THREE.Box3().setFromObject(child);
+        const sz = new THREE.Vector3();
         bb.getSize(sz);
-        meshes.push({ mesh: child, sz });
+        const volume = sz.x * sz.y * sz.z;
+        meshes.push({ mesh: child, sz, volume });
       });
 
-      // ── 2. Identify base/ground meshes to remove ─────────────────────────
-      const BASE_NAMES = /base|ground|floor|plane|platform|background/i;
+      console.log('[AR] GLB meshes found:', meshes.length);
+      meshes.forEach(({ mesh, sz, volume }) => {
+        console.log(`  mesh="${mesh.name || '(unnamed)'}" vol=${volume.toFixed(4)} sz=${sz.x.toFixed(3)}x${sz.y.toFixed(3)}x${sz.z.toFixed(3)}`);
+      });
+
       const toRemove = new Set();
 
-      for (const { mesh, sz } of meshes) {
-        // Name-based check
-        if (BASE_NAMES.test(mesh.name)) {
-          toRemove.add(mesh);
-          continue;
+      if (meshes.length > 1) {
+        // ── 2. Sort by volume ascending, find the largest ──────────────────
+        const sorted = [...meshes].sort((a, b) => a.volume - b.volume);
+        const maxVol = sorted[sorted.length - 1].volume;
+
+        // ── 3. Volume + flatness filter ────────────────────────────────────
+        // Keep a mesh only if BOTH:
+        //   a) its volume is < 30% of the largest mesh's volume, OR it IS the largest
+        //   b) it is not flat: height >= 20% of width
+        for (const { mesh, sz, volume } of meshes) {
+          const volRatio    = maxVol > 0 ? volume / maxVol : 1;
+          const maxHoriz    = Math.max(sz.x, sz.z);
+          const isFlat      = maxHoriz > 0 && sz.y / maxHoriz < 0.20;
+          const isTooLarge  = volRatio >= 0.30 && volume !== maxVol;
+
+          if (isFlat || isTooLarge) {
+            toRemove.add(mesh);
+          }
         }
-        // Flatness check: Y extent < 15% of max(X, Z) extent → flat slab
-        const maxHoriz = Math.max(sz.x, sz.z);
-        if (maxHoriz > 0 && sz.y / maxHoriz < 0.15) {
-          toRemove.add(mesh);
+
+        // ── 4. Fallback: if volume filter removed everything, use name filter
+        const survivors = meshes.filter(({ mesh }) => !toRemove.has(mesh));
+        if (survivors.length === 0) {
+          console.warn('[AR] Volume filter removed all meshes — falling back to name filter');
+          toRemove.clear();
+          const BAD_NAMES = /base|box|plane|floor|ground|background|platform/i;
+          for (const { mesh } of meshes) {
+            if (BAD_NAMES.test(mesh.name)) toRemove.add(mesh);
+          }
         }
       }
 
-      // ── 3. Fallback: if heuristics would remove everything, keep the
-      //      single largest mesh by vertex count instead ───────────────────
-      const survivors = meshes.filter(({ mesh }) => !toRemove.has(mesh));
-      if (survivors.length === 0 && meshes.length > 0) {
-        toRemove.clear();
-        let biggest = meshes[0];
-        for (const entry of meshes) {
-          const verts = entry.mesh.geometry.attributes.position?.count ?? 0;
-          const bestV = biggest.mesh.geometry.attributes.position?.count ?? 0;
-          if (verts > bestV) biggest = entry;
-        }
-        for (const { mesh } of meshes) {
-          if (mesh !== biggest.mesh) toRemove.add(mesh);
+      // ── 5. Execute removal ────────────────────────────────────────────────
+      for (const { mesh } of meshes) {
+        if (toRemove.has(mesh)) {
+          console.log(`[AR] REMOVED mesh="${mesh.name || '(unnamed)'}"`);
+          mesh.parent?.remove(mesh);
+        } else {
+          console.log(`[AR] KEPT   mesh="${mesh.name || '(unnamed)'}"`);
         }
       }
 
-      // ── 4. Remove unwanted meshes from the scene graph ───────────────────
-      for (const mesh of toRemove) {
-        mesh.parent?.remove(mesh);
-      }
-
-      // ── 5. Apply gold PBR material to remaining meshes ───────────────────
+      // ── 6. Apply gold PBR material to surviving meshes ───────────────────
       group.traverse((child) => {
         if (!child.isMesh) return;
         child.material = new THREE.MeshStandardMaterial({
@@ -219,11 +233,13 @@ function loadGLB(arrayBuffer, scene) {
         });
       });
 
-      // ── 6. Re-center the cleaned model on its bounding box centroid ──────
+      // ── 7. Re-center remaining geometry at world origin ───────────────────
       const box = new THREE.Box3().setFromObject(group);
-      const center = new THREE.Vector3();
-      box.getCenter(center);
-      group.position.sub(center);
+      if (!box.isEmpty()) {
+        const center = new THREE.Vector3();
+        box.getCenter(center);
+        group.position.sub(center);
+      }
 
       scene.add(group);
       resolve(group);
