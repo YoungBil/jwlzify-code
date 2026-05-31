@@ -1809,7 +1809,7 @@ function populateOrderSummary() {
 /* ── Order submission ────────────────────────── */
 function saveCurrentDesign() {
   if (!window.JWL) return;
-  const user = firebase.auth().currentUser;
+  const user = window._jwlAuth?.currentUser;
   if (!user) return;
   JWL.saveDesign({
     prompt:   LAB.prompt  || '',
