@@ -2361,6 +2361,7 @@ window.addEventListener('load', () => {
 });
 
 async function tfSegmentationRemoval(img, W, H) {
+  if (!W || !H || W <= 0 || H <= 0) throw new Error('Invalid image dimensions for segmentation');
   const segmenter = await getSegmenter();
 
   const segs = await segmenter.segmentPeople(img, {
@@ -2648,7 +2649,7 @@ async function removeBackground(imageUrl) {
       // Try TF segmentation first
       try {
         if (_segmenter) {
-          const result = await tfSegmentationRemoval(img);
+          const result = await tfSegmentationRemoval(img, img.naturalWidth, img.naturalHeight);
           resolve(result);
           return;
         }
@@ -2976,16 +2977,19 @@ async function setupTryOn() {
     await startCamera();
   } catch { return; }
 
-  activateTryOnOverlay(LAB.type, LAB.imageUrl);
+  // Pendant uses the 3D AR pipeline — skip 2D overlay so the box never appears
+  if (LAB.type !== 'pendant') {
+    activateTryOnOverlay(LAB.type, LAB.imageUrl);
+  }
 
   document.getElementById('guideText').textContent    = TRYON_GUIDE[LAB.type] || 'CENTER YOURSELF IN FRAME';
   document.getElementById('jewBadgeText').textContent = LAB.type.toUpperCase();
   ['camGuide','jewBadge','camHint'].forEach(id =>
     document.getElementById(id).classList.remove('hidden'));
 
-  // Once camera is live and step 3 is visible, layer 3D AR on top for pendant
+  // Once camera is live, start 3D AR pipeline for pendant (non-blocking)
   if (LAB.type === 'pendant' && typeof window.initARPipeline === 'function') {
-    window.initARPipeline(); // non-blocking — AR builds on the already-running camera
+    window.initARPipeline();
   }
 }
 

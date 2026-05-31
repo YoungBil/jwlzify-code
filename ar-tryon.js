@@ -33,26 +33,10 @@ const AR = {
   camH:           0,
 };
 
-// ── fal.ai lazy import ───────────────────────────────────────────────────────
-let _fal = null;
-async function getFal() {
-  if (_fal) return _fal;
-  const mod = await import('https://cdn.jsdelivr.net/npm/@fal-ai/client/+esm');
-  _fal = mod.fal;
-  _fal.config({ credentials: CONFIG.FAL_KEY });
-  return _fal;
-}
-
 // ── Utilities ────────────────────────────────────────────────────────────────
 function setArDetail(text) {
   const el = document.getElementById('arLoadingDetail');
   if (el) el.textContent = text;
-}
-
-async function srcToFile(src) {
-  const res  = await fetch(src);
-  const blob = await res.blob();
-  return new File([blob], 'pendant.png', { type: blob.type || 'image/png' });
 }
 
 function parseSizeInches() {
@@ -62,31 +46,52 @@ function parseSizeInches() {
   return match ? parseFloat(match[1]) : CONFIG.DEFAULT_PENDANT_SIZE_INCHES;
 }
 
-// ── Image-to-3D via fal.ai Hunyuan3D ────────────────────────────────────────
-async function convertTo3D(imageFile) {
-  const fal = await getFal();
+// ── Image-to-3D via fal.ai Hunyuan3D (direct REST — no SDK) ─────────────────
+async function convertTo3D(imageUrl) {
+  const BASE    = 'https://queue.fal.run/fal-ai/hunyuan3d-v2';
+  const HEADERS = {
+    'Authorization': `Key ${CONFIG.FAL_KEY}`,
+    'Content-Type':  'application/json',
+  };
 
-  setArDetail('UPLOADING TO FAL.AI…');
-  const uploadedUrl = await fal.storage.upload(imageFile);
-
-  setArDetail('RUNNING HUNYUAN3D…');
-  const result = await fal.subscribe('fal-ai/hunyuan3d-v2', {
-    input:  { image_url: uploadedUrl },
-    logs:   true,
-    onQueueUpdate(update) {
-      if (update.status === 'IN_PROGRESS' && update.logs?.length) {
-        const last = update.logs[update.logs.length - 1].message;
-        setArDetail(last.slice(0, 60).toUpperCase());
-      }
-    },
+  // 1. Submit job to queue
+  setArDetail('SUBMITTING TO FAL.AI…');
+  const submitRes = await fetch(BASE, {
+    method:  'POST',
+    headers: HEADERS,
+    body:    JSON.stringify({ image_url: imageUrl }),
   });
+  if (!submitRes.ok) {
+    throw new Error(`fal.ai submit failed (${submitRes.status}): ${await submitRes.text()}`);
+  }
+  const { request_id } = await submitRes.json();
 
-  const meshUrl = result?.data?.model_mesh?.url;
-  if (!meshUrl) throw new Error('Hunyuan3D returned no mesh URL');
+  // 2. Poll until COMPLETED (max 8 min)
+  setArDetail('RUNNING HUNYUAN3D…');
+  for (let i = 0; i < 240; i++) {
+    await new Promise(r => setTimeout(r, 2000));
 
-  setArDetail('DOWNLOADING MESH…');
-  const glbRes = await fetch(meshUrl);
-  return glbRes.arrayBuffer();
+    const statusRes = await fetch(`${BASE}/requests/${request_id}/status`, { headers: HEADERS });
+    if (!statusRes.ok) continue;
+    const { status, logs } = await statusRes.json();
+
+    if (logs?.length) {
+      setArDetail(logs[logs.length - 1].message.slice(0, 60).toUpperCase());
+    }
+
+    if (status === 'COMPLETED') {
+      setArDetail('DOWNLOADING MESH…');
+      const resultRes = await fetch(`${BASE}/requests/${request_id}`, { headers: HEADERS });
+      if (!resultRes.ok) throw new Error('fal.ai result fetch failed');
+      const result  = await resultRes.json();
+      const meshUrl = result?.model_mesh?.url;
+      if (!meshUrl) throw new Error('Hunyuan3D returned no mesh URL');
+      const glbRes  = await fetch(meshUrl);
+      return glbRes.arrayBuffer();
+    }
+    if (status === 'FAILED') throw new Error('Hunyuan3D job failed on fal.ai');
+  }
+  throw new Error('Hunyuan3D timed out after 8 minutes');
 }
 
 // ── Three.js renderer + scene ────────────────────────────────────────────────
@@ -362,10 +367,8 @@ async function initARPipeline() {
 
     if (!imageSrc) throw new Error('No generated pendant image found');
 
-    const imageFile = await srcToFile(imageSrc);
-
-    // 2. fal.ai → GLB
-    const glbBuffer = await convertTo3D(imageFile);
+    // 2. fal.ai → GLB (pass URL directly — no re-upload needed)
+    const glbBuffer = await convertTo3D(imageSrc);
 
     // 3. Three.js scene
     setArDetail('BUILDING 3D SCENE…');
