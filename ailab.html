@@ -2540,6 +2540,11 @@ async function startCamera() {
 
 async function setupTryOn() {
   isTryOnActive = true;
+  if (!LAB.imageUrl && window.__arTestImageUrl) {
+    LAB.imageUrl = window.__arTestImageUrl;
+    LAB.type = 'pendant';
+    console.log('TEST MODE: injected placeholder pendant image');
+  }
   if (!LAB.imageUrl) { goStep(4); return; }
 
   ['camGuide','jewBadge','camHint'].forEach(id =>

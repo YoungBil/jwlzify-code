@@ -17,6 +17,9 @@ const TEST_PENDANT_URL =
   'Honolulu_Museum_of_Art%2C_341.1.JPG/250px-Cast_gold_male_figure_' +
   'pendant%2C_Veraguas_or_Chiriqu%C3%AD%2C_Honolulu_Museum_of_Art%2C_341.1.JPG';
 
+// Set bridge synchronously — classic-script setupTryOn reads this before its null check
+if (IS_LOCAL) window.__arTestImageUrl = TEST_PENDANT_URL;
+
 // ── Configuration ────────────────────────────────────────────────────────────
 const CONFIG = {
   FAL_KEY:                    '9284ccc4-a0ff-48dc-ad1f-83bf22a7a6cd:040197e513fab8b9333f46bd5bd19f16',
@@ -300,7 +303,6 @@ function startLoop() {
 
 // ── Public: init ─────────────────────────────────────────────────────────────
 async function initARPipeline() {
-  if (window.LAB?.type !== 'pendant') return;
   AR.active = true;
 
   const camWrap  = document.getElementById('camWrap');
@@ -417,18 +419,13 @@ window.teardownARPipeline = teardownARPipeline;
 if (IS_LOCAL) {
   window.addEventListener('load', () => {
     console.log('TEST MODE: localhost detected — auto-triggering pendant AR try-on');
-    // Set LAB state to pendant and inject a dummy imageUrl so goStep(3) doesn't bail
-    if (window.LAB) {
-      window.LAB.type     = 'pendant';
-      window.LAB.imageUrl = TEST_PENDANT_URL;
-    }
-    // Force the pendant type button active in the UI if present
+    // window.__arTestImageUrl is already set at module top-level as the bridge.
+    // Classic setupTryOn will read it and inject into LAB before the null check.
     const pendantBtn = document.querySelector('[data-type="pendant"]');
     if (pendantBtn) {
       document.querySelectorAll('.type-btn').forEach(b => b.classList.remove('active'));
       pendantBtn.classList.add('active');
     }
-    // Navigate to step 3 — triggers setupTryOn → initARPipeline
     setTimeout(() => window.goStep?.(3), 400);
   });
 }
