@@ -302,83 +302,65 @@ function startLoop() {
 
 // ── Public: init ─────────────────────────────────────────────────────────────
 async function initARPipeline() {
+  // Camera is already running — setupTryOn started it before calling us.
   AR.active = true;
 
-  const camWrap  = document.getElementById('camWrap');
-  const arLoad   = document.getElementById('arLoading');
+  const camWrap = document.getElementById('camWrap');
+  const arLoad  = document.getElementById('arLoading');
 
   arLoad?.classList.remove('hidden');
-  setArDetail('STARTING CAMERA…');
 
   try {
-    // 1. Camera
-    await window.startCamera();
-
-    // 2. Get pendant image src — fall back to test image on localhost
+    // 1. Resolve pendant image — prefer generated DOM image, fall back to test URL
     setArDetail('READING PENDANT IMAGE…');
     const pendantImg = document.querySelector("img[alt='Your AI jewelry design']");
     const pendantSrc = pendantImg?.src && pendantImg.src !== window.location.href
       ? pendantImg.src
       : null;
 
-    let imageSrc = pendantSrc;
-    if (!imageSrc && IS_LOCAL) {
-      console.log('TEST MODE: using placeholder image');
-      imageSrc = TEST_PENDANT_URL;
-    } else if (!imageSrc) {
-      throw new Error('No pendant image rendered yet');
-    }
+    let imageSrc = pendantSrc || (IS_LOCAL ? TEST_PENDANT_URL : null);
+    if (!imageSrc) throw new Error('No pendant image available');
 
     const imageFile = await srcToFile(imageSrc);
 
-    // 3. fal.ai → GLB
+    // 2. fal.ai → GLB
     const glbBuffer = await convertTo3D(imageFile);
 
-    // 4. Three.js scene
+    // 3. Three.js scene
     setArDetail('BUILDING 3D SCENE…');
     const { renderer, scene, camera } = buildRenderer(camWrap);
     AR.renderer = renderer;
     AR.scene    = scene;
     AR.camera   = camera;
 
-    // 5. Env map + GLB (parallel)
+    // 4. Env map + GLB (parallel)
     const [, pendantGroup] = await Promise.all([
       loadEnvMap(scene),
       loadGLB(glbBuffer, scene),
     ]);
     AR.pendantGroup = pendantGroup;
 
-    // 6. MediaPipe Pose
+    // 5. MediaPipe Pose (camera already streaming)
     setArDetail('LOADING POSE MODEL…');
     AR.mpPose = buildPose(({ poseLandmarks }) => {
       if (AR.active) processLandmarks(poseLandmarks);
     });
-    // Warm-up send so WASM is compiled before first frame
     const video = document.getElementById('camVideo');
     if (video.readyState >= 2) await AR.mpPose.send({ image: video });
 
-    // 7. Hide overlay, show guides
+    // 6. Hide loading overlay, update badge to 3D AR
     arLoad?.classList.add('hidden');
     setArDetail('');
-
-    document.getElementById('guideText').textContent    = 'CENTER YOUR CHEST IN FRAME';
     document.getElementById('jewBadgeText').textContent = 'PENDANT · 3D AR';
-    ['camGuide', 'jewBadge', 'camHint'].forEach(id =>
-      document.getElementById(id)?.classList.remove('hidden'));
 
-    // 8. Render loop
+    // 7. Render loop
     startLoop();
 
   } catch (err) {
-    console.warn('[AR] Pipeline failed — falling back to 2D overlay:', err);
+    // 2D overlay is already visible (set by setupTryOn) — just log and hide spinner
+    console.warn('[AR] 3D pipeline failed, 2D overlay remains:', err);
     arLoad?.classList.add('hidden');
     AR.active = false;
-    // 2D fallback
-    window.activateTryOnOverlay?.(window.LAB?.type, window.LAB?.imageUrl);
-    const g = document.getElementById('guideText');
-    if (g) g.textContent = 'CENTER YOUR CHEST IN FRAME';
-    ['camGuide', 'jewBadge', 'camHint'].forEach(id =>
-      document.getElementById(id)?.classList.remove('hidden'));
   }
 }
 

@@ -2540,23 +2540,21 @@ async function startCamera() {
 
 async function setupTryOn() {
   isTryOnActive = true;
+
+  // Test mode: inject local placeholder before the imageUrl null check
   if (!LAB.imageUrl && window.__arTestImageUrl) {
     LAB.imageUrl = window.__arTestImageUrl;
     LAB.type = 'pendant';
     console.log('TEST MODE: injected placeholder pendant image');
   }
+
   if (!LAB.imageUrl) { goStep(4); return; }
 
   ['camGuide','jewBadge','camHint'].forEach(id =>
     document.getElementById(id).classList.add('hidden'));
   hideAllOverlays();
 
-  // ── 3D AR pipeline for pendant type ──────────────
-  if (LAB.type === 'pendant' && typeof window.initARPipeline === 'function') {
-    await window.initARPipeline();
-    return;
-  }
-
+  // Original flow: always open camera and show step 3 view first
   try {
     await startCamera();
   } catch { return; }
@@ -2567,6 +2565,11 @@ async function setupTryOn() {
   document.getElementById('jewBadgeText').textContent = LAB.type.toUpperCase();
   ['camGuide','jewBadge','camHint'].forEach(id =>
     document.getElementById(id).classList.remove('hidden'));
+
+  // Once camera is live and step 3 is visible, layer 3D AR on top for pendant
+  if (LAB.type === 'pendant' && typeof window.initARPipeline === 'function') {
+    window.initARPipeline(); // non-blocking — AR builds on the already-running camera
+  }
 }
 
 
