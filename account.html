@@ -34,8 +34,8 @@ nav, header { background: rgba(255,255,255,0.97) !important; backdrop-filter: bl
 .tab-btn { font-family: Inter, sans-serif; font-size: 13px; font-weight: 500; padding: 10px 22px; border-radius: 10px; border: none; cursor: pointer; transition: background 0.15s, color 0.15s; background: transparent; color: #6b7280; }
 .tab-btn.active { background: #3c6474; color: white; }
 .card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 20px; }
-.design-card { background: white; border-radius: 16px; overflow: hidden; border: 0.5px solid rgba(193,199,203,0.5); box-shadow: 0 2px 12px rgba(0,0,0,0.06); transition: box-shadow 0.2s; }
-.design-card:hover { box-shadow: 0 8px 32px rgba(0,0,0,0.10); }
+.design-card { background: white; border-radius: 16px; overflow: hidden; border: 0.5px solid rgba(193,199,203,0.5); box-shadow: 0 2px 12px rgba(0,0,0,0.06); transition: box-shadow 0.2s, transform 0.2s; cursor: pointer; }
+.design-card:hover { box-shadow: 0 8px 32px rgba(0,0,0,0.10); transform: scale(1.02); }
 .design-thumb { width: 100%; height: 180px; object-fit: cover; background: #f5f3f3; }
 .design-thumb-placeholder { width: 100%; height: 180px; background: linear-gradient(135deg, #e8f4f8, #d4e8f0); display: flex; align-items: center; justify-content: center; }
 .order-row { background: white; border-radius: 16px; padding: 20px 24px; border: 0.5px solid rgba(193,199,203,0.5); box-shadow: 0 2px 12px rgba(0,0,0,0.06); display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
@@ -336,7 +336,23 @@ async function loadSavedDesigns(uid) {
           </button>
         </div>`;
 
-      card.querySelector('.jwl-del-btn').addEventListener('click', async () => {
+      // Open design in AI Lab when card is clicked
+      card.addEventListener('click', () => {
+        sessionStorage.setItem('jwlzify_load_design', JSON.stringify({
+          designName:   data.designName   || '',
+          imageDataUrl: data.imageDataUrl || '',
+          docId:        docSnap.id,
+          type:         data.type         || '',
+          style:        data.style        || '',
+          material:     data.material     || '',
+          gem:          data.gem          || '',
+          prompt:       data.prompt       || ''
+        }));
+        location.href = 'ailab.html';
+      });
+
+      card.querySelector('.jwl-del-btn').addEventListener('click', async (e) => {
+        e.stopPropagation(); // prevent card click from firing
         if (!confirm('Delete this saved design?')) return;
         try {
           await deleteDoc(docSnap.ref);

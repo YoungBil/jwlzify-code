@@ -543,6 +543,17 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
 ════════════════════════════ -->
 <div id="s3" class="sp">
   <div class="lab-wrap">
+    <!-- Shown when a saved design is loaded from account page -->
+    <div id="loadedDesignBanner" style="display:none;background:rgba(185,226,245,0.18);border:1px solid rgba(185,226,245,0.6);border-radius:12px;padding:12px 18px;margin-bottom:24px;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+      <p style="font-family:Inter,sans-serif;font-size:13px;color:#3c6474;margin:0;display:flex;align-items:center;gap:6px;">
+        <span class="material-symbols-outlined" style="font-size:16px;">bookmark</span>
+        Editing saved design: <strong id="loadedDesignName" style="margin-left:4px;"></strong>
+      </p>
+      <a href="account.html" style="font-family:Inter,sans-serif;font-size:12px;font-weight:500;color:#3c6474;text-decoration:none;display:flex;align-items:center;gap:4px;white-space:nowrap;">
+        <span class="material-symbols-outlined" style="font-size:16px;">arrow_back</span>
+        Back to Account
+      </a>
+    </div>
     <div class="mb-10">
       <span class="eyebrow">Your AI Creation</span>
       <h2 style="font-family:'Playfair Display',serif;font-size:clamp(28px,3.5vw,42px);font-weight:600;line-height:1.12;color:#1b1c1c;">
@@ -3081,6 +3092,67 @@ async function fetchSpecCard() {
 
 /* ── Initialise spot prices on load ── */
 startPriceRefresh();
+
+/* ── Load design from account page (sessionStorage) ── */
+(function () {
+  const raw = sessionStorage.getItem('jwlzify_load_design');
+  if (!raw) return;
+  sessionStorage.removeItem('jwlzify_load_design');
+  let design;
+  try { design = JSON.parse(raw); } catch (e) { return; }
+  if (!design?.imageDataUrl) return;
+
+  // Restore LAB state
+  if (design.type)     LAB.type     = design.type;
+  if (design.style)    LAB.style    = design.style;
+  if (design.material) LAB.material = design.material;
+  if (design.gem)      LAB.gem      = design.gem;
+  if (design.prompt)   LAB.prompt   = design.prompt;
+  LAB.imageUrl = design.imageDataUrl;
+
+  // Populate image elements
+  const ri = document.getElementById('refineImg');
+  const qi = document.getElementById('quoteImg');
+  const ot = document.getElementById('orderThumb');
+  if (ri) ri.src = design.imageDataUrl;
+  if (qi) qi.src = design.imageDataUrl;
+  if (ot) ot.src = design.imageDataUrl;
+
+  // Set badge and detail labels
+  const badgeEl = document.getElementById('refineBadge');
+  if (badgeEl) badgeEl.textContent =
+    `${LAB.type.toUpperCase()} · ${matLabel(LAB.material).toUpperCase()} · ${LAB.style.toUpperCase()}`;
+  const dt = document.getElementById('detailType');
+  const dm = document.getElementById('detailMaterial');
+  const dg = document.getElementById('detailGem');
+  const ds = document.getElementById('detailStyle');
+  if (dt) dt.textContent = LAB.type.charAt(0).toUpperCase() + LAB.type.slice(1);
+  if (dm) dm.textContent = matLabel(LAB.material);
+  if (dg) dg.textContent = gemLabel(LAB.gem);
+  if (ds) ds.textContent = LAB.style;
+
+  // Populate AI suggestions panel
+  const sug  = getAISuggestions(LAB.type, LAB.style);
+  const list = document.getElementById('suggestionList');
+  if (list) list.innerHTML = sug.map(s => `
+    <div class="ai-sug" onclick="applySuggestion(this)" data-text="${s.replace(/"/g, '&quot;')}">
+      <span class="material-symbols-outlined text-[#3c6474] flex-shrink-0" style="font-size:18px;margin-top:1px;">tips_and_updates</span>
+      <p class="body-copy" style="font-size:13px;line-height:1.6;color:#41484b;">${s}</p>
+    </div>
+  `).join('');
+
+  // Show "editing saved design" banner
+  const banner = document.getElementById('loadedDesignBanner');
+  const nameEl = document.getElementById('loadedDesignName');
+  if (banner) {
+    banner.style.display = 'flex';
+    if (nameEl) nameEl.textContent = design.designName || 'Untitled';
+  }
+
+  // Go directly to step 3 (Refine), skipping step 2 (Specs)
+  goStep(3);
+  fetchSpecCard();
+})();
 
 
 </script>
