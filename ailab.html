@@ -1157,6 +1157,78 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
 <script>
 'use strict';
 
+/* ── Load saved design from account page ─────── */
+// Registered first so it runs after all functions below are defined.
+// DOMContentLoaded fires after this script block fully executes, which
+// means goStep / matLabel / getAISuggestions etc. are all available.
+window.addEventListener('DOMContentLoaded', () => {
+  const raw = sessionStorage.getItem('jwlzify_load_design');
+  if (!raw) return;
+  sessionStorage.removeItem('jwlzify_load_design');
+
+  let design;
+  try { design = JSON.parse(raw); } catch (e) { return; }
+  if (!design || !design.imageDataUrl) return;
+
+  console.log('[JWLZIFY] loading saved design:', design.designName);
+
+  // Restore LAB state so Regenerate / Refine use correct settings
+  LAB.imageUrl = design.imageDataUrl;
+  if (design.type)     LAB.type     = design.type;
+  if (design.style)    LAB.style    = design.style;
+  if (design.material) LAB.material = design.material;
+  if (design.gem)      LAB.gem      = design.gem;
+  if (design.prompt)   LAB.prompt   = design.prompt;
+
+  // 1. Set the generated image (id="refineImg" in step 3's preview panel)
+  const refineImg = document.getElementById('refineImg');
+  if (refineImg) refineImg.src = design.imageDataUrl;
+  const quoteImg = document.getElementById('quoteImg');
+  if (quoteImg) quoteImg.src = design.imageDataUrl;
+  const orderThumb = document.getElementById('orderThumb');
+  if (orderThumb) orderThumb.src = design.imageDataUrl;
+
+  // Badge and detail labels (same as showRefineStep builds them)
+  const badge = document.getElementById('refineBadge');
+  if (badge) badge.textContent =
+    `${LAB.type.toUpperCase()} · ${matLabel(LAB.material).toUpperCase()} · ${LAB.style.toUpperCase()}`;
+  const dt = document.getElementById('detailType');
+  const dm = document.getElementById('detailMaterial');
+  const dg = document.getElementById('detailGem');
+  const ds = document.getElementById('detailStyle');
+  if (dt) dt.textContent = LAB.type.charAt(0).toUpperCase() + LAB.type.slice(1);
+  if (dm) dm.textContent = matLabel(LAB.material);
+  if (dg) dg.textContent = gemLabel(LAB.gem);
+  if (ds) ds.textContent = LAB.style;
+
+  // AI suggestions panel (same as showRefineStep populates it)
+  const sug  = getAISuggestions(LAB.type, LAB.style);
+  const list = document.getElementById('suggestionList');
+  if (list) list.innerHTML = sug.map(s =>
+    `<div class="ai-sug" onclick="applySuggestion(this)" data-text="${s.replace(/"/g,'&quot;')}">
+      <span class="material-symbols-outlined text-[#3c6474] flex-shrink-0" style="font-size:18px;margin-top:1px;">tips_and_updates</span>
+      <p class="body-copy" style="font-size:13px;line-height:1.6;color:#41484b;">${s}</p>
+    </div>`
+  ).join('');
+
+  // 3. Pre-fill the save-modal name input with the original design name
+  const saveNameInput = document.getElementById('saveDesignName');
+  if (saveNameInput) saveNameInput.value = design.designName || '';
+
+  // 4. Banner: "Editing: [name] — ← Back to Account"
+  const banner = document.getElementById('loadedDesignBanner');
+  const nameEl = document.getElementById('loadedDesignName');
+  if (banner) {
+    banner.style.display = 'flex';
+    if (nameEl) nameEl.textContent = design.designName || 'Untitled';
+  }
+
+  // 2. Skip directly to step 3 (the Refine step with the generated image)
+  //    goStep(n) activates id="s"+n — step 3 is id="s3"
+  goStep(3);
+  fetchSpecCard();
+});
+
 /* ── State ───────────────────────────────────── */
 /* ── Claude API key (fill in to enable AI spec cards) ── */
 const CLAUDE_API_KEY = '';
@@ -3094,67 +3166,6 @@ async function fetchSpecCard() {
 
 /* ── Initialise spot prices on load ── */
 startPriceRefresh();
-
-/* ── Load design from account page (sessionStorage) ── */
-(function () {
-  const raw = sessionStorage.getItem('jwlzify_load_design');
-  if (!raw) return;
-  sessionStorage.removeItem('jwlzify_load_design');
-  let design;
-  try { design = JSON.parse(raw); } catch (e) { return; }
-  if (!design?.imageDataUrl) return;
-
-  // Restore LAB state
-  if (design.type)     LAB.type     = design.type;
-  if (design.style)    LAB.style    = design.style;
-  if (design.material) LAB.material = design.material;
-  if (design.gem)      LAB.gem      = design.gem;
-  if (design.prompt)   LAB.prompt   = design.prompt;
-  LAB.imageUrl = design.imageDataUrl;
-
-  // Populate image elements
-  const ri = document.getElementById('refineImg');
-  const qi = document.getElementById('quoteImg');
-  const ot = document.getElementById('orderThumb');
-  if (ri) ri.src = design.imageDataUrl;
-  if (qi) qi.src = design.imageDataUrl;
-  if (ot) ot.src = design.imageDataUrl;
-
-  // Set badge and detail labels
-  const badgeEl = document.getElementById('refineBadge');
-  if (badgeEl) badgeEl.textContent =
-    `${LAB.type.toUpperCase()} · ${matLabel(LAB.material).toUpperCase()} · ${LAB.style.toUpperCase()}`;
-  const dt = document.getElementById('detailType');
-  const dm = document.getElementById('detailMaterial');
-  const dg = document.getElementById('detailGem');
-  const ds = document.getElementById('detailStyle');
-  if (dt) dt.textContent = LAB.type.charAt(0).toUpperCase() + LAB.type.slice(1);
-  if (dm) dm.textContent = matLabel(LAB.material);
-  if (dg) dg.textContent = gemLabel(LAB.gem);
-  if (ds) ds.textContent = LAB.style;
-
-  // Populate AI suggestions panel
-  const sug  = getAISuggestions(LAB.type, LAB.style);
-  const list = document.getElementById('suggestionList');
-  if (list) list.innerHTML = sug.map(s => `
-    <div class="ai-sug" onclick="applySuggestion(this)" data-text="${s.replace(/"/g, '&quot;')}">
-      <span class="material-symbols-outlined text-[#3c6474] flex-shrink-0" style="font-size:18px;margin-top:1px;">tips_and_updates</span>
-      <p class="body-copy" style="font-size:13px;line-height:1.6;color:#41484b;">${s}</p>
-    </div>
-  `).join('');
-
-  // Show "editing saved design" banner
-  const banner = document.getElementById('loadedDesignBanner');
-  const nameEl = document.getElementById('loadedDesignName');
-  if (banner) {
-    banner.style.display = 'flex';
-    if (nameEl) nameEl.textContent = design.designName || 'Untitled';
-  }
-
-  // Go directly to step 3 (Refine), skipping step 2 (Specs)
-  goStep(3);
-  fetchSpecCard();
-})();
 
 
 </script>
