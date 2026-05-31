@@ -266,14 +266,26 @@ function renderOrders(orders) {
 </script>
 
 <script type="module">
-import { onAuthStateChanged, updateProfile, updatePassword }
+import { initializeApp, getApps, getApp }
+  from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+import { getAuth, onAuthStateChanged, updateProfile, updatePassword }
   from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
 import { getFirestore, collection, query, orderBy, getDocs, deleteDoc }
   from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 
-// firebase-auth.js (type=module, listed first) sets these synchronously before this module runs
-const auth = window._jwlAuth;
-const db   = getFirestore(window._jwlApp);
+const firebaseConfig = {
+  apiKey:            'AIzaSyCj_SX2KRIsxaSI29Lid7CEVyZeKGaHOoo',
+  authDomain:        'jwlzify-193c2.firebaseapp.com',
+  projectId:         'jwlzify-193c2',
+  storageBucket:     'jwlzify-193c2.firebasestorage.app',
+  messagingSenderId: '840627245145',
+  appId:             '1:840627245145:web:aecf1e85782b1be4526148'
+};
+
+// Reuse existing Firebase app (initialized by firebase-auth.js) or init fresh
+const app  = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db   = getFirestore(app);
 
 async function loadSavedDesigns(uid) {
   const loading = document.getElementById('designsLoading');
@@ -352,12 +364,12 @@ async function loadSavedDesigns(uid) {
 }
 
 onAuthStateChanged(auth, async (user) => {
+  console.log('[JWLZIFY] account auth state:', user ? user.uid : 'not signed in');
+
   if (!user) {
     document.getElementById('authGate').style.display = '';
     return;
   }
-
-  console.log('[JWLZIFY] auth user:', user.uid);
 
   document.getElementById('accountContent').style.display = '';
   document.getElementById('profileAvatar').src            = user.photoURL || '';
@@ -375,7 +387,7 @@ onAuthStateChanged(auth, async (user) => {
 });
 
 window.saveName = async function () {
-  const user = window._jwlAuth?.currentUser;
+  const user = auth.currentUser;
   if (!user) return;
   const name = document.getElementById('editDisplayName').value.trim();
   const msg  = document.getElementById('nameMsg');
@@ -394,7 +406,7 @@ window.saveName = async function () {
 };
 
 window.changePassword = async function () {
-  const user = window._jwlAuth?.currentUser;
+  const user = auth.currentUser;
   if (!user) return;
   const np  = document.getElementById('newPassword').value;
   const cp  = document.getElementById('confirmPassword').value;

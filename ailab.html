@@ -389,6 +389,7 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
           <span class="material-symbols-outlined gen-icon" id="genIcon" style="font-size:20px;">auto_awesome</span>
           <span id="genText">Generate Masterpiece</span>
         </button>
+        <p id="genBusyHint" style="display:none;font-family:Inter,sans-serif;font-size:12px;color:#9ca3af;text-align:center;margin-top:10px;">Generation in progress, please wait…</p>
       </div>
 
       <!-- RIGHT: Preview Placeholder / Loading -->
@@ -557,6 +558,20 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
           <img id="refineImg" src="" alt="Your AI jewelry design"
                class="w-full h-auto block"
                style="min-height:400px;object-fit:cover;">
+          <!-- Generation loading overlay -->
+          <div id="genLoadingOverlay" style="display:none;position:absolute;inset:0;background:rgba(249,248,248,0.88);align-items:center;justify-content:center;flex-direction:column;gap:14px;">
+            <div style="width:52px;height:52px;border-radius:50%;border:3px solid #b9e2f5;border-top-color:#3c6474;animation:jwlz-spin 1s linear infinite;"></div>
+            <p style="font-family:Inter,sans-serif;font-size:13px;color:#3c6474;font-weight:500;letter-spacing:0.04em;">Crafting your design…</p>
+          </div>
+          <!-- Generation error overlay -->
+          <div id="genErrorOverlay" style="display:none;position:absolute;inset:0;background:rgba(249,248,248,0.95);align-items:center;justify-content:center;flex-direction:column;gap:12px;text-align:center;padding:24px;">
+            <span class="material-symbols-outlined" style="font-size:44px;color:#d1d5db;">image_not_supported</span>
+            <p style="font-family:Inter,sans-serif;font-size:14px;color:#6b7280;line-height:1.5;margin:0;">Could not generate design.<br>Please try again.</p>
+            <button onclick="document.getElementById('genErrorOverlay').style.display='none';startGeneration(window._lastIsTweak);"
+              style="font-family:Inter,sans-serif;font-size:12px;font-weight:600;letter-spacing:0.1em;background:#3c6474;color:white;border:none;border-radius:10px;padding:10px 24px;cursor:pointer;">
+              Retry
+            </button>
+          </div>
           <!-- Badge -->
           <div class="absolute top-4 left-4 glass px-4 py-2 rounded-full border border-white/40 flex items-center gap-2">
             <span class="w-2 h-2 rounded-full bg-[#3c6474] animate-pulse"></span>
@@ -568,7 +583,7 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
           <textarea id="tweakPrompt" rows="2" class="lab-input flex-1"
             style="resize:none;line-height:1.6;"
             placeholder="Describe what to change — e.g. 'Make the band thinner' or 'Add more diamonds'…"></textarea>
-          <button onclick="startGeneration(true)"
+          <button id="regenerateBtn" onclick="startGeneration(true)"
                   class="btn-primary flex-shrink-0 px-6"
                   style="align-self:stretch;font-size:11px;letter-spacing:0.14em;gap:6px;">
             <span class="material-symbols-outlined" style="font-size:18px;">refresh</span>
@@ -1184,14 +1199,82 @@ let isTryOnActive   = false;
 let isProcessing    = false;
 const _birefnetCache = new Map(); // pollinationsUrl → processed blob URL (session-scoped)
 
-function setGenLoading(on) {
+/* ── Rate-limit / queue state ── */
+let isGenerating  = false;
+window._lastIsTweak = false;   // exposed for the Retry button onclick
+let _genCooldownIv = null;
+let _genImgDone    = false;
+let _genCdDone     = false;
+
+function _reEnableGenBtns() {
+  isGenerating = false;
   const btn  = document.getElementById('generateBtn');
+  const rBtn = document.getElementById('regenerateBtn');
   const icon = document.getElementById('genIcon');
   const text = document.getElementById('genText');
+  if (btn)  btn.disabled  = false;
+  if (rBtn) rBtn.disabled = false;
+  if (icon) icon.textContent = 'auto_awesome';
+  if (text) text.textContent = 'Generate Masterpiece';
+}
+
+function _tryReEnable() {
+  if (_genImgDone && _genCdDone) _reEnableGenBtns();
+}
+
+function _startCooldown() {
+  clearInterval(_genCooldownIv);
+  _genCdDone = false;
+  let rem = 3;
+  const icon = document.getElementById('genIcon');
+  const text = document.getElementById('genText');
+  if (icon) icon.textContent = 'schedule';
+  if (text) text.textContent = `Generating… (${rem}s)`;
+  _genCooldownIv = setInterval(() => {
+    rem--;
+    if (rem > 0) {
+      if (text) text.textContent = `Please wait… (${rem}s)`;
+    } else {
+      clearInterval(_genCooldownIv);
+      _genCdDone = true;
+      if (!_genImgDone && text) text.textContent = 'Finishing…';
+      _tryReEnable();
+    }
+  }, 1000);
+}
+
+function setGenLoading(on) {
+  const btn  = document.getElementById('generateBtn');
+  const rBtn = document.getElementById('regenerateBtn');
+  const icon = document.getElementById('genIcon');
+  const text = document.getElementById('genText');
+  const loadOverlay = document.getElementById('genLoadingOverlay');
+  const errOverlay  = document.getElementById('genErrorOverlay');
   if (!btn) return;
-  btn.disabled       = on;
-  icon.textContent   = on ? 'refresh'             : 'auto_awesome';
-  text.textContent   = on ? 'Generating…'   : 'Generate Masterpiece';
+
+  if (on) {
+    _genImgDone = false;
+    _genCdDone  = false;
+    btn.disabled = true;
+    if (rBtn) rBtn.disabled = true;
+    if (icon) icon.textContent = 'refresh';
+    if (text) text.textContent = 'Generating…';
+    if (loadOverlay) loadOverlay.style.display = 'flex';
+    if (errOverlay)  errOverlay.style.display  = 'none';
+    _startCooldown();
+  } else {
+    // Image done — signal and check if cooldown is also done
+    _genImgDone = true;
+    if (loadOverlay) loadOverlay.style.display = 'none';
+    _tryReEnable();
+  }
+}
+
+function _cancelGen() {
+  clearInterval(_genCooldownIv);
+  _reEnableGenBtns();
+  const loadOverlay = document.getElementById('genLoadingOverlay');
+  if (loadOverlay) loadOverlay.style.display = 'none';
 }
 
 /* ── Progress bar ────────────────────────────── */
@@ -1485,6 +1568,15 @@ function validateCutout(px, W, H) {
 
 /* ── Image generation ────────────────────────── */
 async function startGeneration(isTweak) {
+  // Queue guard — prevent firing while a generation is already running
+  if (isGenerating) {
+    const hint = document.getElementById('genBusyHint');
+    if (hint) { hint.style.display = ''; setTimeout(() => { hint.style.display = 'none'; }, 2500); }
+    return;
+  }
+
+  isGenerating = true;
+  window._lastIsTweak = isTweak;
   generationId++;
   const thisGen = generationId;
   setGenLoading(true);
@@ -1494,7 +1586,7 @@ async function startGeneration(isTweak) {
   const basePrompt = document.getElementById('promptArea').value.trim();
 
   if (!basePrompt && !isTweak) {
-    setGenLoading(false);
+    _cancelGen();
     document.getElementById('promptArea').focus();
     document.getElementById('promptArea').style.borderColor = '#ba1a1a';
     setTimeout(() => { document.getElementById('promptArea').style.borderColor = ''; }, 2200);
@@ -1515,34 +1607,61 @@ async function startGeneration(isTweak) {
   const negParam = isPendantGen
     ? `&negative_prompt=${encodeURIComponent('chain,necklace,cord,string,rope,clasp,links,neck,person,model,hanging,worn')}`
     : '';
-  const seed = (Date.now() + Math.floor(Math.random() * 9999)) % 99999;
-  let url =
-    `https://image.pollinations.ai/prompt/${encodeURIComponent(fullPrompt)}?width=800&height=800&nologo=true&seed=${seed}&model=flux&enhance=${isPendantGen ? 'false' : 'true'}${negParam}`;
 
+  function makeUrl() {
+    const seed = (Date.now() + Math.floor(Math.random() * 9999)) % 99999;
+    return `https://image.pollinations.ai/prompt/${encodeURIComponent(fullPrompt)}?width=800&height=800&nologo=true&seed=${seed}&model=flux&enhance=${isPendantGen ? 'false' : 'true'}${negParam}`;
+  }
+
+  const url = makeUrl();
   LAB.imageUrl = url;
+
+  const ri = document.getElementById('refineImg');
+
+  const onOk = () => {
+    if (thisGen !== generationId) return;
+    if (isTweak) ri.style.filter = 'none';
+    setGenLoading(false);
+  };
+
+  const onErr = (attempt) => {
+    if (thisGen !== generationId) return;
+    if (attempt < 2) {
+      // Wait 2s then retry once with a fresh seed
+      setTimeout(() => {
+        if (thisGen !== generationId) return;
+        const retryUrl = makeUrl();
+        LAB.imageUrl = retryUrl;
+        ri.addEventListener('load',  onOk, { once: true });
+        ri.addEventListener('error', () => onErr(attempt + 1), { once: true });
+        ri.src = retryUrl;
+        document.getElementById('quoteImg').src = retryUrl;
+        const ot = document.getElementById('orderThumb');
+        if (ot) ot.src = retryUrl;
+      }, 2000);
+    } else {
+      // Both attempts failed — release state and show error overlay
+      if (isTweak) ri.style.filter = 'none';
+      setGenLoading(false); // hides loading overlay, releases cooldown
+      const errOverlay = document.getElementById('genErrorOverlay');
+      if (errOverlay) errOverlay.style.display = 'flex';
+    }
+  };
 
   if (isTweak) {
     // Regenerate in place — blur current image, swap src, unblur on load
-    const ri = document.getElementById('refineImg');
     ri.style.transition = 'filter 0.4s ease';
     ri.style.filter = 'blur(14px) brightness(0.8)';
-    const clear = () => {
-      if (thisGen !== generationId) return;
-      ri.style.filter = 'none';
-      setGenLoading(false);
-    };
-    ri.addEventListener('load',  clear, { once: true });
-    ri.addEventListener('error', () => setGenLoading(false), { once: true });
+    ri.addEventListener('load',  onOk, { once: true });
+    ri.addEventListener('error', () => onErr(1), { once: true });
     ri.src = url;
     document.getElementById('quoteImg').src = url;
     const ot = document.getElementById('orderThumb');
     if (ot) ot.src = url;
   } else {
     // Navigate immediately — image loads naturally in step 2
-    const ri = document.getElementById('refineImg');
-    const done = () => { if (thisGen === generationId) setGenLoading(false); };
-    ri.addEventListener('load',  done, { once: true });
-    ri.addEventListener('error', done, { once: true });
+    ri.addEventListener('load',  onOk, { once: true });
+    ri.addEventListener('error', () => onErr(1), { once: true });
     showRefineStep();
   }
 }
@@ -2974,12 +3093,13 @@ startPriceRefresh();
     <p style="font-family:Inter,sans-serif;font-size:13px;color:#6b7280;margin:0 0 20px;">Give your design a name to find it later in your account.</p>
     <input id="saveDesignName" type="text" placeholder="My Design"
       style="width:100%;font-family:Inter,sans-serif;font-size:14px;padding:11px 14px;border:1px solid #e5e7eb;border-radius:10px;outline:none;color:#1b1c1c;box-sizing:border-box;margin-bottom:16px;">
-    <div style="display:flex;gap:10px;">
+    <div id="saveDesignActions" style="display:flex;gap:10px;">
       <button onclick="confirmSaveDesign()"
         style="flex:1;font-family:Inter,sans-serif;font-size:12px;font-weight:600;letter-spacing:0.1em;background:#3c6474;color:white;border:none;border-radius:10px;padding:12px;cursor:pointer;">Save</button>
       <button onclick="closeSaveModal()"
         style="font-family:Inter,sans-serif;font-size:12px;font-weight:500;color:#6b7280;background:transparent;border:1px solid #e5e7eb;border-radius:10px;padding:12px 18px;cursor:pointer;">Cancel</button>
     </div>
+    <p id="saveDesignMsg" style="display:none;font-family:Inter,sans-serif;font-size:13px;margin:12px 0 0;line-height:1.5;"></p>
   </div>
 </div>
 
@@ -3022,12 +3142,14 @@ window.closeSaveModal = function () {
 };
 
 window.confirmSaveDesign = async function () {
-  const user = window._jwlAuth?.currentUser;
+  const user      = window._jwlAuth?.currentUser;
   if (!user) return;
-  const name = document.getElementById('saveDesignName').value.trim() || 'My Design';
-  closeSaveModal();
+  const nameInput = document.getElementById('saveDesignName');
+  const actions   = document.getElementById('saveDesignActions');
+  const msg       = document.getElementById('saveDesignMsg');
+  const name      = nameInput.value.trim() || 'My Design';
   try {
-    await addDoc(collection(getDb(), 'users', user.uid, 'savedDesigns'), {
+    const docRef = await addDoc(collection(getDb(), 'users', user.uid, 'savedDesigns'), {
       designName:   name,
       imageDataUrl: LAB.imageUrl || '',
       prompt:       LAB.prompt   || '',
@@ -3037,10 +3159,23 @@ window.confirmSaveDesign = async function () {
       style:        LAB.style    || '',
       createdAt:    serverTimestamp()
     });
-    showToast('Design saved to your account!');
+    console.log('[JWLZIFY] save success, docId:', docRef.id);
+    nameInput.style.display = 'none';
+    actions.style.display   = 'none';
+    msg.innerHTML   = '✓ Design saved! <a href="account.html" style="color:#3c6474;font-weight:600;text-decoration:underline;">View it in My Account →</a>';
+    msg.style.color = '#16a34a';
+    msg.style.display = '';
+    setTimeout(() => {
+      closeSaveModal();
+      nameInput.style.display = '';
+      actions.style.display   = 'flex';
+      msg.style.display       = 'none';
+    }, 3000);
   } catch (e) {
-    console.error('Save design failed:', e);
-    showToast('Failed to save: ' + e.message, true);
+    console.error('[JWLZIFY] Save design failed:', e);
+    msg.textContent   = '✗ Save failed: ' + e.message;
+    msg.style.color   = '#ef4444';
+    msg.style.display = '';
   }
 };
 </script>
