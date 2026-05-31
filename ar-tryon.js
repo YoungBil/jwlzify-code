@@ -8,6 +8,15 @@ import { GLTFLoader }  from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { RGBELoader }  from 'three/addons/loaders/RGBELoader.js';
 
+// ── Test mode ────────────────────────────────────────────────────────────────
+const IS_LOCAL = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+
+const TEST_PENDANT_URL =
+  'https://upload.wikimedia.org/wikipedia/commons/thumb/b/bc/' +
+  'Cast_gold_male_figure_pendant%2C_Veraguas_or_Chiriqu%C3%AD%2C_' +
+  'Honolulu_Museum_of_Art%2C_341.1.JPG/250px-Cast_gold_male_figure_' +
+  'pendant%2C_Veraguas_or_Chiriqu%C3%AD%2C_Honolulu_Museum_of_Art%2C_341.1.JPG';
+
 // ── Configuration ────────────────────────────────────────────────────────────
 const CONFIG = {
   FAL_KEY:                    '9284ccc4-a0ff-48dc-ad1f-83bf22a7a6cd:040197e513fab8b9333f46bd5bd19f16',
@@ -304,13 +313,22 @@ async function initARPipeline() {
     // 1. Camera
     await window.startCamera();
 
-    // 2. Get pendant image src
+    // 2. Get pendant image src — fall back to test image on localhost
     setArDetail('READING PENDANT IMAGE…');
     const pendantImg = document.querySelector("img[alt='Your AI jewelry design']");
-    if (!pendantImg?.src || pendantImg.src === window.location.href) {
+    const pendantSrc = pendantImg?.src && pendantImg.src !== window.location.href
+      ? pendantImg.src
+      : null;
+
+    let imageSrc = pendantSrc;
+    if (!imageSrc && IS_LOCAL) {
+      console.log('TEST MODE: using placeholder image');
+      imageSrc = TEST_PENDANT_URL;
+    } else if (!imageSrc) {
       throw new Error('No pendant image rendered yet');
     }
-    const imageFile = await srcToFile(pendantImg.src);
+
+    const imageFile = await srcToFile(imageSrc);
 
     // 3. fal.ai → GLB
     const glbBuffer = await convertTo3D(imageFile);
@@ -392,5 +410,25 @@ async function teardownARPipeline() {
 }
 
 // ── Expose to classic scripts ────────────────────────────────────────────────
-window.initARPipeline    = initARPipeline;
+window.initARPipeline     = initARPipeline;
 window.teardownARPipeline = teardownARPipeline;
+
+// ── Localhost auto-trigger ────────────────────────────────────────────────────
+if (IS_LOCAL) {
+  window.addEventListener('load', () => {
+    console.log('TEST MODE: localhost detected — auto-triggering pendant AR try-on');
+    // Set LAB state to pendant and inject a dummy imageUrl so goStep(3) doesn't bail
+    if (window.LAB) {
+      window.LAB.type     = 'pendant';
+      window.LAB.imageUrl = TEST_PENDANT_URL;
+    }
+    // Force the pendant type button active in the UI if present
+    const pendantBtn = document.querySelector('[data-type="pendant"]');
+    if (pendantBtn) {
+      document.querySelectorAll('.type-btn').forEach(b => b.classList.remove('active'));
+      pendantBtn.classList.add('active');
+    }
+    // Navigate to step 3 — triggers setupTryOn → initARPipeline
+    setTimeout(() => window.goStep?.(3), 400);
+  });
+}
