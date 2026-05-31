@@ -1562,27 +1562,20 @@ function applyOzPrices(silverOzRaw, goldOz, source) {
 
 async function fetchSpotPrices() {
   try {
-    const res  = await fetch(
-      'https://metals.dev/api/latest?api_key=WXRBFWGMNQYMORXWBRYF344XWBRYF&currency=CAD&unit=g'
-    );
+    const res  = await fetch('https://silver-price.jwlzify.workers.dev');
     const data = await res.json();
-    const silverPerGram = data?.metals?.silver; // already in CAD per gram
-    const goldPerGram   = data?.metals?.gold;   // already in CAD per gram
+    const silverPerGram = data.price;
 
-    if (silverPerGram > 0 && goldPerGram > 0) {
+    if (silverPerGram > 0) {
       spotPrices.silverPerGram   = silverPerGram * 0.925; // 925 purity
-      spotPrices.gold10ctPerGram = goldPerGram * (10/24);
-      spotPrices.gold14ctPerGram = goldPerGram * (14/24);
-      spotPrices.source          = 'metals.dev-cad';
+      spotPrices.source          = 'cloudflare-worker-cad';
       spotPrices.fetchedAt       = new Date().toISOString();
 
       console.log('[JWLZIFY] silver price CAD/g:', spotPrices.silverPerGram.toFixed(4));
-      console.log('[JWLZIFY] 10ct gold CAD/g:', spotPrices.gold10ctPerGram.toFixed(4));
-      console.log('[JWLZIFY] 14ct gold CAD/g:', spotPrices.gold14ctPerGram.toFixed(4));
       return;
     }
   } catch(e) {
-    console.warn('[JWLZIFY] metals.dev failed:', e.message);
+    console.warn('[JWLZIFY] silver-price worker failed:', e.message);
   }
 
   // Fallback — May 2026 CAD verified rates
