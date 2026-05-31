@@ -13,7 +13,6 @@ const CONFIG = {
   FAL_KEY:                    '9284ccc4-a0ff-48dc-ad1f-83bf22a7a6cd:040197e513fab8b9333f46bd5bd19f16',
   DEFAULT_PENDANT_SIZE_INCHES: 1.5,
   LERP_FACTOR:                 0.12,
-  SHADOW_MAP_SIZE:             2048,
   ENV_MAP_INTENSITY:           1.4,
 };
 
@@ -102,8 +101,7 @@ function buildRenderer(camWrap) {
   });
   renderer.setPixelRatio(window.devicePixelRatio);
   renderer.setSize(W, H);
-  renderer.shadowMap.enabled  = true;
-  renderer.shadowMap.type     = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.enabled  = false;
   renderer.outputColorSpace   = THREE.SRGBColorSpace;
   renderer.toneMapping        = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.2;
@@ -123,23 +121,10 @@ function buildRenderer(camWrap) {
   // Key light
   const keyLight = new THREE.DirectionalLight(0xfff8e8, 1.2);
   keyLight.position.set(5, 10, 5);
-  keyLight.castShadow = true;
-  keyLight.shadow.mapSize.set(CONFIG.SHADOW_MAP_SIZE, CONFIG.SHADOW_MAP_SIZE);
   scene.add(keyLight);
 
   // Fill / ambient
   scene.add(new THREE.AmbientLight(0xffffff, 0.4));
-
-  // Shadow-catcher plane (invisible, receives shadows on virtual skin surface)
-  const shadowCatcher = new THREE.Mesh(
-    new THREE.PlaneGeometry(4000, 4000),
-    new THREE.ShadowMaterial({ opacity: 0.28 }),
-  );
-  shadowCatcher.name = 'shadowCatcher';
-  shadowCatcher.rotation.x = -Math.PI / 2;
-  shadowCatcher.position.y = -60;
-  shadowCatcher.receiveShadow = true;
-  scene.add(shadowCatcher);
 
   return { renderer, scene, camera: cam };
 }
@@ -257,10 +242,6 @@ function updatePendantTransform() {
   const sizeInches  = parseSizeInches();
   const scale       = (sizeInches * 96) / AR.shoulderWidthPx * calibration;
   AR.pendantGroup.scale.setScalar(scale);
-
-  // Shadow catcher follows pendant
-  const sc = AR.scene?.getObjectByName('shadowCatcher');
-  if (sc) sc.position.y = worldY - 40;
 
   // Idle physics swing
   AR.pendantGroup.rotation.z = Math.sin(Date.now() * 0.001) * 0.04;
