@@ -1586,13 +1586,14 @@ async function fetchSpotPrices() {
   }
 
   if (goldResult.status === 'fulfilled') {
+    console.log('[JWLZIFY] raw gold worker response:', JSON.stringify(goldResult.value));
     const goldPerGram = goldResult.value?.price; // pure 24ct CAD/g
     if (goldPerGram > 0) {
+      console.log('[JWLZIFY] raw 24ct gold CAD/g:', goldPerGram);
+      console.log('[JWLZIFY] 10kt price:', goldPerGram * 0.417);
+      console.log('[JWLZIFY] 14kt price:', goldPerGram * 0.583);
       spotPrices.gold10ctPerGram = goldPerGram * KARAT_PURITY['10ct'];
       spotPrices.gold14ctPerGram = goldPerGram * KARAT_PURITY['14ct'];
-      console.log('[JWLZIFY] gold price CAD/g (pure):', goldPerGram.toFixed(4));
-      console.log('[JWLZIFY] 10ct gold CAD/g:', spotPrices.gold10ctPerGram.toFixed(4));
-      console.log('[JWLZIFY] 14ct gold CAD/g:', spotPrices.gold14ctPerGram.toFixed(4));
       goldOk = true;
     }
   } else {
