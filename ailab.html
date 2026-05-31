@@ -1571,7 +1571,7 @@ async function fetchSpotPrices() {
   // Fetch silver and gold in parallel
   const [silverResult, goldResult] = await Promise.allSettled([
     fetch('https://silver-price.sarkd333.workers.dev').then(r => r.json()),
-    fetch('https://gold-price.jwlzify.workers.dev').then(r => r.json())
+    fetch('https://gold-price.sarkd333.workers.dev').then(r => r.json())
   ]);
 
   if (silverResult.status === 'fulfilled') {
