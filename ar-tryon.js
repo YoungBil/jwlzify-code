@@ -11,11 +11,7 @@ import { RGBELoader }  from 'three/addons/loaders/RGBELoader.js';
 // ── Test mode ────────────────────────────────────────────────────────────────
 const IS_LOCAL = ['localhost', '127.0.0.1'].includes(window.location.hostname);
 
-const TEST_PENDANT_URL =
-  'https://upload.wikimedia.org/wikipedia/commons/thumb/b/bc/' +
-  'Cast_gold_male_figure_pendant%2C_Veraguas_or_Chiriqu%C3%AD%2C_' +
-  'Honolulu_Museum_of_Art%2C_341.1.JPG/250px-Cast_gold_male_figure_' +
-  'pendant%2C_Veraguas_or_Chiriqu%C3%AD%2C_Honolulu_Museum_of_Art%2C_341.1.JPG';
+const TEST_PENDANT_URL = './test-pendant.jpg';
 
 // Set bridge synchronously — classic-script setupTryOn reads this before its null check
 if (IS_LOCAL) window.__arTestImageUrl = TEST_PENDANT_URL;
