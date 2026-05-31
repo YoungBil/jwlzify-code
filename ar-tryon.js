@@ -9,7 +9,10 @@ import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { RGBELoader }  from 'three/addons/loaders/RGBELoader.js';
 
 // ── Test mode ────────────────────────────────────────────────────────────────
-const IS_LOCAL = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+const IS_LOCAL = ['localhost', '127.0.0.1', ''].includes(window.location.hostname) ||
+                 window.location.protocol === 'file:';
+
+console.log('[AR] ar-tryon.js module loaded. IS_LOCAL =', IS_LOCAL);
 
 const TEST_PENDANT_URL = './test-pendant.jpg';
 
@@ -412,16 +415,21 @@ window.initARPipeline     = initARPipeline;
 window.teardownARPipeline = teardownARPipeline;
 
 // ── Localhost auto-trigger ────────────────────────────────────────────────────
+// ES modules are deferred — DOM is already ready when this runs.
+// Use setTimeout instead of 'load' event to avoid the race where load fires
+// before the module finishes executing and the listener is never registered.
 if (IS_LOCAL) {
-  window.addEventListener('load', () => {
-    console.log('TEST MODE: localhost detected — auto-triggering pendant AR try-on');
-    // window.__arTestImageUrl is already set at module top-level as the bridge.
-    // Classic setupTryOn will read it and inject into LAB before the null check.
+  setTimeout(() => {
+    console.log('[AR] TEST MODE: auto-triggering pendant AR try-on');
     const pendantBtn = document.querySelector('[data-type="pendant"]');
     if (pendantBtn) {
       document.querySelectorAll('.type-btn').forEach(b => b.classList.remove('active'));
       pendantBtn.classList.add('active');
     }
-    setTimeout(() => window.goStep?.(3), 400);
-  });
+    if (typeof window.goStep === 'function') {
+      window.goStep(3);
+    } else {
+      console.warn('[AR] TEST MODE: window.goStep not found — check classic script load order');
+    }
+  }, 600);
 }
