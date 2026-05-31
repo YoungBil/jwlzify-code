@@ -1560,31 +1560,64 @@ function applyOzPrices(silverOzRaw, goldOz, source) {
   console.log('14ct Gold /g: $' + spotPrices.gold14ctPerGram.toFixed(6));
 }
 
+const KARAT_PURITY = {
+  '14ct': 0.583,
+  '10ct': 0.417
+};
+
 async function fetchSpotPrices() {
-  try {
-    const res  = await fetch('https://silver-price.sarkd333.workers.dev');
-    const data = await res.json();
-    const silverPerGram = data.price;
+  let silverOk = false, goldOk = false;
 
+  // Fetch silver and gold in parallel
+  const [silverResult, goldResult] = await Promise.allSettled([
+    fetch('https://silver-price.sarkd333.workers.dev').then(r => r.json()),
+    fetch('https://gold-price.jwlzify.workers.dev').then(r => r.json())
+  ]);
+
+  if (silverResult.status === 'fulfilled') {
+    const silverPerGram = silverResult.value?.price;
     if (silverPerGram > 0) {
-      spotPrices.silverPerGram   = silverPerGram * 0.925; // 925 purity
-      spotPrices.source          = 'cloudflare-worker-cad';
-      spotPrices.fetchedAt       = new Date().toISOString();
-
+      spotPrices.silverPerGram = silverPerGram * 0.925; // 925 purity
       console.log('[JWLZIFY] silver price CAD/g:', spotPrices.silverPerGram.toFixed(4));
-      return;
+      silverOk = true;
     }
-  } catch(e) {
-    console.warn('[JWLZIFY] silver-price worker failed:', e.message);
+  } else {
+    console.warn('[JWLZIFY] silver-price worker failed:', silverResult.reason?.message);
   }
 
-  // Fallback — May 2026 CAD verified rates
-  spotPrices.silverPerGram   = 3.33;
-  spotPrices.gold10ctPerGram = 75.40;
-  spotPrices.gold14ctPerGram = 105.56;
-  spotPrices.source          = 'fallback-cad';
-  spotPrices.fetchedAt       = new Date().toISOString();
-  console.log('[JWLZIFY] Using CAD fallback prices');
+  if (goldResult.status === 'fulfilled') {
+    const goldPerGram = goldResult.value?.price; // pure 24ct CAD/g
+    if (goldPerGram > 0) {
+      spotPrices.gold10ctPerGram = goldPerGram * KARAT_PURITY['10ct'];
+      spotPrices.gold14ctPerGram = goldPerGram * KARAT_PURITY['14ct'];
+      console.log('[JWLZIFY] gold price CAD/g (pure):', goldPerGram.toFixed(4));
+      console.log('[JWLZIFY] 10ct gold CAD/g:', spotPrices.gold10ctPerGram.toFixed(4));
+      console.log('[JWLZIFY] 14ct gold CAD/g:', spotPrices.gold14ctPerGram.toFixed(4));
+      goldOk = true;
+    }
+  } else {
+    console.warn('[JWLZIFY] gold-price worker failed:', goldResult.reason?.message);
+  }
+
+  if (silverOk || goldOk) {
+    spotPrices.source    = 'cloudflare-worker-cad';
+    spotPrices.fetchedAt = new Date().toISOString();
+  }
+
+  // Apply fallback for any value that didn't load
+  if (!silverOk) {
+    spotPrices.silverPerGram = 3.33;
+    console.log('[JWLZIFY] Using silver fallback: 3.33 CAD/g');
+  }
+  if (!goldOk) {
+    spotPrices.gold10ctPerGram = 75.40;
+    spotPrices.gold14ctPerGram = 105.56;
+    console.log('[JWLZIFY] Using gold fallback: 10ct=75.40 14ct=105.56 CAD/g');
+  }
+  if (!spotPrices.fetchedAt) {
+    spotPrices.source    = 'fallback-cad';
+    spotPrices.fetchedAt = new Date().toISOString();
+  }
 }
 
 /* ── Pricing engine ── */
