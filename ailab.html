@@ -1459,15 +1459,30 @@ function useInspiration(btn) {
 /* ── Prompt building ─────────────────────────── */
 function buildPrompt(type, material, gem, style, desc) {
   const isPendantType = (type === 'pendant' || type === 'necklace');
-  const mDisp   = matLabel(material);
-  const gDisp   = gemLabel(gem);
-  const gemPart = `${gDisp} center stone`;
-  const base    = desc.trim() ? desc.trim() + ', ' : '';
+  const mDisp = matLabel(material);
+  const gDisp = gemLabel(gem);
+  const base  = desc.trim() ? desc.trim() + ', ' : '';
+
+  // Pull specs for stone count/sizes and weight
+  const specs       = window.jwlSpecifications || {};
+  const stones      = specs.stones || [1.0];
+  const totalCarats = specs.totalCarats || stones[0] || 1.0;
+  const stoneCount  = stones.length;
+  const weightLabel = specs.weightLabel || 'medium';
+
+  // Build gem part with actual count and carat sizes
+  const gemPart = stoneCount === 1
+    ? `${totalCarats}ct ${gDisp} center stone`
+    : `${stoneCount} ${gDisp} stones (${stones.map(s => s + 'ct').join(', ')}, ${totalCarats}ct total)`;
+
+  // Weight adds a descriptor to the piece style
+  const weightDesc = { light: 'delicate lightweight ', heavy: 'substantial bold ' };
+  const wPart = weightDesc[weightLabel] || '';
 
   if (isPendantType) {
     // BiRefNet post-processes chain removal universally — prompt only needs the
     // pendant to be the unambiguous main subject (macro, centered, clean bg).
-    return `${base}luxury ${style} pendant charm, bail connector at top, ${mDisp}, ${gemPart}, close-up macro product photograph, pendant centered filling the frame, high contrast separation between pendant and background, soft even studio lighting with no shadows on background, pure white seamless background, ultra sharp focus, hyper realistic, 8K ultra high definition, precious metal gleam, gemstone sparkle and brilliance`;
+    return `${base}luxury ${style} ${wPart}pendant charm, bail connector at top, ${mDisp}, ${gemPart}, close-up macro product photograph, pendant centered filling the frame, high contrast separation between pendant and background, soft even studio lighting with no shadows on background, pure white seamless background, ultra sharp focus, hyper realistic, 8K ultra high definition, precious metal gleam, gemstone sparkle and brilliance`;
   }
 
   const typeMap = {
@@ -1476,7 +1491,7 @@ function buildPrompt(type, material, gem, style, desc) {
     bracelet: 'cuff bracelet jewelry'
   };
   const piece = typeMap[type] || type;
-  return `${base}luxury ${style} ${piece}, ${mDisp}, ${gemPart}, isolated fine jewelry product photograph, pure white seamless background, no shadows, no reflections on background, professional diffuse studio lighting, hyper realistic, 8K ultra high definition, macro lens, sharp focus, precious metal gleam, gemstone sparkle and brilliance, luxury brand catalog`;
+  return `${base}luxury ${style} ${wPart}${piece}, ${mDisp}, ${gemPart}, isolated fine jewelry product photograph, pure white seamless background, no shadows, no reflections on background, professional diffuse studio lighting, hyper realistic, 8K ultra high definition, macro lens, sharp focus, precious metal gleam, gemstone sparkle and brilliance, luxury brand catalog`;
 }
 
 /* ── Alpha post-processing helpers ────────────── */
@@ -1720,6 +1735,10 @@ async function startGeneration(isTweak) {
   const negParam = isPendantGen
     ? `&negative_prompt=${encodeURIComponent('chain,necklace,cord,string,rope,clasp,links,neck,person,model,hanging,worn')}`
     : '';
+
+  console.log('[JWLZIFY] generating with prompt:', fullPrompt);
+  console.log('[JWLZIFY] metal:', LAB.material, '| stone:', LAB.gem);
+  console.log('[JWLZIFY] specs:', JSON.stringify(window.jwlSpecifications));
 
   function makeUrl() {
     const seed = (Date.now() + Math.floor(Math.random() * 9999)) % 99999;
@@ -1980,13 +1999,15 @@ window.jwlSpecifications = {
   metalGrams:  4.5,
   stoneCount:  1,
   stones:      [1.0],   // per-stone carats array
-  totalCarats: 1.0
+  totalCarats: 1.0,
+  weightLabel: 'medium' // matches default active button
 };
 
 const _SPEC_SIZES = [0.5, 1, 1.5, 2];
 
 function setSpecWeight(preset, grams) {
   window.jwlSpecifications.metalGrams = grams;
+  window.jwlSpecifications.weightLabel = preset;
   document.getElementById('specWeightInput').value = '';
   document.querySelectorAll('.spec-weight-btn').forEach(b =>
     b.classList.toggle('active', b.dataset.preset === preset));
