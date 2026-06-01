@@ -1230,7 +1230,7 @@ const CLAUDE_API_KEY = '';
 
 /* ── Gemini image generation ── */
 const GEMINI_API_KEY = 'AIzaSyCLOMIAySPZ-5oax7-tVeyd0rAs6l5lvJ0';
-const GEMINI_MODEL   = 'gemini-2.0-flash-preview-image-generation';
+const GEMINI_MODEL   = 'gemini-2.0-flash-exp';
 
 /* ── Chain style selection for necklace type ── */
 let selectedChainStyle  = null;
@@ -1361,8 +1361,9 @@ async function generateWithGemini(prompt) {
     body: JSON.stringify(body)
   });
   if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error(`Gemini ${response.status}: ${err.error?.message || response.statusText}`);
+    const responseText = await response.text();
+    console.error('[JWLZIFY] Gemini raw error:', responseText);
+    throw new Error('Gemini failed: ' + response.status);
   }
   const data = await response.json();
 
