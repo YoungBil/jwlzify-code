@@ -2887,7 +2887,46 @@ document.getElementById('s2ConfirmBtn').addEventListener('click', s2ConfirmSave)
 
 <!-- Try-On: background removal + canvas necklace loader -->
 <script>
+async function removeBgWithApi(imageUrl) {
+  const API_KEY = 'SaaY6FrGJRJs7tj5zh7Jvs29';
+  const formData = new FormData();
+
+  if (imageUrl.startsWith('blob:')) {
+    const res = await fetch(imageUrl);
+    const blob = await res.blob();
+    formData.append('image_file', blob, 'image.png');
+  } else {
+    formData.append('image_url', imageUrl);
+  }
+  formData.append('size', 'auto');
+
+  const res = await fetch('https://api.remove.bg/v1.0/removebg', {
+    method: 'POST',
+    headers: { 'X-Api-Key': API_KEY },
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(`remove.bg ${res.status}: ${err.errors?.[0]?.title || res.statusText}`);
+  }
+
+  const blob = await res.blob();
+  console.log('[JWLZIFY] remove.bg API SUCCESS');
+  return URL.createObjectURL(blob);
+}
+
 async function removePendantBackground(imageUrl) {
+  try {
+    const result = await removeBgWithApi(imageUrl);
+    if (result) return result;
+  } catch (e) {
+    console.warn('[JWLZIFY] remove.bg failed, using canvas fallback:', e.message);
+  }
+  return removePendantBackgroundCanvas(imageUrl);
+}
+
+async function removePendantBackgroundCanvas(imageUrl) {
   return new Promise((resolve) => {
     const img = new Image();
     if (!imageUrl.startsWith('blob:')) {
