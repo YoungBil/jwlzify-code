@@ -1346,10 +1346,13 @@ async function generateWithGemini(prompt) {
   console.log('[JWLZIFY] generating with Gemini Flash:', prompt);
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
   const body = {
-    contents: [{ parts: [{ text: prompt }] }],
+    contents: [{
+      parts: [{
+        text: `Generate a photorealistic jewelry image: ${prompt}`
+      }]
+    }],
     generationConfig: {
-      responseModalities: ['TEXT', 'IMAGE'],
-      responseMimeType: 'image/jpeg'
+      responseModalities: ['IMAGE']
     }
   };
   const response = await fetch(url, {
@@ -1362,13 +1365,28 @@ async function generateWithGemini(prompt) {
     throw new Error(`Gemini ${response.status}: ${err.error?.message || response.statusText}`);
   }
   const data = await response.json();
-  const parts = data.candidates?.[0]?.content?.parts;
-  const imagePart = parts?.find(p => p.inlineData);
-  if (!imagePart?.inlineData?.data) throw new Error('No image in Gemini response');
-  const byteChars = atob(imagePart.inlineData.data);
+
+  const candidates = data.candidates || [];
+  let imagePart = null;
+  for (const candidate of candidates) {
+    const parts = candidate?.content?.parts || [];
+    for (const part of parts) {
+      if (part.inlineData?.data) { imagePart = part; break; }
+    }
+    if (imagePart) break;
+  }
+
+  if (!imagePart?.inlineData?.data) {
+    console.error('[JWLZIFY] Gemini full response:', JSON.stringify(data));
+    throw new Error('No image in Gemini response');
+  }
+
+  const base64 = imagePart.inlineData.data;
+  const mimeType = imagePart.inlineData.mimeType || 'image/png';
+  const byteChars = atob(base64);
   const byteArray = new Uint8Array(byteChars.length);
   for (let i = 0; i < byteChars.length; i++) byteArray[i] = byteChars.charCodeAt(i);
-  const blob = new Blob([byteArray], { type: imagePart.inlineData.mimeType || 'image/jpeg' });
+  const blob = new Blob([byteArray], { type: mimeType });
   console.log('[JWLZIFY] Gemini image generated successfully');
   return URL.createObjectURL(blob);
 }
