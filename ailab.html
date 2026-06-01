@@ -3022,6 +3022,42 @@ async function removePendantBackground(imageUrl) {
         }
       }
 
+      // Second BFS expansion — catches bg gradient edges
+      // Expands from already-removed pixels with looser
+      // tolerance but STRICT saturation check
+      const queueExp = [...queue];
+      let headExp = 0;
+      while (headExp < queueExp.length) {
+        const idx = queueExp[headExp++];
+        const iy = Math.floor(idx / w);
+        const ix = idx % w;
+        for (const off of offsets) {
+          const n = idx + off;
+          if (n < 0 || n >= w*h) continue;
+          if (visited[n]) continue;
+          const nx = n % w;
+          if (Math.abs(nx - ix) > 1) continue;
+          const pi = n * 4;
+          const r = data[pi], g = data[pi+1], b = data[pi+2];
+          const dist = colorDistance(r, g, b);
+          const sat = Math.max(r,g,b) - Math.min(r,g,b);
+          const brightness = (r+g+b)/3;
+          // Only expand into pixels that are:
+          // - Reasonably close to bg color (dist < TOLERANCE*1.4)
+          // - AND very low saturation (definitely not jewelry)
+          // - AND not suspiciously dark/bright compared to bg
+          //   (prevents eating into jewelry shadows/highlights)
+          const brightnessDiff = Math.abs(brightness -
+            (bgR+bgG+bgB)/3);
+          if (dist < TOLERANCE * 1.4 &&
+              sat < 25 &&
+              brightnessDiff < 60) {
+            visited[n] = 1;
+            queueExp.push(n);
+          }
+        }
+      }
+
       // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
       // STEP 4 — SECOND PASS
       // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -3056,105 +3092,30 @@ async function removePendantBackground(imageUrl) {
         }
       }
 
-      // PASS 2B — Remove enclosed interior bg patches
-      // These are background areas fully surrounded by
-      // jewelry that flood fill couldn't reach from edges
+      // PASS 2C — Only remove TINY isolated specks
+      // (1-3 pixel clusters max, clearly leftover bg)
+      // Never remove anything larger — could be jewelry
+      for (let y = 1; y < h-1; y++) {
+        for (let x = 1; x < w-1; x++) {
+          const i = y * w + x;
+          if (visited[i]) continue;
+          const pi = i * 4;
+          const r = data[pi], g = data[pi+1], b = data[pi+2];
+          const dist = colorDistance(r, g, b);
+          const sat = Math.max(r,g,b) - Math.min(r,g,b);
 
-      // Find all remaining white/light enclosed regions
-      // using a separate flood fill starting from
-      // any unvisited pixel that matches bg color
+          // Only remove if ALL 8 neighbours are already
+          // removed (visited) — truly isolated single pixel
+          const allNeighboursRemoved = [
+            visited[(y-1)*w+x], visited[(y+1)*w+x],
+            visited[y*w+(x-1)], visited[y*w+(x+1)],
+            visited[(y-1)*w+(x-1)], visited[(y-1)*w+(x+1)],
+            visited[(y+1)*w+(x-1)], visited[(y+1)*w+(x+1)]
+          ].filter(v => v === 1).length >= 6;
 
-      for (let startI = 0; startI < w * h; startI++) {
-        if (visited[startI]) continue;
-        const spi = startI * 4;
-        const sr = data[spi], sg = data[spi+1], sb = data[spi+2];
-        const sDist = colorDistance(sr, sg, sb);
-        const sSat = Math.max(sr,sg,sb) - Math.min(sr,sg,sb);
-
-        // Only start a new fill from pixels that look
-        // like background (close to bg color, low saturation)
-        if (sDist > 45 || sSat > 30) continue;
-
-        // Flood fill this interior pocket
-        const pocketQueue = [startI];
-        const pocketVisited = new Set([startI]);
-        let pocketSize = 0;
-        let isTouchingEdge = false;
-        let pocketMaxSat = 0;
-        let ph = 0;
-
-        while (ph < pocketQueue.length) {
-          const pidx = pocketQueue[ph++];
-          pocketSize++;
-
-          const py = Math.floor(pidx / w);
-          const px = pidx % w;
-
-          // Check if this pocket touches the image edge
-          if (px === 0 || px === w-1 ||
-              py === 0 || py === h-1) {
-            isTouchingEdge = true;
+          if (allNeighboursRemoved && dist < 40 && sat < 20) {
+            visited[i] = 1;
           }
-
-          for (const off of offsets) {
-            const n = pidx + off;
-            if (n < 0 || n >= w*h) continue;
-            if (visited[n] || pocketVisited.has(n)) continue;
-            const nx = n % w;
-            const npx = px % w;
-            if (Math.abs(nx - npx) > 1) continue;
-
-            const pi = n * 4;
-            const r = data[pi], g = data[pi+1], b = data[pi+2];
-            const dist = colorDistance(r, g, b);
-            const sat = Math.max(r,g,b) - Math.min(r,g,b);
-
-            pocketMaxSat = Math.max(pocketMaxSat, sat);
-
-            if (dist < 50 && sat < 35) {
-              pocketVisited.add(n);
-              pocketQueue.push(n);
-            }
-          }
-
-          // Stop early if pocket too large
-          // (probably jewelry not background)
-          if (pocketSize > 8000) break;
-        }
-
-        // Remove this pocket if:
-        // - It doesn't touch the image edge (enclosed)
-        // - It's not too large (not the main jewelry area)
-        // - Average saturation is low (background not jewelry)
-        const shouldRemove = !isTouchingEdge &&
-                              pocketSize < 8000 &&
-                              pocketMaxSat < 40;
-
-        if (shouldRemove) {
-          for (const pidx of pocketVisited) {
-            visited[pidx] = 1;
-          }
-          console.log('[JWLZIFY] removed interior patch, size:',
-            pocketSize);
-        } else {
-          // Mark as visited so we skip it next iteration
-          for (const pidx of pocketVisited) {
-            visited[pidx] = 1;
-          }
-        }
-      }
-
-      // PASS 2C — Final cleanup
-      // Remove any remaining isolated single pixels
-      // or tiny clusters that match bg color
-      for (let i = 0; i < w * h; i++) {
-        if (visited[i]) continue;
-        const pi = i * 4;
-        const r = data[pi], g = data[pi+1], b = data[pi+2];
-        const sat = Math.max(r,g,b) - Math.min(r,g,b);
-        const dist = colorDistance(r, g, b);
-        if (dist < 15 && sat < 10) {
-          visited[i] = 1;
         }
       }
 
@@ -3176,8 +3137,6 @@ async function removePendantBackground(imageUrl) {
         for (let x = 1; x < w-1; x++) {
           const idx = y*w+x;
           if (snap[idx] === 0) continue;
-
-          // Count transparent neighbours in 8 directions
           const nb = [
             snap[(y-1)*w+x],   snap[(y+1)*w+x],
             snap[y*w+(x-1)],   snap[y*w+(x+1)],
@@ -3185,21 +3144,13 @@ async function removePendantBackground(imageUrl) {
             snap[(y+1)*w+(x-1)], snap[(y+1)*w+(x+1)]
           ];
           const t = nb.filter(a => a === 0).length;
-
-          // STRICT edge softening — only outermost pixel ring
-          // Pixels with 1-2 transparent neighbours = edge pixel
-          // Only soften if ALL non-transparent neighbours
-          // are also edge pixels (truly on the boundary)
-          if (t >= 7) {
-            data[idx*4+3] = 0;      // fully remove
-          } else if (t >= 5) {
-            data[idx*4+3] = 80;     // outermost fringe only
-          } else if (t >= 4) {
-            data[idx*4+3] = 160;    // very edge only
-          }
-          // t <= 3: DO NOT reduce alpha at all
-          // These are interior jewelry pixels — keep 100% opaque
-          // This protects diamonds, gold, stones from fading
+          // ONLY soften true outermost edge pixels
+          // Never touch anything with 3 or fewer
+          // transparent neighbours — that's jewelry interior
+          if (t >= 7) data[idx*4+3] = 0;
+          else if (t >= 6) data[idx*4+3] = 60;
+          else if (t >= 5) data[idx*4+3] = 140;
+          // t <= 4: fully opaque, DO NOT touch
         }
       }
 
