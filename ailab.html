@@ -237,6 +237,41 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
 }
 </script>
 <style>#tryon-necklace { background: transparent !important; }</style>
+
+<!-- Transformers.js: AI background removal, runs entirely in browser -->
+<script type="module">
+import { pipeline, env }
+  from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.3.3';
+
+env.allowLocalModels = false;
+env.useBrowserCache = true; // cache model after first load
+
+async function initBgRemover() {
+  try {
+    window._jwlBgRemover = await pipeline(
+      'image-segmentation',
+      'briaai/RMBG-1.4',
+      { device: 'webgpu' }
+    );
+    console.log('[JWLZIFY] AI bg removal model ready (WebGPU)');
+  } catch(e) {
+    try {
+      window._jwlBgRemover = await pipeline(
+        'image-segmentation',
+        'briaai/RMBG-1.4'
+      );
+      console.log('[JWLZIFY] AI bg removal model ready (CPU)');
+    } catch(e2) {
+      console.warn('[JWLZIFY] AI model failed to load:', e2.message);
+      window._jwlBgRemover = null;
+    }
+  }
+  const status = document.getElementById('tryon-ai-status');
+  if (status) status.style.display = 'none';
+}
+
+initBgRemover();
+</script>
 </head>
 <body class="bg-[#fbf9f9] text-[#1b1c1c]">
 
@@ -746,6 +781,16 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
                     border:1.5px solid rgba(255,255,255,0.7);
                     box-shadow:0 1px 4px rgba(0,0,0,0.4);">
         </div>
+
+        <p id="tryon-ai-status"
+           style="position:absolute;bottom:60px;left:50%;
+                  transform:translateX(-50%);
+                  color:rgba(255,255,255,0.6);
+                  font-size:11px;letter-spacing:0.05em;
+                  z-index:20;text-align:center;
+                  white-space:nowrap;pointer-events:none;">
+          Preparing AI background removal...
+        </p>
 
       </div>
 
@@ -2888,6 +2933,89 @@ document.getElementById('s2ConfirmBtn').addEventListener('click', s2ConfirmSave)
 <!-- Try-On: background removal + canvas necklace loader -->
 <script>
 async function removePendantBackground(imageUrl) {
+  console.log('[JWLZIFY] starting AI bg removal...');
+
+  try {
+    // Wait for model to be ready (max 30 seconds)
+    let waited = 0;
+    while (!window._jwlBgRemover && waited < 30000) {
+      await new Promise(r => setTimeout(r, 500));
+      waited += 500;
+    }
+
+    if (window._jwlBgRemover) {
+      console.log('[JWLZIFY] using AI model for bg removal');
+
+      const result = await window._jwlBgRemover(imageUrl, {
+        threshold: 0.5
+      });
+
+      const mask = result[0].mask;
+
+      const img = new Image();
+      img.crossOrigin = imageUrl.startsWith('blob:')
+        ? undefined : 'anonymous';
+      await new Promise((res, rej) => {
+        img.onload = res;
+        img.onerror = rej;
+        img.src = imageUrl;
+      });
+
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+
+      const imageData = ctx.getImageData(
+        0, 0, canvas.width, canvas.height);
+      const data = imageData.data;
+
+      // Draw mask at its native size then scale to image size
+      const maskCanvas = document.createElement('canvas');
+      maskCanvas.width = mask.width;
+      maskCanvas.height = mask.height;
+      const maskCtx = maskCanvas.getContext('2d');
+      const maskImageData = maskCtx.createImageData(
+        mask.width, mask.height);
+      for (let i = 0; i < mask.data.length; i++) {
+        maskImageData.data[i*4]   = mask.data[i];
+        maskImageData.data[i*4+1] = mask.data[i];
+        maskImageData.data[i*4+2] = mask.data[i];
+        maskImageData.data[i*4+3] = 255;
+      }
+      maskCtx.putImageData(maskImageData, 0, 0);
+
+      const scaledMaskCanvas = document.createElement('canvas');
+      scaledMaskCanvas.width = canvas.width;
+      scaledMaskCanvas.height = canvas.height;
+      const scaledCtx = scaledMaskCanvas.getContext('2d');
+      scaledCtx.drawImage(maskCanvas,
+        0, 0, canvas.width, canvas.height);
+      const scaledMask = scaledCtx.getImageData(
+        0, 0, canvas.width, canvas.height);
+
+      // Apply mask as alpha channel
+      for (let i = 0; i < data.length; i += 4) {
+        data[i+3] = scaledMask.data[i]; // 0=transparent, 255=opaque
+      }
+
+      ctx.putImageData(imageData, 0, 0);
+      const blob = await new Promise(res =>
+        canvas.toBlob(res, 'image/png', 1.0));
+      console.log('[JWLZIFY] AI bg removal SUCCESS');
+      return URL.createObjectURL(blob);
+    }
+  } catch(e) {
+    console.warn('[JWLZIFY] AI bg removal failed:', e.message);
+  }
+
+  // Fallback to canvas flood-fill if AI not available or failed
+  console.log('[JWLZIFY] falling back to canvas bg removal');
+  return removePendantBackgroundCanvas(imageUrl);
+}
+
+async function removePendantBackgroundCanvas(imageUrl) {
   return new Promise((resolve) => {
     const img = new Image();
     if (!imageUrl.startsWith('blob:')) {
