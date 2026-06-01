@@ -1228,6 +1228,19 @@ window.addEventListener('DOMContentLoaded', () => {
 /* ── Claude API key (fill in to enable AI spec cards) ── */
 const CLAUDE_API_KEY = '';
 
+/* ── BG removal cache — avoids repeat API calls per session ── */
+const bgRemovalCache = new Map();
+async function removePendantBackgroundCached(imageUrl) {
+  if (bgRemovalCache.has(imageUrl)) {
+    console.log('[JWLZIFY] using cached bg removal');
+    return bgRemovalCache.get(imageUrl);
+  }
+  console.log('[JWLZIFY] new bg removal call');
+  const cleanUrl = await removePendantBackground(imageUrl);
+  bgRemovalCache.set(imageUrl, cleanUrl);
+  return cleanUrl;
+}
+
 /* ── Display name maps ── */
 const MATERIAL_LABEL = {
   '925silver':  '925 Sterling Silver',
@@ -1801,6 +1814,8 @@ async function startGeneration(isTweak) {
     if (thisGen !== generationId) { URL.revokeObjectURL(blobUrl); return; }
 
     LAB.imageUrl = blobUrl;
+    bgRemovalCache.clear();
+    console.log('[JWLZIFY] bg cache cleared for new design');
     ri.src = blobUrl;
     document.getElementById('quoteImg').src = blobUrl;
     const ot = document.getElementById('orderThumb');
@@ -2626,8 +2641,14 @@ async function setupTryOn() {
     if (canvas) canvas.style.display = 'none';
     if (handle) handle.style.display = 'none';
     loadEarringsForTryOn(LAB.imageUrl);
+  } else if (LAB.type === 'necklace') {
+    const canvas = document.getElementById('tryon-necklace');
+    const handle = document.getElementById('tryon-resize');
+    if (canvas) canvas.style.display = 'none';
+    if (handle) handle.style.display = 'none';
+    loadNecklaceForTryOn(LAB.imageUrl);
   } else {
-    // Pendant / necklace / ring / bracelet flow
+    // Pendant / ring / bracelet flow
     window._tryonPendantSize = 160;
     window._tryonPendantImg  = null;
 
@@ -2664,7 +2685,8 @@ function teardownTryOn() {
   if (canvas) canvas.style.display = 'none';
   if (handle) handle.style.display = 'none';
   ['tryon-earring-left', 'tryon-earring-right',
-   'tryon-earring-left-handle', 'tryon-earring-right-handle'
+   'tryon-earring-left-handle', 'tryon-earring-right-handle',
+   'tryon-necklace-img', 'tryon-necklace-resize'
   ].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.style.display = 'none';
@@ -3313,7 +3335,7 @@ async function loadPendantForTryOn(imageUrl) {
   tempImg.src = imageUrl;
 
   // Step 2: remove background then redraw with clean transparent pendant
-  const cleanUrl = await removePendantBackground(imageUrl);
+  const cleanUrl = await removePendantBackgroundCached(imageUrl);
   const realImg  = new Image();
   realImg.crossOrigin = 'anonymous';
   realImg.onload = () => {
@@ -3471,7 +3493,7 @@ async function loadEarringsForTryOn(imageUrl) {
   const singleUrl = await cropToSingleEarring(imageUrl);
 
   // Step 2: Remove background
-  const cleanUrl = await removePendantBackground(singleUrl);
+  const cleanUrl = await removePendantBackgroundCached(singleUrl);
 
   // Left: normal, Right: mirrored — looks like a natural pair
   leftEl.src = cleanUrl;
@@ -3513,6 +3535,133 @@ makeEarringDraggable(
   document.getElementById('tryon-earring-right'),
   document.getElementById('tryon-earring-right-handle')
 );
+
+/* ── Necklace try-on ─────────────────────────── */
+
+function updateNecklaceResizeHandle() {
+  const img    = document.getElementById('tryon-necklace-img');
+  const handle = document.getElementById('tryon-necklace-resize');
+  if (!img || !handle) return;
+  const c = document.getElementById('tryon-container').getBoundingClientRect();
+  const r = img.getBoundingClientRect();
+  handle.style.left = (r.right  - c.left - 7) + 'px';
+  handle.style.top  = (r.bottom - c.top  - 7) + 'px';
+}
+
+let necklaceDragging = false;
+let necklaceResizing = false;
+let nlStartX, nlStartY, nlStartLeft, nlStartTop;
+let nlResizeStartX, nlResizeStartW;
+
+document.getElementById('tryon-container')
+  .addEventListener('pointerdown', e => {
+    const img    = document.getElementById('tryon-necklace-img');
+    const handle = document.getElementById('tryon-necklace-resize');
+    if (!img || img.style.display === 'none') return;
+
+    if (e.target === handle) {
+      necklaceResizing = true;
+      nlResizeStartX   = e.clientX;
+      nlResizeStartW   = img.offsetWidth;
+      handle.setPointerCapture(e.pointerId);
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+    if (e.target === img) {
+      necklaceDragging = true;
+      img.style.cursor = 'grabbing';
+      const c = document.getElementById('tryon-container').getBoundingClientRect();
+      const r = img.getBoundingClientRect();
+      nlStartX    = e.clientX;
+      nlStartY    = e.clientY;
+      nlStartLeft = r.left - c.left;
+      nlStartTop  = r.top  - c.top;
+      img.setPointerCapture(e.pointerId);
+      e.preventDefault();
+    }
+  });
+
+document.addEventListener('pointermove', e => {
+  const img = document.getElementById('tryon-necklace-img');
+  if (!img) return;
+  if (necklaceDragging) {
+    img.style.left = (nlStartLeft + e.clientX - nlStartX) + 'px';
+    img.style.top  = (nlStartTop  + e.clientY - nlStartY) + 'px';
+    updateNecklaceResizeHandle();
+  }
+  if (necklaceResizing) {
+    const newW = Math.max(80, Math.min(600,
+      nlResizeStartW + (e.clientX - nlResizeStartX)));
+    img.style.width = newW + 'px';
+    updateNecklaceResizeHandle();
+  }
+});
+
+document.addEventListener('pointerup', () => {
+  const img = document.getElementById('tryon-necklace-img');
+  if (img && necklaceDragging) img.style.cursor = 'grab';
+  necklaceDragging = false;
+  necklaceResizing = false;
+});
+
+async function loadNecklaceForTryOn(imageUrl) {
+  console.log('[JWLZIFY] loading necklace try-on');
+
+  // Hide all other try-on elements
+  ['tryon-necklace', 'tryon-pendant', 'tryon-resize',
+   'tryon-earring-left', 'tryon-earring-right',
+   'tryon-earring-left-handle', 'tryon-earring-right-handle'
+  ].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'none';
+  });
+
+  // Create img element if it doesn't exist yet
+  let necklaceImg    = document.getElementById('tryon-necklace-img');
+  let necklaceResize = document.getElementById('tryon-necklace-resize');
+
+  if (!necklaceImg) {
+    necklaceImg = document.createElement('img');
+    necklaceImg.id = 'tryon-necklace-img';
+    necklaceImg.style.cssText =
+      'position:absolute;cursor:grab;user-select:none;display:none;z-index:10;pointer-events:auto;';
+    document.getElementById('tryon-container').appendChild(necklaceImg);
+  }
+
+  if (!necklaceResize) {
+    necklaceResize = document.createElement('div');
+    necklaceResize.id = 'tryon-necklace-resize';
+    necklaceResize.style.cssText =
+      'position:absolute;width:14px;height:14px;background:#C0C0C0;border-radius:50%;' +
+      'cursor:se-resize;display:none;z-index:11;' +
+      'border:1.5px solid rgba(255,255,255,0.7);box-shadow:0 1px 4px rgba(0,0,0,0.4);';
+    document.getElementById('tryon-container').appendChild(necklaceResize);
+  }
+
+  const container  = document.getElementById('tryon-container');
+  const W          = container.offsetWidth;
+  const H          = container.offsetHeight;
+  const defaultW   = Math.floor(W * 0.70);
+  const defaultLeft= Math.floor((W - defaultW) / 2);
+  const defaultTop = Math.floor(H * 0.28);
+
+  // Show immediately with original while bg removal runs
+  necklaceImg.src           = imageUrl;
+  necklaceImg.style.width   = defaultW + 'px';
+  necklaceImg.style.height  = 'auto';
+  necklaceImg.style.left    = defaultLeft + 'px';
+  necklaceImg.style.top     = defaultTop  + 'px';
+  necklaceImg.style.display = 'block';
+  necklaceResize.style.display = 'block';
+  requestAnimationFrame(updateNecklaceResizeHandle);
+
+  // Swap to bg-removed version — cached so no extra API call on revisit
+  const cleanUrl = await removePendantBackgroundCached(imageUrl);
+  necklaceImg.src = cleanUrl;
+  requestAnimationFrame(updateNecklaceResizeHandle);
+  console.log('[JWLZIFY] necklace loaded with bg removed');
+}
 </script>
 
 
