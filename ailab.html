@@ -226,8 +226,6 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
 @keyframes arPulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
 #arLoading p { animation: arPulse 2.4s ease-in-out infinite; }
 </style>
-<!-- Background removal (global — window.BackgroundRemoval) -->
-<script src="https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.4.5/dist/background-removal.browser.js"></script>
 
 <!-- importmap (must precede all module scripts) -->
 <script type="importmap">
@@ -2892,7 +2890,9 @@ document.getElementById('s2ConfirmBtn').addEventListener('click', s2ConfirmSave)
 async function removePendantBackground(imageUrl) {
   return new Promise((resolve) => {
     const img = new Image();
-    img.crossOrigin = 'anonymous';
+    if (!imageUrl.startsWith('blob:')) {
+      img.crossOrigin = 'anonymous';
+    }
 
     img.onload = () => {
       const offCanvas = document.createElement('canvas');
@@ -2999,7 +2999,9 @@ async function removePendantBackground(imageUrl) {
       resolve(imageUrl);
     };
 
-    img.src = imageUrl + (imageUrl.includes('?') ? '&' : '?') + 'cb=' + Date.now();
+    img.src = imageUrl.startsWith('blob:')
+      ? imageUrl
+      : imageUrl + (imageUrl.includes('?') ? '&' : '?') + 'cb=' + Date.now();
   });
 }
 
