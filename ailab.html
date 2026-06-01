@@ -3406,19 +3406,42 @@ async function cropToSingleEarring(imageUrl) {
     }
     img.onload = () => {
       const canvas = document.createElement('canvas');
-      // ALWAYS crop to left 45% of image no matter what
-      // This guarantees one earring every single time
-      const cropW = Math.floor(img.naturalWidth * 0.45);
+      const w = img.naturalWidth;
+      const h = img.naturalHeight;
+
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = w;
+      tempCanvas.height = h;
+      const tempCtx = tempCanvas.getContext('2d');
+      tempCtx.drawImage(img, 0, 0);
+      const pixels = tempCtx.getImageData(0, 0, w, h).data;
+
+      const centerX = Math.floor(w * 0.5);
+      let splitX = centerX;
+
+      for (let x = centerX; x > w * 0.2; x--) {
+        let nonWhiteCount = 0;
+        for (let y = 0; y < h; y++) {
+          const i = (y * w + x) * 4;
+          const r = pixels[i], g = pixels[i+1], b = pixels[i+2];
+          if (r < 230 || g < 230 || b < 230) {
+            nonWhiteCount++;
+          }
+        }
+        if (nonWhiteCount < h * 0.05) {
+          splitX = x;
+          break;
+        }
+      }
+
+      const cropW = Math.min(splitX + 20, Math.floor(w * 0.52));
       canvas.width = cropW;
-      canvas.height = img.naturalHeight;
+      canvas.height = h;
       const ctx = canvas.getContext('2d');
-      ctx.drawImage(
-        img,
-        0, 0, cropW, img.naturalHeight,
-        0, 0, cropW, img.naturalHeight
-      );
+      ctx.drawImage(img, 0, 0, cropW, h, 0, 0, cropW, h);
+
       canvas.toBlob((blob) => {
-        console.log('[JWLZIFY] cropped to single earring');
+        console.log('[JWLZIFY] smart crop at x:', splitX);
         resolve(URL.createObjectURL(blob));
       }, 'image/png');
     };
