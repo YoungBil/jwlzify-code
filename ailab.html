@@ -395,7 +395,7 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
           <span class="material-symbols-outlined gen-icon" id="genIcon" style="font-size:20px;">auto_awesome</span>
           <span id="genText">Generate Masterpiece</span>
         </button>
-        <p id="genBusyHint" style="display:none;font-family:Inter,sans-serif;font-size:12px;color:#9ca3af;text-align:center;margin-top:10px;">Generation in progress, please wait…</p>
+        <p id="genBusyHint" style="display:none;font-family:Inter,sans-serif;font-size:12px;color:#9ca3af;text-align:center;margin-top:10px;">Creating your piece… please wait</p>
       </div>
 
       <!-- RIGHT: Preview Placeholder / Loading -->
@@ -571,12 +571,12 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
           <!-- Generation loading overlay -->
           <div id="genLoadingOverlay" style="display:none;position:absolute;inset:0;background:rgba(249,248,248,0.88);align-items:center;justify-content:center;flex-direction:column;gap:14px;">
             <div style="width:52px;height:52px;border-radius:50%;border:3px solid #b9e2f5;border-top-color:#3c6474;animation:jwlz-spin 1s linear infinite;"></div>
-            <p style="font-family:Inter,sans-serif;font-size:13px;color:#3c6474;font-weight:500;letter-spacing:0.04em;">Crafting your design…</p>
+            <p style="font-family:Inter,sans-serif;font-size:13px;color:#3c6474;font-weight:500;letter-spacing:0.04em;">Creating your piece…</p>
           </div>
           <!-- Generation error overlay -->
           <div id="genErrorOverlay" style="display:none;position:absolute;inset:0;background:rgba(249,248,248,0.95);align-items:center;justify-content:center;flex-direction:column;gap:12px;text-align:center;padding:24px;">
             <span class="material-symbols-outlined" style="font-size:44px;color:#d1d5db;">image_not_supported</span>
-            <p style="font-family:Inter,sans-serif;font-size:14px;color:#6b7280;line-height:1.5;margin:0;">Could not generate design.<br>Please try again.</p>
+            <p style="font-family:Inter,sans-serif;font-size:14px;color:#6b7280;line-height:1.5;margin:0;">Something went wrong generating your design.<br>Please try again.</p>
             <button onclick="document.getElementById('genErrorOverlay').style.display='none';startGeneration(window._lastIsTweak);"
               style="font-family:Inter,sans-serif;font-size:12px;font-weight:600;letter-spacing:0.1em;background:#3c6474;color:white;border:none;border-radius:10px;padding:10px 24px;cursor:pointer;">
               Retry
@@ -1281,6 +1281,49 @@ let isTryOnActive   = false;
 let isProcessing    = false;
 const _birefnetCache = new Map(); // pollinationsUrl → processed blob URL (session-scoped)
 
+/* ── Generation queue ───────────────────────────────────────────────────── */
+const GEN_MAX_CONCURRENT = 2;
+let _genRunning = 0;
+const _genQueue = [];
+
+function _enqueueGen(task) {
+  return new Promise((resolve, reject) => {
+    _genQueue.push({ task, resolve, reject });
+    _drainGenQueue();
+  });
+}
+function _drainGenQueue() {
+  while (_genRunning < GEN_MAX_CONCURRENT && _genQueue.length > 0) {
+    const { task, resolve, reject } = _genQueue.shift();
+    _genRunning++;
+    task().then(resolve, reject).finally(() => { _genRunning--; _drainGenQueue(); });
+  }
+}
+
+async function _fetchImageUrl(url) {
+  const ctrl  = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 30000);
+  try {
+    const res = await fetch(url, { signal: ctrl.signal });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const blob = await res.blob();
+    return URL.createObjectURL(blob);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function _fetchWithRetry(makeUrl) {
+  const DELAYS = [0, 2000, 4000, 8000]; // attempt 0 = immediate, then 2s/4s/8s
+  let lastErr;
+  for (let attempt = 0; attempt < DELAYS.length; attempt++) {
+    if (attempt > 0) await new Promise(r => setTimeout(r, DELAYS[attempt]));
+    try { return await _fetchImageUrl(makeUrl()); }
+    catch (e) { lastErr = e; }
+  }
+  throw lastErr;
+}
+
 /* ── Rate-limit / queue state ── */
 let isGenerating  = false;
 window._lastIsTweak = false;   // exposed for the Retry button onclick
@@ -1311,11 +1354,11 @@ function _startCooldown() {
   const icon = document.getElementById('genIcon');
   const text = document.getElementById('genText');
   if (icon) icon.textContent = 'schedule';
-  if (text) text.textContent = `Generating… (${rem}s)`;
+  if (text) text.textContent = 'Creating your piece…';
   _genCooldownIv = setInterval(() => {
     rem--;
     if (rem > 0) {
-      if (text) text.textContent = `Please wait… (${rem}s)`;
+      if (text) text.textContent = 'Creating your piece…';
     } else {
       clearInterval(_genCooldownIv);
       _genCdDone = true;
@@ -1340,7 +1383,7 @@ function setGenLoading(on) {
     btn.disabled = true;
     if (rBtn) rBtn.disabled = true;
     if (icon) icon.textContent = 'refresh';
-    if (text) text.textContent = 'Generating…';
+    if (text) text.textContent = 'Creating your piece…';
     if (loadOverlay) loadOverlay.style.display = 'flex';
     if (errOverlay)  errOverlay.style.display  = 'none';
     _startCooldown();
@@ -1724,57 +1767,36 @@ async function startGeneration(isTweak) {
     return `https://image.pollinations.ai/prompt/${encodeURIComponent(fullPrompt)}?width=800&height=800&nologo=true&seed=${seed}&model=flux&enhance=${isPendantGen ? 'false' : 'true'}${negParam}`;
   }
 
-  const url = makeUrl();
-  LAB.imageUrl = url;
-
   const ri = document.getElementById('refineImg');
+  if (isTweak) {
+    ri.style.transition = 'filter 0.4s ease';
+    ri.style.filter = 'blur(14px) brightness(0.8)';
+  }
 
-  const onOk = () => {
+  // Queue the fetch — respects GEN_MAX_CONCURRENT, retries up to 3× with backoff
+  _enqueueGen(() => _fetchWithRetry(makeUrl)).then((blobUrl) => {
+    if (thisGen !== generationId) { URL.revokeObjectURL(blobUrl); return; }
+
+    LAB.imageUrl = blobUrl;
+    ri.src = blobUrl;
+    document.getElementById('quoteImg').src = blobUrl;
+    const ot = document.getElementById('orderThumb');
+    if (ot) ot.src = blobUrl;
+
+    if (isTweak) {
+      ri.style.filter = 'none';
+    } else {
+      showRefineStep();
+    }
+    setGenLoading(false);
+
+  }).catch(() => {
     if (thisGen !== generationId) return;
     if (isTweak) ri.style.filter = 'none';
     setGenLoading(false);
-  };
-
-  const onErr = (attempt) => {
-    if (thisGen !== generationId) return;
-    if (attempt < 2) {
-      // Wait 2s then retry once with a fresh seed
-      setTimeout(() => {
-        if (thisGen !== generationId) return;
-        const retryUrl = makeUrl();
-        LAB.imageUrl = retryUrl;
-        ri.addEventListener('load',  onOk, { once: true });
-        ri.addEventListener('error', () => onErr(attempt + 1), { once: true });
-        ri.src = retryUrl;
-        document.getElementById('quoteImg').src = retryUrl;
-        const ot = document.getElementById('orderThumb');
-        if (ot) ot.src = retryUrl;
-      }, 2000);
-    } else {
-      // Both attempts failed — release state and show error overlay
-      if (isTweak) ri.style.filter = 'none';
-      setGenLoading(false); // hides loading overlay, releases cooldown
-      const errOverlay = document.getElementById('genErrorOverlay');
-      if (errOverlay) errOverlay.style.display = 'flex';
-    }
-  };
-
-  if (isTweak) {
-    // Regenerate in place — blur current image, swap src, unblur on load
-    ri.style.transition = 'filter 0.4s ease';
-    ri.style.filter = 'blur(14px) brightness(0.8)';
-    ri.addEventListener('load',  onOk, { once: true });
-    ri.addEventListener('error', () => onErr(1), { once: true });
-    ri.src = url;
-    document.getElementById('quoteImg').src = url;
-    const ot = document.getElementById('orderThumb');
-    if (ot) ot.src = url;
-  } else {
-    // Navigate immediately — image loads naturally in step 2
-    ri.addEventListener('load',  onOk, { once: true });
-    ri.addEventListener('error', () => onErr(1), { once: true });
-    showRefineStep();
-  }
+    const errOverlay = document.getElementById('genErrorOverlay');
+    if (errOverlay) errOverlay.style.display = 'flex';
+  });
 }
 
 
