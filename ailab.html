@@ -226,8 +226,6 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
 @keyframes arPulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
 #arLoading p { animation: arPulse 2.4s ease-in-out infinite; }
 </style>
-<!-- Background removal (global — window.BackgroundRemoval) -->
-<script src="https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.4.5/dist/background-removal.browser.js"></script>
 
 <!-- importmap (must precede all module scripts) -->
 <script type="importmap">
@@ -2413,7 +2411,7 @@ function submitOrder(e) {
 
 // Shared state on window so the module script can read/write it too
 window._tryonPendantImg  = null;
-window._tryonPendantSize = 144;
+window._tryonPendantSize = 160;
 
 function drawNecklace(pendantImg, pendantSize) {
   const canvas = document.getElementById('tryon-necklace');
@@ -2422,16 +2420,20 @@ function drawNecklace(pendantImg, pendantSize) {
   const totalW = pendantSize + 80; // narrower V to match natural neck width
   const totalH = chainH + pendantSize;
 
-  canvas.width  = totalW;
-  canvas.height = totalH;
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width        = totalW * dpr;
+  canvas.height       = totalH * dpr;
+  canvas.style.width  = totalW + 'px';
+  canvas.style.height = totalH + 'px';
   const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
   ctx.clearRect(0, 0, totalW, totalH); // fully transparent — never fill
 
   console.log('[JWLZIFY] canvas size:', canvas.width, canvas.height);
   console.log('[JWLZIFY] pendant img naturalSize:', pendantImg.naturalWidth, pendantImg.naturalHeight);
 
   // V-shape chain: two thin lines from top corners to pendant top center
-  ctx.strokeStyle = 'rgba(176, 176, 176, 0.65)';
+  ctx.strokeStyle = 'rgba(100, 100, 110, 0.85)';
   ctx.lineWidth   = 0.8;
 
   ctx.beginPath();
@@ -2549,7 +2551,7 @@ async function setupTryOn() {
   if (!LAB.imageUrl) { goStep(5); return; }
 
   startTryOnCamera();
-  window._tryonPendantSize = 144;
+  window._tryonPendantSize = 160;
   window._tryonPendantImg  = null;
 
   const canvas = document.getElementById('tryon-necklace');
@@ -2886,23 +2888,293 @@ document.getElementById('s2ConfirmBtn').addEventListener('click', s2ConfirmSave)
 <!-- Try-On: background removal + canvas necklace loader -->
 <script>
 async function removePendantBackground(imageUrl) {
-  try {
-    const { removeBackground } = await import(
-      'https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.4.5/dist/background-removal.browser.mjs'
-    );
-    const response   = await fetch(imageUrl, { mode: 'cors', credentials: 'omit' });
-    const inputBlob  = await response.blob();
-    const outputBlob = await removeBackground(inputBlob, {
-      model:  'small',
-      output: { format: 'image/png', quality: 0.9 }
-    });
-    const cleanUrl = URL.createObjectURL(outputBlob);
-    console.log('[JWLZIFY] bg removal SUCCESS');
-    return cleanUrl;
-  } catch(e) {
-    console.error('[JWLZIFY] bg removal FAILED:', e.message);
-    return imageUrl;
-  }
+  return new Promise((resolve) => {
+    const img = new Image();
+    if (!imageUrl.startsWith('blob:')) {
+      img.crossOrigin = 'anonymous';
+    }
+
+    img.onload = () => {
+      const offCanvas = document.createElement('canvas');
+      offCanvas.width = img.naturalWidth;
+      offCanvas.height = img.naturalHeight;
+      const ctx = offCanvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+
+      const w = offCanvas.width;
+      const h = offCanvas.height;
+      const imageData = ctx.getImageData(0, 0, w, h);
+      const data = imageData.data;
+
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      // STEP 1 — SAMPLE BACKGROUND COLOR
+      // Sample many edge points for accuracy
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      function getPixel(x, y) {
+        const i = (Math.round(y) * w + Math.round(x)) * 4;
+        return [data[i], data[i+1], data[i+2]];
+      }
+
+      // Sample 32 points around all edges
+      const samples = [];
+      const steps = 8;
+      for (let i = 0; i <= steps; i++) {
+        const t = i / steps;
+        // Top edge
+        samples.push(getPixel(t * (w-1), 0));
+        // Bottom edge
+        samples.push(getPixel(t * (w-1), h-1));
+        // Left edge
+        samples.push(getPixel(0, t * (h-1)));
+        // Right edge
+        samples.push(getPixel(w-1, t * (h-1)));
+      }
+
+      // Find the most common background color
+      // by clustering similar samples together
+      let bgR = Math.round(
+        samples.reduce((s,c) => s+c[0], 0) / samples.length);
+      let bgG = Math.round(
+        samples.reduce((s,c) => s+c[1], 0) / samples.length);
+      let bgB = Math.round(
+        samples.reduce((s,c) => s+c[2], 0) / samples.length);
+
+      const avgBrightness = (bgR + bgG + bgB) / 3;
+      const isDark = avgBrightness < 80;
+      const isLight = avgBrightness > 200;
+      const isMidtone = !isDark && !isLight;
+
+      // Adaptive tolerance based on bg type
+      // Dark/light bgs are more uniform → tighter
+      // Midtone bgs can have more variation → looser
+      const TOLERANCE = isDark ? 45 : isLight ? 40 : 55;
+
+      console.log('[JWLZIFY] bg color:', bgR, bgG, bgB,
+        '| type:', isDark?'dark':isLight?'light':'midtone',
+        '| tolerance:', TOLERANCE);
+
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      // STEP 2 — COLOR SIMILARITY FUNCTION
+      // Uses perceptual color distance not just RGB diff
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      function colorDistance(r, g, b) {
+        const dr = r - bgR;
+        const dg = g - bgG;
+        const db = b - bgB;
+        // Weighted perceptual distance
+        // (human eyes more sensitive to green)
+        return Math.sqrt(
+          0.299 * dr*dr +
+          0.587 * dg*dg +
+          0.114 * db*db
+        );
+      }
+
+      function isSimilarToBg(r, g, b) {
+        return colorDistance(r, g, b) < TOLERANCE;
+      }
+
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      // STEP 3 — FLOOD FILL FROM ALL EDGES
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      const visited = new Uint8Array(w * h);
+      const queue = [];
+
+      function seedPixel(x, y) {
+        const i = y * w + x;
+        if (visited[i]) return;
+        const pi = i * 4;
+        if (isSimilarToBg(data[pi], data[pi+1], data[pi+2])) {
+          visited[i] = 1;
+          queue.push(i);
+        }
+      }
+
+      // Seed all edge pixels
+      for (let x = 0; x < w; x++) {
+        seedPixel(x, 0);
+        seedPixel(x, h-1);
+      }
+      for (let y = 0; y < h; y++) {
+        seedPixel(0, y);
+        seedPixel(w-1, y);
+      }
+
+      // BFS flood fill (8-directional)
+      const offsets = [-1, 1, -w, w, -w-1, -w+1, w-1, w+1];
+      let head = 0;
+      while (head < queue.length) {
+        const idx = queue[head++];
+        const iy = Math.floor(idx / w);
+        const ix = idx % w;
+        for (const off of offsets) {
+          const n = idx + off;
+          if (n < 0 || n >= w*h) continue;
+          if (visited[n]) continue;
+          // Boundary check to prevent wrapping
+          const nx = n % w;
+          if (Math.abs(nx - ix) > 1) continue;
+          const pi = n * 4;
+          if (isSimilarToBg(data[pi], data[pi+1], data[pi+2])) {
+            visited[n] = 1;
+            queue.push(n);
+          }
+        }
+      }
+
+      // Second BFS expansion — catches bg gradient edges
+      // Expands from already-removed pixels with looser
+      // tolerance but STRICT saturation check
+      const queueExp = [...queue];
+      let headExp = 0;
+      while (headExp < queueExp.length) {
+        const idx = queueExp[headExp++];
+        const iy = Math.floor(idx / w);
+        const ix = idx % w;
+        for (const off of offsets) {
+          const n = idx + off;
+          if (n < 0 || n >= w*h) continue;
+          if (visited[n]) continue;
+          const nx = n % w;
+          if (Math.abs(nx - ix) > 1) continue;
+          const pi = n * 4;
+          const r = data[pi], g = data[pi+1], b = data[pi+2];
+          const dist = colorDistance(r, g, b);
+          const sat = Math.max(r,g,b) - Math.min(r,g,b);
+          const brightness = (r+g+b)/3;
+          // Only expand into pixels that are:
+          // - Reasonably close to bg color (dist < TOLERANCE*1.4)
+          // - AND very low saturation (definitely not jewelry)
+          // - AND not suspiciously dark/bright compared to bg
+          //   (prevents eating into jewelry shadows/highlights)
+          const brightnessDiff = Math.abs(brightness -
+            (bgR+bgG+bgB)/3);
+          if (dist < TOLERANCE * 1.4 &&
+              sat < 25 &&
+              brightnessDiff < 60) {
+            visited[n] = 1;
+            queueExp.push(n);
+          }
+        }
+      }
+
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      // STEP 4 — SECOND PASS
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+      // PASS 2A — Expand flood fill with wider tolerance
+      // Re-run BFS from already-visited pixels
+      // with a wider tolerance to catch gradient edges
+      const WIDE_TOLERANCE = TOLERANCE * 1.6;
+      let head2 = 0;
+      const queue2 = [...queue]; // start from all removed pixels
+      while (head2 < queue2.length) {
+        const idx = queue2[head2++];
+        const iy = Math.floor(idx / w);
+        const ix = idx % w;
+        for (const off of offsets) {
+          const n = idx + off;
+          if (n < 0 || n >= w*h) continue;
+          if (visited[n]) continue;
+          const nx = n % w;
+          if (Math.abs(nx - ix) > 1) continue;
+          const pi = n * 4;
+          const r = data[pi], g = data[pi+1], b = data[pi+2];
+          const sat = Math.max(r,g,b) - Math.min(r,g,b);
+          const dist = colorDistance(r, g, b);
+          // Only expand into low-saturation pixels
+          // (background never has high color saturation)
+          // Jewellery = high saturation, bg = low saturation
+          if (dist < WIDE_TOLERANCE && sat < 30) {
+            visited[n] = 1;
+            queue2.push(n);
+          }
+        }
+      }
+
+      // PASS 2C — Only remove TINY isolated specks
+      // (1-3 pixel clusters max, clearly leftover bg)
+      // Never remove anything larger — could be jewelry
+      for (let y = 1; y < h-1; y++) {
+        for (let x = 1; x < w-1; x++) {
+          const i = y * w + x;
+          if (visited[i]) continue;
+          const pi = i * 4;
+          const r = data[pi], g = data[pi+1], b = data[pi+2];
+          const dist = colorDistance(r, g, b);
+          const sat = Math.max(r,g,b) - Math.min(r,g,b);
+
+          // Only remove if ALL 8 neighbours are already
+          // removed (visited) — truly isolated single pixel
+          const allNeighboursRemoved = [
+            visited[(y-1)*w+x], visited[(y+1)*w+x],
+            visited[y*w+(x-1)], visited[y*w+(x+1)],
+            visited[(y-1)*w+(x-1)], visited[(y-1)*w+(x+1)],
+            visited[(y+1)*w+(x-1)], visited[(y+1)*w+(x+1)]
+          ].filter(v => v === 1).length >= 6;
+
+          if (allNeighboursRemoved && dist < 40 && sat < 20) {
+            visited[i] = 1;
+          }
+        }
+      }
+
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      // STEP 5 — APPLY TRANSPARENCY
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      for (let i = 0; i < w * h; i++) {
+        if (visited[i]) data[i*4+3] = 0;
+      }
+
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      // STEP 6 — GRADUATED EDGE SOFTENING
+      // Smooth edges for natural blending
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      const snap = new Uint8ClampedArray(w * h);
+      for (let i = 0; i < w*h; i++) snap[i] = data[i*4+3];
+
+      for (let y = 1; y < h-1; y++) {
+        for (let x = 1; x < w-1; x++) {
+          const idx = y*w+x;
+          if (snap[idx] === 0) continue;
+          const nb = [
+            snap[(y-1)*w+x],   snap[(y+1)*w+x],
+            snap[y*w+(x-1)],   snap[y*w+(x+1)],
+            snap[(y-1)*w+(x-1)], snap[(y-1)*w+(x+1)],
+            snap[(y+1)*w+(x-1)], snap[(y+1)*w+(x+1)]
+          ];
+          const t = nb.filter(a => a === 0).length;
+          // ONLY soften true outermost edge pixels
+          // Never touch anything with 3 or fewer
+          // transparent neighbours — that's jewelry interior
+          if (t >= 7) data[idx*4+3] = 0;
+          else if (t >= 6) data[idx*4+3] = 60;
+          else if (t >= 5) data[idx*4+3] = 140;
+          // t <= 4: fully opaque, DO NOT touch
+        }
+      }
+
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      // STEP 7 — OUTPUT
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ctx.putImageData(imageData, 0, 0);
+      offCanvas.toBlob((blob) => {
+        console.log('[JWLZIFY] bg removal SUCCESS');
+        resolve(URL.createObjectURL(blob));
+      }, 'image/png', 1.0);
+    };
+
+    img.onerror = (e) => {
+      console.error('[JWLZIFY] img load failed:', e);
+      resolve(imageUrl);
+    };
+
+    // CRITICAL: Never append ?cb= to blob URLs
+    img.src = imageUrl.startsWith('blob:')
+      ? imageUrl
+      : (imageUrl + (imageUrl.includes('?') ? '&' : '?')
+         + 'cb=' + Date.now());
+  });
 }
 
 async function loadPendantForTryOn(imageUrl) {
