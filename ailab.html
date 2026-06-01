@@ -170,9 +170,14 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
   box-shadow: none !important;
   -webkit-box-shadow: none !important;
 }
-#jewelryImg, #ringOverlay, #earringLeft,
+#ringOverlay, #earringLeft,
 #earringRight, #braceletOverlay, #necklaceOverlay {
   mix-blend-mode: normal !important;
+  filter: none !important;
+  opacity: 1 !important;
+}
+#jewelryImg {
+  mix-blend-mode: multiply;
   filter: none !important;
   opacity: 1 !important;
 }

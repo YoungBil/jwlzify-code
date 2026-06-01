@@ -8,6 +8,9 @@ import { GLTFLoader }  from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { RGBELoader }  from 'three/addons/loaders/RGBELoader.js';
 
+// ── Feature flag ─────────────────────────────────────────────────────────────
+const AR_3D_ENABLED = false; // set true to re-enable fal.ai + Three.js pipeline
+
 // ── Configuration ────────────────────────────────────────────────────────────
 const CONFIG = {
   FAL_KEY:                    '9284ccc4-a0ff-48dc-ad1f-83bf22a7a6cd:040197e513fab8b9333f46bd5bd19f16',
@@ -347,14 +350,66 @@ function startLoop() {
   frame();
 }
 
+// ── 2D pose tracking — repositions jewelryUnit div each frame ────────────────
+function repositionOverlay() {
+  const unit = document.getElementById('jewelryUnit');
+  if (!unit || unit.offsetWidth === 0) return; // not visible yet
+  unit.style.left = Math.round(AR.chestAnchor.x - unit.offsetWidth  / 2) + 'px';
+  unit.style.top  = Math.round(AR.chestAnchor.y) + 'px';
+}
+
+async function run2DPoseTracking() {
+  AR.active = true;
+  const camWrap = document.getElementById('camWrap');
+  const video   = document.getElementById('camVideo');
+
+  // Use camWrap CSS dimensions — chestAnchor ends up in CSS pixel space
+  AR.camW = camWrap.offsetWidth;
+  AR.camH = camWrap.offsetHeight;
+
+  try {
+    AR.mpPose = buildPose(({ poseLandmarks }) => {
+      if (!AR.active) return;
+      processLandmarks(poseLandmarks);
+      repositionOverlay();
+    });
+
+    if (video.readyState >= 2 && video.videoWidth > 0) {
+      await AR.mpPose.send({ image: video });
+    }
+
+    function loop() {
+      if (!AR.active) return;
+      AR.rafId = requestAnimationFrame(loop);
+      AR.frameCount++;
+      if (AR.frameCount % 3 === 0 && !AR.poseRunning &&
+          video.readyState >= 2 && video.videoWidth > 0) {
+        AR.poseRunning = true;
+        AR.mpPose.send({ image: video })
+          .finally(() => { AR.poseRunning = false; });
+      }
+    }
+    loop();
+
+  } catch (err) {
+    console.warn('[AR] 2D pose tracking failed:', err);
+    AR.active = false;
+  }
+}
+
 // ── Public: init ─────────────────────────────────────────────────────────────
 async function initARPipeline() {
   // Camera is already running — setupTryOn started it before calling us.
-  AR.active = true;
 
+  if (!AR_3D_ENABLED) {
+    // 2D mode: pose-track the jewelryUnit div, no fal.ai or Three.js
+    run2DPoseTracking();
+    return;
+  }
+
+  AR.active = true;
   const camWrap = document.getElementById('camWrap');
   const arLoad  = document.getElementById('arLoading');
-
   arLoad?.classList.remove('hidden');
 
   try {
@@ -401,9 +456,8 @@ async function initARPipeline() {
     startLoop();
 
   } catch (err) {
-    // 2D overlay is already visible (set by setupTryOn) — just log and hide spinner
     console.warn('[AR] 3D pipeline failed, 2D overlay remains:', err);
-    arLoad?.classList.add('hidden');
+    document.getElementById('arLoading')?.classList.add('hidden');
     AR.active = false;
   }
 }
