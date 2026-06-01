@@ -2890,13 +2890,15 @@ document.getElementById('s2ConfirmBtn').addEventListener('click', s2ConfirmSave)
 async function removePendantBackground(imageUrl) {
   return new Promise((resolve) => {
     const img = new Image();
+
+    // Never set crossOrigin on blob URLs — breaks loading
     if (!imageUrl.startsWith('blob:')) {
       img.crossOrigin = 'anonymous';
     }
 
     img.onload = () => {
       const offCanvas = document.createElement('canvas');
-      offCanvas.width  = img.naturalWidth;
+      offCanvas.width = img.naturalWidth;
       offCanvas.height = img.naturalHeight;
       const ctx = offCanvas.getContext('2d');
       ctx.drawImage(img, 0, 0);
@@ -2906,36 +2908,45 @@ async function removePendantBackground(imageUrl) {
       const imageData = ctx.getImageData(0, 0, w, h);
       const data = imageData.data;
 
-      // STEP 1 — Sample bg color from corners + edge midpoints
       function getPixel(x, y) {
         const i = (y * w + x) * 4;
         return [data[i], data[i+1], data[i+2]];
       }
+
       const corners = [
-        getPixel(0, 0), getPixel(w-1, 0), getPixel(0, h-1), getPixel(w-1, h-1),
-        getPixel(Math.floor(w/2), 0),  getPixel(0, Math.floor(h/2)),
-        getPixel(w-1, Math.floor(h/2)), getPixel(Math.floor(w/2), h-1),
+        getPixel(0, 0), getPixel(w-1, 0),
+        getPixel(0, h-1), getPixel(w-1, h-1),
+        getPixel(Math.floor(w/2), 0),
+        getPixel(0, Math.floor(h/2)),
+        getPixel(w-1, Math.floor(h/2)),
+        getPixel(Math.floor(w/2), h-1),
       ];
-      const bgR = Math.round(corners.reduce((s,c) => s+c[0], 0) / corners.length);
-      const bgG = Math.round(corners.reduce((s,c) => s+c[1], 0) / corners.length);
-      const bgB = Math.round(corners.reduce((s,c) => s+c[2], 0) / corners.length);
+
+      const bgR = Math.round(
+        corners.reduce((s,c) => s+c[0], 0) / corners.length);
+      const bgG = Math.round(
+        corners.reduce((s,c) => s+c[1], 0) / corners.length);
+      const bgB = Math.round(
+        corners.reduce((s,c) => s+c[2], 0) / corners.length);
+
       console.log('[JWLZIFY] detected bg color:', bgR, bgG, bgB);
 
-      // STEP 2 — Color similarity check
-      const TOLERANCE = 35;
-      function isSimilarToBg(r, g, b) {
-        return Math.abs(r - bgR) < TOLERANCE &&
-               Math.abs(g - bgG) < TOLERANCE &&
-               Math.abs(b - bgB) < TOLERANCE;
+      function isSimilarToBg(r, g, b, tolerance) {
+        return Math.abs(r-bgR) < tolerance &&
+               Math.abs(g-bgG) < tolerance &&
+               Math.abs(b-bgB) < tolerance;
       }
 
-      // STEP 3 — BFS flood fill from all edges inward
       const visited = new Uint8Array(w * h);
-      const queue   = [];
+      const queue = [];
+      const TOLERANCE = 35;
+
       for (let x = 0; x < w; x++) {
         for (const y of [0, h-1]) {
           const i = y * w + x;
-          if (!visited[i] && isSimilarToBg(data[i*4], data[i*4+1], data[i*4+2])) {
+          const pi = i * 4;
+          if (!visited[i] && isSimilarToBg(
+            data[pi], data[pi+1], data[pi+2], TOLERANCE)) {
             queue.push(i); visited[i] = 1;
           }
         }
@@ -2943,65 +2954,71 @@ async function removePendantBackground(imageUrl) {
       for (let y = 0; y < h; y++) {
         for (const x of [0, w-1]) {
           const i = y * w + x;
-          if (!visited[i] && isSimilarToBg(data[i*4], data[i*4+1], data[i*4+2])) {
+          const pi = i * 4;
+          if (!visited[i] && isSimilarToBg(
+            data[pi], data[pi+1], data[pi+2], TOLERANCE)) {
             queue.push(i); visited[i] = 1;
           }
         }
       }
+
       const offsets = [-1, 1, -w, w, -w-1, -w+1, w-1, w+1];
       let head = 0;
       while (head < queue.length) {
         const idx = queue[head++];
         for (const off of offsets) {
           const n = idx + off;
-          if (n < 0 || n >= w * h || visited[n]) continue;
-          if (isSimilarToBg(data[n*4], data[n*4+1], data[n*4+2])) {
+          if (n < 0 || n >= w*h || visited[n]) continue;
+          const pi = n * 4;
+          if (isSimilarToBg(
+            data[pi], data[pi+1], data[pi+2], TOLERANCE)) {
             visited[n] = 1; queue.push(n);
           }
         }
       }
 
-      // STEP 4 — Erase all visited (background) pixels
-      for (let i = 0; i < w * h; i++) {
-        if (visited[i]) data[i * 4 + 3] = 0;
+      for (let i = 0; i < w*h; i++) {
+        if (visited[i]) data[i*4+3] = 0;
       }
 
-      // STEP 5 — Edge softening against snapshot
-      const alphaSnap = new Uint8ClampedArray(w * h);
-      for (let i = 0; i < w * h; i++) alphaSnap[i] = data[i * 4 + 3];
+      // Edge softening
+      const snap = new Uint8ClampedArray(w*h);
+      for (let i = 0; i < w*h; i++) snap[i] = data[i*4+3];
 
       for (let y = 1; y < h-1; y++) {
         for (let x = 1; x < w-1; x++) {
-          const idx = y * w + x;
-          if (alphaSnap[idx] === 0) continue;
-          const n8 = [
-            alphaSnap[(y-1)*w+x],   alphaSnap[(y+1)*w+x],
-            alphaSnap[y*w+(x-1)],   alphaSnap[y*w+(x+1)],
-            alphaSnap[(y-1)*w+(x-1)], alphaSnap[(y-1)*w+(x+1)],
-            alphaSnap[(y+1)*w+(x-1)], alphaSnap[(y+1)*w+(x+1)]
+          const idx = y*w+x;
+          if (snap[idx] === 0) continue;
+          const nb = [
+            snap[(y-1)*w+x], snap[(y+1)*w+x],
+            snap[y*w+(x-1)], snap[y*w+(x+1)],
+            snap[(y-1)*w+(x-1)], snap[(y-1)*w+(x+1)],
+            snap[(y+1)*w+(x-1)], snap[(y+1)*w+(x+1)]
           ];
-          const t = n8.filter(a => a === 0).length;
-          if      (t >= 6) data[idx * 4 + 3] = 60;
-          else if (t >= 4) data[idx * 4 + 3] = 120;
-          else if (t >= 2) data[idx * 4 + 3] = 200;
+          const t = nb.filter(a => a===0).length;
+          if (t >= 6) data[idx*4+3] = 60;
+          else if (t >= 4) data[idx*4+3] = 120;
+          else if (t >= 2) data[idx*4+3] = 200;
         }
       }
 
       ctx.putImageData(imageData, 0, 0);
       offCanvas.toBlob((blob) => {
-        console.log('[JWLZIFY] universal bg removal done');
+        console.log('[JWLZIFY] bg removal SUCCESS');
         resolve(URL.createObjectURL(blob));
       }, 'image/png');
     };
 
-    img.onerror = () => {
-      console.warn('[JWLZIFY] img load failed, using original');
+    img.onerror = (e) => {
+      console.error('[JWLZIFY] img load failed:', e);
       resolve(imageUrl);
     };
 
+    // CRITICAL: Never append ?cb= to blob URLs
     img.src = imageUrl.startsWith('blob:')
       ? imageUrl
-      : imageUrl + (imageUrl.includes('?') ? '&' : '?') + 'cb=' + Date.now();
+      : (imageUrl + (imageUrl.includes('?') ? '&' : '?')
+         + 'cb=' + Date.now());
   });
 }
 
