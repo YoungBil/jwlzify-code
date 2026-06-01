@@ -1228,6 +1228,10 @@ window.addEventListener('DOMContentLoaded', () => {
 /* ── Claude API key (fill in to enable AI spec cards) ── */
 const CLAUDE_API_KEY = '';
 
+/* ── Gemini image generation ── */
+const GEMINI_API_KEY = 'AIzaSyCLOMIAySPZ-5oax7-tVeyd0rAs6l5lvJ0';
+const GEMINI_MODEL   = 'gemini-2.0-flash-preview-image-generation';
+
 /* ── Chain style selection for necklace type ── */
 let selectedChainStyle  = null;
 let selectedChainPrompt = '';
@@ -1336,6 +1340,46 @@ async function _fetchWithRetry(makeUrl) {
     catch (e) { lastErr = e; }
   }
   throw lastErr;
+}
+
+async function generateWithGemini(prompt) {
+  console.log('[JWLZIFY] generating with Gemini Flash:', prompt);
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
+  const body = {
+    contents: [{ parts: [{ text: prompt }] }],
+    generationConfig: {
+      responseModalities: ['TEXT', 'IMAGE'],
+      responseMimeType: 'image/jpeg'
+    }
+  };
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(`Gemini ${response.status}: ${err.error?.message || response.statusText}`);
+  }
+  const data = await response.json();
+  const parts = data.candidates?.[0]?.content?.parts;
+  const imagePart = parts?.find(p => p.inlineData);
+  if (!imagePart?.inlineData?.data) throw new Error('No image in Gemini response');
+  const byteChars = atob(imagePart.inlineData.data);
+  const byteArray = new Uint8Array(byteChars.length);
+  for (let i = 0; i < byteChars.length; i++) byteArray[i] = byteChars.charCodeAt(i);
+  const blob = new Blob([byteArray], { type: imagePart.inlineData.mimeType || 'image/jpeg' });
+  console.log('[JWLZIFY] Gemini image generated successfully');
+  return URL.createObjectURL(blob);
+}
+
+async function _generateImage(prompt, pollinationsMakeUrl) {
+  try {
+    return await generateWithGemini(prompt);
+  } catch(e) {
+    console.warn('[JWLZIFY] Gemini failed, falling back to Pollinations:', e.message);
+  }
+  return await _fetchWithRetry(pollinationsMakeUrl);
 }
 
 /* ── Rate-limit / queue state ── */
@@ -1893,8 +1937,8 @@ async function startGeneration(isTweak) {
     ri.style.filter = 'blur(14px) brightness(0.8)';
   }
 
-  // Queue the fetch — respects GEN_MAX_CONCURRENT, retries up to 3× with backoff
-  _enqueueGen(() => _fetchWithRetry(makeUrl)).then((blobUrl) => {
+  // Queue the fetch — Gemini primary, Pollinations fallback, queue respects GEN_MAX_CONCURRENT
+  _enqueueGen(() => _generateImage(fullPrompt, makeUrl)).then((blobUrl) => {
     if (thisGen !== generationId) { URL.revokeObjectURL(blobUrl); return; }
 
     LAB.imageUrl = blobUrl;
