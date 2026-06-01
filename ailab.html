@@ -749,6 +749,36 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
                     box-shadow:0 1px 4px rgba(0,0,0,0.4);">
         </div>
 
+        <!-- Earring try-on: left earring -->
+        <img id="tryon-earring-left"
+             style="position:absolute;width:70px;height:auto;
+                    cursor:grab;user-select:none;
+                    display:none;z-index:10;pointer-events:auto;">
+
+        <!-- Earring try-on: right earring -->
+        <img id="tryon-earring-right"
+             style="position:absolute;width:70px;height:auto;
+                    cursor:grab;user-select:none;
+                    display:none;z-index:10;pointer-events:auto;">
+
+        <!-- Resize handle: left earring -->
+        <div id="tryon-earring-left-handle"
+             style="position:absolute;width:12px;height:12px;
+                    background:#C0C0C0;border-radius:50%;
+                    cursor:se-resize;display:none;z-index:11;
+                    border:1.5px solid rgba(255,255,255,0.7);
+                    box-shadow:0 1px 4px rgba(0,0,0,0.4);">
+        </div>
+
+        <!-- Resize handle: right earring -->
+        <div id="tryon-earring-right-handle"
+             style="position:absolute;width:12px;height:12px;
+                    background:#C0C0C0;border-radius:50%;
+                    cursor:se-resize;display:none;z-index:11;
+                    border:1.5px solid rgba(255,255,255,0.7);
+                    box-shadow:0 1px 4px rgba(0,0,0,0.4);">
+        </div>
+
       </div>
 
       <p style="font-family:Inter,sans-serif;text-align:center;font-size:11px;
@@ -1198,6 +1228,19 @@ window.addEventListener('DOMContentLoaded', () => {
 /* ── Claude API key (fill in to enable AI spec cards) ── */
 const CLAUDE_API_KEY = '';
 
+/* ── BG removal cache — avoids repeat API calls per session ── */
+const bgRemovalCache = new Map();
+async function removePendantBackgroundCached(imageUrl) {
+  if (bgRemovalCache.has(imageUrl)) {
+    console.log('[JWLZIFY] using cached bg removal');
+    return bgRemovalCache.get(imageUrl);
+  }
+  console.log('[JWLZIFY] new bg removal call');
+  const cleanUrl = await removePendantBackground(imageUrl);
+  bgRemovalCache.set(imageUrl, cleanUrl);
+  return cleanUrl;
+}
+
 /* ── Display name maps ── */
 const MATERIAL_LABEL = {
   '925silver':  '925 Sterling Silver',
@@ -1487,9 +1530,22 @@ function buildPrompt(type, material, gem, style, desc) {
     return `${base}luxury ${style} ${wPart}pendant charm, bail connector at top, ${mDisp}, ${gemPart}, close-up macro product photograph, pendant centered filling the frame, high contrast separation between pendant and background, soft even studio lighting with no shadows on background, pure white seamless background, ultra sharp focus, hyper realistic, 8K ultra high definition, precious metal gleam, gemstone sparkle and brilliance`;
   }
 
+  if (type === 'earrings') {
+    // Single earring only — we mirror it ourselves in try-on to make a pair
+    const earringAdditions = [
+      'ONE single earring only',
+      'single individual earring',
+      'NOT a pair',
+      'only one earring in frame',
+      'centered single earring',
+      'isolated single piece',
+      'white background'
+    ].join(', ');
+    return `${base}${earringAdditions}, luxury ${style} ${wPart}earring, ${mDisp}, ${gemPart}, professional jewelry product photography, pure white seamless background, no shadows, hyper realistic, 8K ultra high definition, macro lens, sharp focus, highly detailed, photorealistic, precious metal gleam, gemstone sparkle and brilliance`;
+  }
+
   const typeMap = {
     ring:     'ring band jewelry',
-    earrings: 'pair of earrings fine jewelry',
     bracelet: 'cuff bracelet jewelry'
   };
   const piece = typeMap[type] || type;
@@ -1758,6 +1814,8 @@ async function startGeneration(isTweak) {
     if (thisGen !== generationId) { URL.revokeObjectURL(blobUrl); return; }
 
     LAB.imageUrl = blobUrl;
+    bgRemovalCache.clear();
+    console.log('[JWLZIFY] bg cache cleared for new design');
     ri.src = blobUrl;
     document.getElementById('quoteImg').src = blobUrl;
     const ot = document.getElementById('orderThumb');
@@ -2570,32 +2628,48 @@ async function startTryOnCamera() {
 
 async function setupTryOn() {
   isTryOnActive = true;
-  console.log('[JWLZIFY] try-on step reached');
+  console.log('[JWLZIFY] try-on step reached, type:', LAB.type);
   if (!LAB.imageUrl) { goStep(5); return; }
 
   startTryOnCamera();
-  window._tryonPendantSize = 160;
-  window._tryonPendantImg  = null;
-
-  const canvas = document.getElementById('tryon-necklace');
-  const handle = document.getElementById('tryon-resize');
-  if (canvas) canvas.style.display = 'block';
-  if (handle) handle.style.display = 'block';
-
   console.log('[JWLZIFY] image url passed:', LAB.imageUrl);
 
-  if (typeof window._loadPendantForTryOn === 'function') {
-    window._loadPendantForTryOn(LAB.imageUrl);
+  if (LAB.type === 'earrings') {
+    // Hide pendant/necklace elements
+    const canvas = document.getElementById('tryon-necklace');
+    const handle = document.getElementById('tryon-resize');
+    if (canvas) canvas.style.display = 'none';
+    if (handle) handle.style.display = 'none';
+    loadEarringsForTryOn(LAB.imageUrl);
+  } else if (LAB.type === 'necklace') {
+    const canvas = document.getElementById('tryon-necklace');
+    const handle = document.getElementById('tryon-resize');
+    if (canvas) canvas.style.display = 'none';
+    if (handle) handle.style.display = 'none';
+    loadNecklaceForTryOn(LAB.imageUrl);
   } else {
-    // Module not loaded — draw original image directly without bg removal
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => {
-      window._tryonPendantImg = img;
-      drawNecklace(img, window._tryonPendantSize);
-    };
-    img.onerror = () => console.warn('[JWLZIFY] failed to load pendant image directly');
-    img.src = LAB.imageUrl;
+    // Pendant / ring / bracelet flow
+    window._tryonPendantSize = 160;
+    window._tryonPendantImg  = null;
+
+    const canvas = document.getElementById('tryon-necklace');
+    const handle = document.getElementById('tryon-resize');
+    if (canvas) canvas.style.display = 'block';
+    if (handle) handle.style.display = 'block';
+
+    if (typeof window._loadPendantForTryOn === 'function') {
+      window._loadPendantForTryOn(LAB.imageUrl);
+    } else {
+      // Module not loaded — draw original image directly without bg removal
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        window._tryonPendantImg = img;
+        drawNecklace(img, window._tryonPendantSize);
+      };
+      img.onerror = () => console.warn('[JWLZIFY] failed to load pendant image directly');
+      img.src = LAB.imageUrl;
+    }
   }
 }
 
@@ -2610,6 +2684,13 @@ function teardownTryOn() {
   const handle = document.getElementById('tryon-resize');
   if (canvas) canvas.style.display = 'none';
   if (handle) handle.style.display = 'none';
+  ['tryon-earring-left', 'tryon-earring-right',
+   'tryon-earring-left-handle', 'tryon-earring-right-handle',
+   'tryon-necklace-img', 'tryon-necklace-resize'
+  ].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'none';
+  });
 }
 
 
@@ -3254,7 +3335,7 @@ async function loadPendantForTryOn(imageUrl) {
   tempImg.src = imageUrl;
 
   // Step 2: remove background then redraw with clean transparent pendant
-  const cleanUrl = await removePendantBackground(imageUrl);
+  const cleanUrl = await removePendantBackgroundCached(imageUrl);
   const realImg  = new Image();
   realImg.crossOrigin = 'anonymous';
   realImg.onload = () => {
@@ -3266,6 +3347,321 @@ async function loadPendantForTryOn(imageUrl) {
 }
 
 window._loadPendantForTryOn = loadPendantForTryOn;
+
+/* ── Earring try-on ─────────────────────────── */
+
+function updateEarringHandles() {
+  const c = document.getElementById('tryon-container').getBoundingClientRect();
+  const leftEl     = document.getElementById('tryon-earring-left');
+  const rightEl    = document.getElementById('tryon-earring-right');
+  const leftHandle = document.getElementById('tryon-earring-left-handle');
+  const rightHandle= document.getElementById('tryon-earring-right-handle');
+
+  if (leftEl && leftEl.style.display !== 'none') {
+    const r = leftEl.getBoundingClientRect();
+    leftHandle.style.left = (r.right  - c.left - 6) + 'px';
+    leftHandle.style.top  = (r.bottom - c.top  - 6) + 'px';
+  }
+  if (rightEl && rightEl.style.display !== 'none') {
+    const r = rightEl.getBoundingClientRect();
+    rightHandle.style.left = (r.right  - c.left - 6) + 'px';
+    rightHandle.style.top  = (r.bottom - c.top  - 6) + 'px';
+  }
+}
+
+function makeEarringDraggable(earringEl, handleEl) {
+  let isDragging = false;
+  let isResizing = false;
+  let startX, startY, startLeft, startTop;
+  let resizeStartX, resizeStartWidth;
+
+  earringEl.addEventListener('pointerdown', e => {
+    isDragging = true;
+    earringEl.style.cursor = 'grabbing';
+    const c = document.getElementById('tryon-container').getBoundingClientRect();
+    const r = earringEl.getBoundingClientRect();
+    startX    = e.clientX;
+    startY    = e.clientY;
+    startLeft = r.left - c.left;
+    startTop  = r.top  - c.top;
+    earringEl.style.left = startLeft + 'px';
+    earringEl.style.top  = startTop  + 'px';
+    earringEl.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  });
+
+  document.addEventListener('pointermove', e => {
+    if (isDragging) {
+      earringEl.style.left = (startLeft + e.clientX - startX) + 'px';
+      earringEl.style.top  = (startTop  + e.clientY - startY) + 'px';
+      updateEarringHandles();
+    }
+    if (isResizing) {
+      const newW = Math.max(30, Math.min(200,
+        resizeStartWidth + (e.clientX - resizeStartX)));
+      earringEl.style.width = newW + 'px';
+      updateEarringHandles();
+    }
+  });
+
+  document.addEventListener('pointerup', () => {
+    isDragging = false;
+    isResizing = false;
+    earringEl.style.cursor = 'grab';
+  });
+
+  handleEl.addEventListener('pointerdown', e => {
+    isResizing      = true;
+    resizeStartX     = e.clientX;
+    resizeStartWidth = earringEl.offsetWidth;
+    handleEl.setPointerCapture(e.pointerId);
+    e.preventDefault();
+    e.stopPropagation();
+  });
+}
+
+async function cropToSingleEarring(imageUrl) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    if (!imageUrl.startsWith('blob:')) {
+      img.crossOrigin = 'anonymous';
+    }
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const w = img.naturalWidth;
+      const h = img.naturalHeight;
+
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = w;
+      tempCanvas.height = h;
+      const tempCtx = tempCanvas.getContext('2d');
+      tempCtx.drawImage(img, 0, 0);
+      const pixels = tempCtx.getImageData(0, 0, w, h).data;
+
+      const centerX = Math.floor(w * 0.5);
+      let splitX = centerX;
+
+      for (let x = centerX; x > w * 0.2; x--) {
+        let nonWhiteCount = 0;
+        for (let y = 0; y < h; y++) {
+          const i = (y * w + x) * 4;
+          const r = pixels[i], g = pixels[i+1], b = pixels[i+2];
+          if (r < 230 || g < 230 || b < 230) {
+            nonWhiteCount++;
+          }
+        }
+        if (nonWhiteCount < h * 0.05) {
+          splitX = x;
+          break;
+        }
+      }
+
+      const cropW = Math.min(splitX + 20, Math.floor(w * 0.52));
+      canvas.width = cropW;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, cropW, h, 0, 0, cropW, h);
+
+      canvas.toBlob((blob) => {
+        console.log('[JWLZIFY] smart crop at x:', splitX);
+        resolve(URL.createObjectURL(blob));
+      }, 'image/png');
+    };
+    img.onerror = () => resolve(imageUrl);
+    img.src = imageUrl.startsWith('blob:')
+      ? imageUrl
+      : imageUrl + '?cb=' + Date.now();
+  });
+}
+
+async function loadEarringsForTryOn(imageUrl) {
+  // Hide all pendant/necklace elements — earrings only
+  ['tryon-necklace', 'tryon-pendant', 'tryon-resize'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'none';
+  });
+
+  const container  = document.getElementById('tryon-container');
+  const containerW = container.offsetWidth;
+  const containerH = container.offsetHeight;
+  const leftEl     = document.getElementById('tryon-earring-left');
+  const rightEl    = document.getElementById('tryon-earring-right');
+  const leftHandle = document.getElementById('tryon-earring-left-handle');
+  const rightHandle= document.getElementById('tryon-earring-right-handle');
+
+  // Step 1: Crop to single earring if AI returned a pair
+  const singleUrl = await cropToSingleEarring(imageUrl);
+
+  // Step 2: Remove background
+  const cleanUrl = await removePendantBackgroundCached(singleUrl);
+
+  // Left: normal, Right: mirrored — looks like a natural pair
+  leftEl.src = cleanUrl;
+  leftEl.style.transform = 'none';
+
+  rightEl.src = cleanUrl;
+  rightEl.style.transform = 'scaleX(-1)';
+
+  // Position: ears at ~22% and ~78% horizontal, ~42% down
+  const earringSize = 70;
+  const earSpacing  = containerW * 0.28;
+  const centerX     = containerW * 0.5;
+  const earY        = containerH * 0.42;
+
+  leftEl.style.left  = (centerX - earSpacing - earringSize / 2) + 'px';
+  leftEl.style.top   = earY + 'px';
+  leftEl.style.width = earringSize + 'px';
+  leftEl.style.display = 'block';
+
+  rightEl.style.left  = (centerX + earSpacing - earringSize / 2) + 'px';
+  rightEl.style.top   = earY + 'px';
+  rightEl.style.width = earringSize + 'px';
+  rightEl.style.display = 'block';
+
+  leftHandle.style.display  = 'block';
+  rightHandle.style.display = 'block';
+
+  // Wait one frame for layout before placing handles
+  requestAnimationFrame(updateEarringHandles);
+  console.log('[JWLZIFY] earrings loaded and positioned');
+}
+
+// Wire up independent drag + resize for each earring
+makeEarringDraggable(
+  document.getElementById('tryon-earring-left'),
+  document.getElementById('tryon-earring-left-handle')
+);
+makeEarringDraggable(
+  document.getElementById('tryon-earring-right'),
+  document.getElementById('tryon-earring-right-handle')
+);
+
+/* ── Necklace try-on ─────────────────────────── */
+
+function updateNecklaceResizeHandle() {
+  const img    = document.getElementById('tryon-necklace-img');
+  const handle = document.getElementById('tryon-necklace-resize');
+  if (!img || !handle) return;
+  const c = document.getElementById('tryon-container').getBoundingClientRect();
+  const r = img.getBoundingClientRect();
+  handle.style.left = (r.right  - c.left - 7) + 'px';
+  handle.style.top  = (r.bottom - c.top  - 7) + 'px';
+}
+
+let necklaceDragging = false;
+let necklaceResizing = false;
+let nlStartX, nlStartY, nlStartLeft, nlStartTop;
+let nlResizeStartX, nlResizeStartW;
+
+document.getElementById('tryon-container')
+  .addEventListener('pointerdown', e => {
+    const img    = document.getElementById('tryon-necklace-img');
+    const handle = document.getElementById('tryon-necklace-resize');
+    if (!img || img.style.display === 'none') return;
+
+    if (e.target === handle) {
+      necklaceResizing = true;
+      nlResizeStartX   = e.clientX;
+      nlResizeStartW   = img.offsetWidth;
+      handle.setPointerCapture(e.pointerId);
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+    if (e.target === img) {
+      necklaceDragging = true;
+      img.style.cursor = 'grabbing';
+      const c = document.getElementById('tryon-container').getBoundingClientRect();
+      const r = img.getBoundingClientRect();
+      nlStartX    = e.clientX;
+      nlStartY    = e.clientY;
+      nlStartLeft = r.left - c.left;
+      nlStartTop  = r.top  - c.top;
+      img.setPointerCapture(e.pointerId);
+      e.preventDefault();
+    }
+  });
+
+document.addEventListener('pointermove', e => {
+  const img = document.getElementById('tryon-necklace-img');
+  if (!img) return;
+  if (necklaceDragging) {
+    img.style.left = (nlStartLeft + e.clientX - nlStartX) + 'px';
+    img.style.top  = (nlStartTop  + e.clientY - nlStartY) + 'px';
+    updateNecklaceResizeHandle();
+  }
+  if (necklaceResizing) {
+    const newW = Math.max(80, Math.min(600,
+      nlResizeStartW + (e.clientX - nlResizeStartX)));
+    img.style.width = newW + 'px';
+    updateNecklaceResizeHandle();
+  }
+});
+
+document.addEventListener('pointerup', () => {
+  const img = document.getElementById('tryon-necklace-img');
+  if (img && necklaceDragging) img.style.cursor = 'grab';
+  necklaceDragging = false;
+  necklaceResizing = false;
+});
+
+async function loadNecklaceForTryOn(imageUrl) {
+  console.log('[JWLZIFY] loading necklace try-on');
+
+  // Hide all other try-on elements
+  ['tryon-necklace', 'tryon-pendant', 'tryon-resize',
+   'tryon-earring-left', 'tryon-earring-right',
+   'tryon-earring-left-handle', 'tryon-earring-right-handle'
+  ].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'none';
+  });
+
+  // Create img element if it doesn't exist yet
+  let necklaceImg    = document.getElementById('tryon-necklace-img');
+  let necklaceResize = document.getElementById('tryon-necklace-resize');
+
+  if (!necklaceImg) {
+    necklaceImg = document.createElement('img');
+    necklaceImg.id = 'tryon-necklace-img';
+    necklaceImg.style.cssText =
+      'position:absolute;cursor:grab;user-select:none;display:none;z-index:10;pointer-events:auto;';
+    document.getElementById('tryon-container').appendChild(necklaceImg);
+  }
+
+  if (!necklaceResize) {
+    necklaceResize = document.createElement('div');
+    necklaceResize.id = 'tryon-necklace-resize';
+    necklaceResize.style.cssText =
+      'position:absolute;width:14px;height:14px;background:#C0C0C0;border-radius:50%;' +
+      'cursor:se-resize;display:none;z-index:11;' +
+      'border:1.5px solid rgba(255,255,255,0.7);box-shadow:0 1px 4px rgba(0,0,0,0.4);';
+    document.getElementById('tryon-container').appendChild(necklaceResize);
+  }
+
+  const container  = document.getElementById('tryon-container');
+  const W          = container.offsetWidth;
+  const H          = container.offsetHeight;
+  const defaultW   = Math.floor(W * 0.70);
+  const defaultLeft= Math.floor((W - defaultW) / 2);
+  const defaultTop = Math.floor(H * 0.28);
+
+  // Show immediately with original while bg removal runs
+  necklaceImg.src           = imageUrl;
+  necklaceImg.style.width   = defaultW + 'px';
+  necklaceImg.style.height  = 'auto';
+  necklaceImg.style.left    = defaultLeft + 'px';
+  necklaceImg.style.top     = defaultTop  + 'px';
+  necklaceImg.style.display = 'block';
+  necklaceResize.style.display = 'block';
+  requestAnimationFrame(updateNecklaceResizeHandle);
+
+  // Swap to bg-removed version — cached so no extra API call on revisit
+  const cleanUrl = await removePendantBackgroundCached(imageUrl);
+  necklaceImg.src = cleanUrl;
+  requestAnimationFrame(updateNecklaceResizeHandle);
+  console.log('[JWLZIFY] necklace loaded with bg removed');
+}
 </script>
 
 
