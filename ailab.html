@@ -2988,10 +2988,8 @@ async function setupTryOn() {
     await startCamera();
   } catch { return; }
 
-  // Pendant uses the 3D AR pipeline — skip 2D overlay so the box never appears
-  if (LAB.type !== 'pendant') {
-    activateTryOnOverlay(LAB.type, LAB.imageUrl);
-  }
+  // Always show 2D overlay immediately — for pendant, 3D canvas renders on top when ready
+  activateTryOnOverlay(LAB.type, LAB.imageUrl);
 
   document.getElementById('guideText').textContent    = TRYON_GUIDE[LAB.type] || 'CENTER YOURSELF IN FRAME';
   document.getElementById('jewBadgeText').textContent = LAB.type.toUpperCase();
