@@ -2890,8 +2890,6 @@ document.getElementById('s2ConfirmBtn').addEventListener('click', s2ConfirmSave)
 async function removePendantBackground(imageUrl) {
   return new Promise((resolve) => {
     const img = new Image();
-
-    // Never set crossOrigin on blob URLs — breaks loading
     if (!imageUrl.startsWith('blob:')) {
       img.crossOrigin = 'anonymous';
     }
@@ -2908,105 +2906,186 @@ async function removePendantBackground(imageUrl) {
       const imageData = ctx.getImageData(0, 0, w, h);
       const data = imageData.data;
 
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      // STEP 1 — SAMPLE BACKGROUND COLOR
+      // Sample many edge points for accuracy
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
       function getPixel(x, y) {
-        const i = (y * w + x) * 4;
+        const i = (Math.round(y) * w + Math.round(x)) * 4;
         return [data[i], data[i+1], data[i+2]];
       }
 
-      const corners = [
-        getPixel(0, 0), getPixel(w-1, 0),
-        getPixel(0, h-1), getPixel(w-1, h-1),
-        getPixel(Math.floor(w/2), 0),
-        getPixel(0, Math.floor(h/2)),
-        getPixel(w-1, Math.floor(h/2)),
-        getPixel(Math.floor(w/2), h-1),
-      ];
-
-      const bgR = Math.round(
-        corners.reduce((s,c) => s+c[0], 0) / corners.length);
-      const bgG = Math.round(
-        corners.reduce((s,c) => s+c[1], 0) / corners.length);
-      const bgB = Math.round(
-        corners.reduce((s,c) => s+c[2], 0) / corners.length);
-
-      console.log('[JWLZIFY] detected bg color:', bgR, bgG, bgB);
-
-      function isSimilarToBg(r, g, b, tolerance) {
-        return Math.abs(r-bgR) < tolerance &&
-               Math.abs(g-bgG) < tolerance &&
-               Math.abs(b-bgB) < tolerance;
+      // Sample 32 points around all edges
+      const samples = [];
+      const steps = 8;
+      for (let i = 0; i <= steps; i++) {
+        const t = i / steps;
+        // Top edge
+        samples.push(getPixel(t * (w-1), 0));
+        // Bottom edge
+        samples.push(getPixel(t * (w-1), h-1));
+        // Left edge
+        samples.push(getPixel(0, t * (h-1)));
+        // Right edge
+        samples.push(getPixel(w-1, t * (h-1)));
       }
 
+      // Find the most common background color
+      // by clustering similar samples together
+      let bgR = Math.round(
+        samples.reduce((s,c) => s+c[0], 0) / samples.length);
+      let bgG = Math.round(
+        samples.reduce((s,c) => s+c[1], 0) / samples.length);
+      let bgB = Math.round(
+        samples.reduce((s,c) => s+c[2], 0) / samples.length);
+
+      const avgBrightness = (bgR + bgG + bgB) / 3;
+      const isDark = avgBrightness < 80;
+      const isLight = avgBrightness > 200;
+      const isMidtone = !isDark && !isLight;
+
+      // Adaptive tolerance based on bg type
+      // Dark/light bgs are more uniform → tighter
+      // Midtone bgs can have more variation → looser
+      const TOLERANCE = isDark ? 45 : isLight ? 40 : 55;
+
+      console.log('[JWLZIFY] bg color:', bgR, bgG, bgB,
+        '| type:', isDark?'dark':isLight?'light':'midtone',
+        '| tolerance:', TOLERANCE);
+
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      // STEP 2 — COLOR SIMILARITY FUNCTION
+      // Uses perceptual color distance not just RGB diff
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      function colorDistance(r, g, b) {
+        const dr = r - bgR;
+        const dg = g - bgG;
+        const db = b - bgB;
+        // Weighted perceptual distance
+        // (human eyes more sensitive to green)
+        return Math.sqrt(
+          0.299 * dr*dr +
+          0.587 * dg*dg +
+          0.114 * db*db
+        );
+      }
+
+      function isSimilarToBg(r, g, b) {
+        return colorDistance(r, g, b) < TOLERANCE;
+      }
+
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      // STEP 3 — FLOOD FILL FROM ALL EDGES
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
       const visited = new Uint8Array(w * h);
       const queue = [];
-      const TOLERANCE = 35;
 
-      for (let x = 0; x < w; x++) {
-        for (const y of [0, h-1]) {
-          const i = y * w + x;
-          const pi = i * 4;
-          if (!visited[i] && isSimilarToBg(
-            data[pi], data[pi+1], data[pi+2], TOLERANCE)) {
-            queue.push(i); visited[i] = 1;
-          }
+      function seedPixel(x, y) {
+        const i = y * w + x;
+        if (visited[i]) return;
+        const pi = i * 4;
+        if (isSimilarToBg(data[pi], data[pi+1], data[pi+2])) {
+          visited[i] = 1;
+          queue.push(i);
         }
+      }
+
+      // Seed all edge pixels
+      for (let x = 0; x < w; x++) {
+        seedPixel(x, 0);
+        seedPixel(x, h-1);
       }
       for (let y = 0; y < h; y++) {
-        for (const x of [0, w-1]) {
-          const i = y * w + x;
-          const pi = i * 4;
-          if (!visited[i] && isSimilarToBg(
-            data[pi], data[pi+1], data[pi+2], TOLERANCE)) {
-            queue.push(i); visited[i] = 1;
-          }
-        }
+        seedPixel(0, y);
+        seedPixel(w-1, y);
       }
 
+      // BFS flood fill (8-directional)
       const offsets = [-1, 1, -w, w, -w-1, -w+1, w-1, w+1];
       let head = 0;
       while (head < queue.length) {
         const idx = queue[head++];
+        const iy = Math.floor(idx / w);
+        const ix = idx % w;
         for (const off of offsets) {
           const n = idx + off;
-          if (n < 0 || n >= w*h || visited[n]) continue;
+          if (n < 0 || n >= w*h) continue;
+          if (visited[n]) continue;
+          // Boundary check to prevent wrapping
+          const nx = n % w;
+          if (Math.abs(nx - ix) > 1) continue;
           const pi = n * 4;
-          if (isSimilarToBg(
-            data[pi], data[pi+1], data[pi+2], TOLERANCE)) {
-            visited[n] = 1; queue.push(n);
+          if (isSimilarToBg(data[pi], data[pi+1], data[pi+2])) {
+            visited[n] = 1;
+            queue.push(n);
           }
         }
       }
 
-      for (let i = 0; i < w*h; i++) {
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      // STEP 4 — SECOND PASS
+      // Catch remaining isolated bg pockets
+      // that weren't reachable from edges
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      for (let i = 0; i < w * h; i++) {
+        if (visited[i]) continue;
+        const pi = i * 4;
+        const r = data[pi], g = data[pi+1], b = data[pi+2];
+        const sat = Math.max(r,g,b) - Math.min(r,g,b);
+        const dist = colorDistance(r, g, b);
+        // Remove if very close to bg color AND low saturation
+        // (not jewelry which has high saturation)
+        if (dist < 25 && sat < 15) {
+          visited[i] = 1;
+        }
+      }
+
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      // STEP 5 — APPLY TRANSPARENCY
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      for (let i = 0; i < w * h; i++) {
         if (visited[i]) data[i*4+3] = 0;
       }
 
-      // Edge softening
-      const snap = new Uint8ClampedArray(w*h);
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      // STEP 6 — GRADUATED EDGE SOFTENING
+      // Smooth edges for natural blending
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      const snap = new Uint8ClampedArray(w * h);
       for (let i = 0; i < w*h; i++) snap[i] = data[i*4+3];
 
       for (let y = 1; y < h-1; y++) {
         for (let x = 1; x < w-1; x++) {
           const idx = y*w+x;
           if (snap[idx] === 0) continue;
+
+          // Count transparent neighbours in 8 directions
           const nb = [
-            snap[(y-1)*w+x], snap[(y+1)*w+x],
-            snap[y*w+(x-1)], snap[y*w+(x+1)],
+            snap[(y-1)*w+x],   snap[(y+1)*w+x],
+            snap[y*w+(x-1)],   snap[y*w+(x+1)],
             snap[(y-1)*w+(x-1)], snap[(y-1)*w+(x+1)],
             snap[(y+1)*w+(x-1)], snap[(y+1)*w+(x+1)]
           ];
-          const t = nb.filter(a => a===0).length;
-          if (t >= 6) data[idx*4+3] = 60;
-          else if (t >= 4) data[idx*4+3] = 120;
-          else if (t >= 2) data[idx*4+3] = 200;
+          const t = nb.filter(a => a === 0).length;
+
+          // Graduated alpha based on proximity to edge
+          if (t >= 7) data[idx*4+3] = 0;
+          else if (t >= 5) data[idx*4+3] = 40;
+          else if (t >= 3) data[idx*4+3] = 120;
+          else if (t >= 1) data[idx*4+3] = 200;
+          // t === 0: fully surrounded by jewelry →
+          // keep 100% opaque, untouched
         }
       }
 
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      // STEP 7 — OUTPUT
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
       ctx.putImageData(imageData, 0, 0);
       offCanvas.toBlob((blob) => {
         console.log('[JWLZIFY] bg removal SUCCESS');
         resolve(URL.createObjectURL(blob));
-      }, 'image/png');
+      }, 'image/png', 1.0);
     };
 
     img.onerror = (e) => {
