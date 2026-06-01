@@ -2435,7 +2435,7 @@ function drawNecklace(pendantImg, pendantSize) {
   console.log('[JWLZIFY] pendant img naturalSize:', pendantImg.naturalWidth, pendantImg.naturalHeight);
 
   // V-shape chain: two thin lines from top corners to pendant top center
-  ctx.strokeStyle = 'rgba(176, 176, 176, 0.65)';
+  ctx.strokeStyle = 'rgba(100, 100, 110, 0.85)';
   ctx.lineWidth   = 0.8;
 
   ctx.beginPath();
@@ -2901,59 +2901,101 @@ async function removePendantBackground(imageUrl) {
       const ctx = offCanvas.getContext('2d');
       ctx.drawImage(img, 0, 0);
 
-      const imageData = ctx.getImageData(0, 0, offCanvas.width, offCanvas.height);
+      const w = offCanvas.width;
+      const h = offCanvas.height;
+      const imageData = ctx.getImageData(0, 0, w, h);
       const data = imageData.data;
-      const w    = offCanvas.width;
-      const h    = offCanvas.height;
 
-      // PASS 1 — Mark near-white neutral pixels as transparent
-      // Only removes pixels that are BOTH near-white AND neutral (no colour tint)
-      // Protects gold, silver, diamonds, coloured stones from removal
-      for (let i = 0; i < data.length; i += 4) {
-        const r = data[i], g = data[i + 1], b = data[i + 2];
-        const isNearWhite = r > 225 && g > 225 && b > 225;
-        const isNeutral   = Math.abs(r - g) < 20 && Math.abs(g - b) < 20 && Math.abs(r - b) < 20;
-        if (isNearWhite && isNeutral) data[i + 3] = 0;
+      // STEP 1 — Sample bg color from corners + edge midpoints
+      function getPixel(x, y) {
+        const i = (y * w + x) * 4;
+        return [data[i], data[i+1], data[i+2]];
+      }
+      const corners = [
+        getPixel(0, 0), getPixel(w-1, 0), getPixel(0, h-1), getPixel(w-1, h-1),
+        getPixel(Math.floor(w/2), 0),  getPixel(0, Math.floor(h/2)),
+        getPixel(w-1, Math.floor(h/2)), getPixel(Math.floor(w/2), h-1),
+      ];
+      const bgR = Math.round(corners.reduce((s,c) => s+c[0], 0) / corners.length);
+      const bgG = Math.round(corners.reduce((s,c) => s+c[1], 0) / corners.length);
+      const bgB = Math.round(corners.reduce((s,c) => s+c[2], 0) / corners.length);
+      console.log('[JWLZIFY] detected bg color:', bgR, bgG, bgB);
+
+      // STEP 2 — Color similarity check
+      const TOLERANCE = 35;
+      function isSimilarToBg(r, g, b) {
+        return Math.abs(r - bgR) < TOLERANCE &&
+               Math.abs(g - bgG) < TOLERANCE &&
+               Math.abs(b - bgB) < TOLERANCE;
       }
 
-      // PASS 2 — Edge softening: graduated alpha for pixels adjacent to transparent ones
-      const alphaMap = new Uint8ClampedArray(w * h);
+      // STEP 3 — BFS flood fill from all edges inward
+      const visited = new Uint8Array(w * h);
+      const queue   = [];
+      for (let x = 0; x < w; x++) {
+        for (const y of [0, h-1]) {
+          const i = y * w + x;
+          if (!visited[i] && isSimilarToBg(data[i*4], data[i*4+1], data[i*4+2])) {
+            queue.push(i); visited[i] = 1;
+          }
+        }
+      }
       for (let y = 0; y < h; y++) {
-        for (let x = 0; x < w; x++) {
-          alphaMap[y * w + x] = data[(y * w + x) * 4 + 3];
+        for (const x of [0, w-1]) {
+          const i = y * w + x;
+          if (!visited[i] && isSimilarToBg(data[i*4], data[i*4+1], data[i*4+2])) {
+            queue.push(i); visited[i] = 1;
+          }
+        }
+      }
+      const offsets = [-1, 1, -w, w, -w-1, -w+1, w-1, w+1];
+      let head = 0;
+      while (head < queue.length) {
+        const idx = queue[head++];
+        for (const off of offsets) {
+          const n = idx + off;
+          if (n < 0 || n >= w * h || visited[n]) continue;
+          if (isSimilarToBg(data[n*4], data[n*4+1], data[n*4+2])) {
+            visited[n] = 1; queue.push(n);
+          }
         }
       }
 
-      for (let y = 1; y < h - 1; y++) {
-        for (let x = 1; x < w - 1; x++) {
-          const idx   = (y * w + x) * 4;
-          const alpha = alphaMap[y * w + x];
-          if (alpha > 0) {
-            const neighbors = [
-              alphaMap[(y-1) * w + x],     alphaMap[(y+1) * w + x],
-              alphaMap[y * w + (x-1)],     alphaMap[y * w + (x+1)],
-              alphaMap[(y-1) * w + (x-1)], alphaMap[(y-1) * w + (x+1)],
-              alphaMap[(y+1) * w + (x-1)], alphaMap[(y+1) * w + (x+1)]
-            ];
-            const t = neighbors.filter(a => a === 0).length;
-            if      (t >= 5) data[idx + 3] = 80;   // mostly transparent
-            else if (t >= 3) data[idx + 3] = 140;  // semi transparent
-            else if (t >= 1) data[idx + 3] = 210;  // slightly soft
-            // 0 transparent neighbours = fully opaque, untouched
-          }
+      // STEP 4 — Erase all visited (background) pixels
+      for (let i = 0; i < w * h; i++) {
+        if (visited[i]) data[i * 4 + 3] = 0;
+      }
+
+      // STEP 5 — Edge softening against snapshot
+      const alphaSnap = new Uint8ClampedArray(w * h);
+      for (let i = 0; i < w * h; i++) alphaSnap[i] = data[i * 4 + 3];
+
+      for (let y = 1; y < h-1; y++) {
+        for (let x = 1; x < w-1; x++) {
+          const idx = y * w + x;
+          if (alphaSnap[idx] === 0) continue;
+          const n8 = [
+            alphaSnap[(y-1)*w+x],   alphaSnap[(y+1)*w+x],
+            alphaSnap[y*w+(x-1)],   alphaSnap[y*w+(x+1)],
+            alphaSnap[(y-1)*w+(x-1)], alphaSnap[(y-1)*w+(x+1)],
+            alphaSnap[(y+1)*w+(x-1)], alphaSnap[(y+1)*w+(x+1)]
+          ];
+          const t = n8.filter(a => a === 0).length;
+          if      (t >= 6) data[idx * 4 + 3] = 60;
+          else if (t >= 4) data[idx * 4 + 3] = 120;
+          else if (t >= 2) data[idx * 4 + 3] = 200;
         }
       }
 
       ctx.putImageData(imageData, 0, 0);
       offCanvas.toBlob((blob) => {
-        const cleanUrl = URL.createObjectURL(blob);
-        console.log('[JWLZIFY] bg removal with edge softening done');
-        resolve(cleanUrl);
+        console.log('[JWLZIFY] universal bg removal done');
+        resolve(URL.createObjectURL(blob));
       }, 'image/png');
     };
 
     img.onerror = () => {
-      console.warn('[JWLZIFY] image load failed, using original');
+      console.warn('[JWLZIFY] img load failed, using original');
       resolve(imageUrl);
     };
 
