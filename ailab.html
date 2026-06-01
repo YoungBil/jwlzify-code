@@ -226,12 +226,13 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
 @keyframes arPulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
 #arLoading p { animation: arPulse 2.4s ease-in-out infinite; }
 </style>
-<!-- Three.js importmap (must precede all module scripts) -->
+<!-- importmap (must precede all module scripts) -->
 <script type="importmap">
 {
   "imports": {
     "three": "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js",
-    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/"
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/",
+    "@imgly/background-removal": "https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.4.5/dist/background-removal.browser.mjs"
   }
 }
 </script>
@@ -713,90 +714,40 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
         See It On You
       </h2>
       <p class="body-copy" style="color:#71787c;max-width:420px;margin:auto;">
-        Place your photo or camera as the background, then drag and resize your piece to position it.
+        Your live camera with the piece overlaid. Drag to reposition, drag the corner to resize.
       </p>
     </div>
 
     <div class="flex flex-col items-center gap-5">
 
-      <!-- ── Try-on viewport ── -->
-      <div id="tryonViewport" class="rounded-3xl overflow-hidden shadow-xl"
-           style="position:relative;width:100%;max-width:780px;aspect-ratio:16/9;background:#e9e8e7;">
+      <div id="tryon-container"
+           style="position:relative;width:100%;max-width:780px;height:520px;
+                  background:#000;overflow:hidden;border-radius:12px;">
 
-        <!-- Default placeholder -->
-        <div id="tryonBg" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px;">
-          <span class="material-symbols-outlined" style="font-size:56px;color:#c1c7cb;">add_a_photo</span>
-          <p style="font-family:Inter,sans-serif;font-size:13px;color:#9ca3af;letter-spacing:0.04em;">Upload a photo or use your camera</p>
-        </div>
+        <video id="tryon-video" autoplay playsinline muted
+               style="width:100%;height:100%;object-fit:cover;display:block;"></video>
 
-        <!-- Live camera feed -->
-        <video id="tryonVideo" autoplay playsinline muted
-               style="display:none;position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform:scaleX(-1);"></video>
+        <img id="tryon-pendant"
+             style="position:absolute;left:50%;top:38%;
+                    transform:translate(-50%,-50%);
+                    width:130px;height:auto;
+                    cursor:grab;user-select:none;
+                    display:none;pointer-events:auto;">
 
-        <!-- Uploaded photo -->
-        <img id="tryonPhoto" src="" alt=""
-             style="display:none;position:absolute;inset:0;width:100%;height:100%;object-fit:cover;">
-
-        <!-- Draggable jewelry overlay -->
-        <div id="tryonJewelry"
-             style="display:none;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);touch-action:none;cursor:grab;user-select:none;">
-          <img id="tryonJewelryImg" src="" alt="jewelry"
-               style="width:160px;height:auto;display:block;pointer-events:none;border-radius:4px;">
-          <!-- Resize handle (bottom-right corner) -->
-          <div id="tryonResizeHandle"
-               style="position:absolute;bottom:-9px;right:-9px;width:20px;height:20px;background:#3c6474;border-radius:50%;cursor:se-resize;touch-action:none;border:2px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.35);z-index:10;"></div>
-        </div>
-
-        <!-- Camera starting overlay -->
-        <div id="tryonCamLoading"
-             style="display:none;position:absolute;inset:0;background:rgba(27,28,28,0.65);align-items:center;justify-content:center;flex-direction:column;gap:14px;z-index:5;">
-          <div style="width:42px;height:42px;border-radius:50%;border:3px solid rgba(255,255,255,0.25);border-top-color:white;animation:jwlz-spin 0.85s linear infinite;"></div>
-          <p style="font-family:Inter,sans-serif;font-size:13px;color:rgba(255,255,255,0.8);">Starting camera…</p>
-        </div>
-
-        <!-- Camera denied -->
-        <div id="tryonCamDenied"
-             style="display:none;position:absolute;inset:0;background:rgba(27,28,28,0.88);align-items:center;justify-content:center;flex-direction:column;gap:14px;text-align:center;padding:32px;z-index:5;">
-          <span class="material-symbols-outlined" style="font-size:48px;color:rgba(255,255,255,0.4);">videocam_off</span>
-          <p style="font-family:Inter,sans-serif;font-size:13px;color:rgba(255,255,255,0.65);max-width:240px;line-height:1.6;margin:0;">Camera access needed. Allow it in your browser settings and try again.</p>
-          <button onclick="tryonStartCamera()"
-                  style="font-family:Inter,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.12em;background:#3c6474;color:white;border:none;border-radius:10px;padding:10px 24px;cursor:pointer;">
-            Allow &amp; Retry
-          </button>
-        </div>
-
-        <!-- Instruction hint (shown once jewelry is loaded) -->
-        <div style="position:absolute;bottom:14px;left:0;right:0;text-align:center;pointer-events:none;z-index:4;">
-          <span id="tryonHint"
-                style="display:none;font-family:Inter,sans-serif;font-size:9.5px;letter-spacing:0.14em;color:rgba(255,255,255,0.7);background:rgba(0,0,0,0.38);padding:5px 14px;border-radius:20px;backdrop-filter:blur(6px);">
-            DRAG TO POSITION &nbsp;·&nbsp; DRAG CORNER TO RESIZE
-          </span>
+        <div id="tryon-resize"
+             style="position:absolute;width:14px;height:14px;
+                    background:#C0C0C0;border-radius:50%;
+                    cursor:se-resize;display:none;z-index:10;
+                    border:1.5px solid rgba(255,255,255,0.7);
+                    box-shadow:0 1px 4px rgba(0,0,0,0.4);">
         </div>
 
       </div>
 
-      <!-- ── Controls ── -->
-      <div class="flex gap-3 flex-wrap justify-center" style="max-width:780px;width:100%;">
-        <button onclick="tryonStartCamera()"
-                class="btn-outline"
-                style="font-size:11px;letter-spacing:0.12em;padding:12px 20px;gap:6px;">
-          <span class="material-symbols-outlined" style="font-size:16px;">videocam</span>
-          Use Camera
-        </button>
-        <label class="btn-outline"
-               style="font-size:11px;letter-spacing:0.12em;padding:12px 20px;gap:6px;cursor:pointer;display:inline-flex;align-items:center;">
-          <span class="material-symbols-outlined" style="font-size:16px;">image</span>
-          Upload Photo
-          <input id="tryonPhotoInput" type="file" accept="image/*"
-                 style="display:none;" onchange="tryonLoadPhoto(event)">
-        </label>
-        <button onclick="tryonResetPosition()"
-                class="btn-outline"
-                style="font-size:11px;letter-spacing:0.12em;padding:12px 20px;gap:6px;">
-          <span class="material-symbols-outlined" style="font-size:16px;">restart_alt</span>
-          Reset Position
-        </button>
-      </div>
+      <p style="font-family:Inter,sans-serif;text-align:center;font-size:11px;
+                opacity:0.4;margin-top:2px;letter-spacing:0.05em;">
+        DRAG TO POSITION &nbsp;·&nbsp; DRAG CORNER TO RESIZE
+      </p>
 
       <!-- ── Next / Back ── -->
       <div class="flex gap-3 justify-center flex-wrap" style="width:100%;max-width:720px;">
@@ -2429,172 +2380,114 @@ function submitOrder(e) {
    Stage 3: Return original as last resort
 ════════════════════════════════════════════════ */
 
-/* ── Try On — drag-and-drop overlay ─────────── */
+/* ── Try On ─────────────────────────────────── */
 
-async function tryonStartCamera() {
-  const loading = document.getElementById('tryonCamLoading');
-  const denied  = document.getElementById('tryonCamDenied');
-  const bg      = document.getElementById('tryonBg');
-  const video   = document.getElementById('tryonVideo');
-  const photo   = document.getElementById('tryonPhoto');
-
-  loading.style.display = 'flex';
-  denied.style.display  = 'none';
-
-  if (LAB.cameraStream) {
-    LAB.cameraStream.getTracks().forEach(t => t.stop());
-    LAB.cameraStream = null;
-  }
-
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } }
-    });
-    LAB.cameraStream = stream;
-    video.srcObject = stream;
-    await new Promise(res => { video.onloadedmetadata = res; });
-    await video.play();
-    video.style.display = 'block';
-    bg.style.display    = 'none';
-    if (photo) photo.style.display = 'none';
-    loading.style.display = 'none';
-  } catch {
-    loading.style.display = 'none';
-    denied.style.display  = 'flex';
-  }
+function updateResizeHandlePosition() {
+  const container = document.getElementById('tryon-container');
+  const pendant   = document.getElementById('tryon-pendant');
+  const rh        = document.getElementById('tryon-resize');
+  if (!container || !pendant || !rh || pendant.style.display === 'none') return;
+  const c = container.getBoundingClientRect();
+  const p = pendant.getBoundingClientRect();
+  rh.style.left = (p.right  - c.left - 7) + 'px';
+  rh.style.top  = (p.bottom - c.top  - 7) + 'px';
 }
 
-function tryonLoadPhoto(e) {
-  const file = e.target.files[0];
-  if (!file) return;
-  const url   = URL.createObjectURL(file);
-  const photo = document.getElementById('tryonPhoto');
-  const video = document.getElementById('tryonVideo');
-  const bg    = document.getElementById('tryonBg');
+// Drag and resize — set up once when the script parses (DOM is ready at this point)
+(function () {
+  const pendant      = document.getElementById('tryon-pendant');
+  const resizeHandle = document.getElementById('tryon-resize');
+  if (!pendant || !resizeHandle) return;
 
-  if (LAB.cameraStream) {
-    LAB.cameraStream.getTracks().forEach(t => t.stop());
-    LAB.cameraStream = null;
-    video.srcObject  = null;
-    video.style.display = 'none';
-  }
+  let isDragging = false, isResizing = false;
+  let startX, startY, startLeft, startTop;
+  let resizeStartX, resizeStartWidth;
 
-  photo.src           = url;
-  photo.style.display = 'block';
-  bg.style.display    = 'none';
-}
-
-function tryonResetPosition() {
-  const jewelry  = document.getElementById('tryonJewelry');
-  const viewport = document.getElementById('tryonViewport');
-  if (!jewelry || jewelry.style.display === 'none') return;
-  const vw = viewport.offsetWidth;
-  const vh = viewport.offsetHeight;
-  jewelry.style.transform = 'none';
-  jewelry.style.left = Math.round((vw - jewelry.offsetWidth)  / 2) + 'px';
-  jewelry.style.top  = Math.round((vh - jewelry.offsetHeight) / 2) + 'px';
-}
-
-function _initTryonDrag() {
-  const jewelry      = document.getElementById('tryonJewelry');
-  const resizeHandle = document.getElementById('tryonResizeHandle');
-  const viewport     = document.getElementById('tryonViewport');
-  const img          = document.getElementById('tryonJewelryImg');
-  if (!jewelry || jewelry._dragInited) return;
-  jewelry._dragInited = true;
-
-  // ── Drag ──
-  let drag = null;
-
-  jewelry.addEventListener('pointerdown', e => {
-    if (e.target === resizeHandle) return;
-    jewelry.setPointerCapture(e.pointerId);
-    const jr = jewelry.getBoundingClientRect();
-    const vr = viewport.getBoundingClientRect();
-    drag = { sx: e.clientX, sy: e.clientY, ol: jr.left - vr.left, ot: jr.top - vr.top };
-    jewelry.style.cursor = 'grabbing';
+  pendant.addEventListener('pointerdown', e => {
+    isDragging = true;
+    pendant.style.cursor = 'grabbing';
+    const c = document.getElementById('tryon-container').getBoundingClientRect();
+    const p = pendant.getBoundingClientRect();
+    startX    = e.clientX;
+    startY    = e.clientY;
+    startLeft = p.left - c.left;
+    startTop  = p.top  - c.top;
+    pendant.style.transform = 'none';
+    pendant.style.left = startLeft + 'px';
+    pendant.style.top  = startTop  + 'px';
+    pendant.setPointerCapture(e.pointerId);
     e.preventDefault();
   });
 
-  jewelry.addEventListener('pointermove', e => {
-    if (!drag) return;
-    let nl = drag.ol + (e.clientX - drag.sx);
-    let nt = drag.ot + (e.clientY - drag.sy);
-    nl = Math.max(0, Math.min(nl, viewport.offsetWidth  - jewelry.offsetWidth));
-    nt = Math.max(0, Math.min(nt, viewport.offsetHeight - jewelry.offsetHeight));
-    jewelry.style.left = nl + 'px';
-    jewelry.style.top  = nt + 'px';
-    e.preventDefault();
+  document.addEventListener('pointermove', e => {
+    if (isDragging) {
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      pendant.style.left = (startLeft + dx) + 'px';
+      pendant.style.top  = (startTop  + dy) + 'px';
+      updateResizeHandlePosition();
+    }
+    if (isResizing) {
+      const newW = Math.max(60, Math.min(400,
+        resizeStartWidth + (e.clientX - resizeStartX)));
+      pendant.style.width = newW + 'px';
+      updateResizeHandlePosition();
+    }
   });
 
-  const endDrag = () => { drag = null; jewelry.style.cursor = 'grab'; };
-  jewelry.addEventListener('pointerup',     endDrag);
-  jewelry.addEventListener('pointercancel', endDrag);
-
-  // ── Resize ──
-  let rz = null;
+  document.addEventListener('pointerup', () => {
+    isDragging = false;
+    isResizing = false;
+    pendant.style.cursor = 'grab';
+  });
 
   resizeHandle.addEventListener('pointerdown', e => {
+    isResizing       = true;
+    resizeStartX     = e.clientX;
+    resizeStartWidth = pendant.offsetWidth;
     resizeHandle.setPointerCapture(e.pointerId);
-    rz = { sx: e.clientX, sy: e.clientY, sw: img.offsetWidth };
+    e.preventDefault();
     e.stopPropagation();
-    e.preventDefault();
   });
+})();
 
-  resizeHandle.addEventListener('pointermove', e => {
-    if (!rz) return;
-    const delta = ((e.clientX - rz.sx) + (e.clientY - rz.sy)) / 2;
-    img.style.width = Math.max(60, Math.min(400, rz.sw + delta)) + 'px';
-    e.preventDefault();
-  });
-
-  const endResize = () => { rz = null; };
-  resizeHandle.addEventListener('pointerup',     endResize);
-  resizeHandle.addEventListener('pointercancel', endResize);
+async function startTryOnCamera() {
+  try {
+    const video = document.getElementById('tryon-video');
+    if (LAB.cameraStream) {
+      LAB.cameraStream.getTracks().forEach(t => t.stop());
+      LAB.cameraStream = null;
+    }
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'user' }
+    });
+    LAB.cameraStream = stream;
+    video.srcObject  = stream;
+  } catch(e) {
+    console.warn('[JWLZIFY] camera access denied:', e.message);
+  }
 }
 
 async function setupTryOn() {
   isTryOnActive = true;
   if (!LAB.imageUrl) { goStep(5); return; }
-
-  const jewelry  = document.getElementById('tryonJewelry');
-  const img      = document.getElementById('tryonJewelryImg');
-  const viewport = document.getElementById('tryonViewport');
-  const hint     = document.getElementById('tryonHint');
-
-  img.style.width = '160px';
-
-  const placeAndShow = () => {
-    const vw = viewport.offsetWidth;
-    const vh = viewport.offsetHeight;
-    jewelry.style.transform = 'none';
-    jewelry.style.left      = Math.round((vw - jewelry.offsetWidth)  / 2) + 'px';
-    jewelry.style.top       = Math.round((vh - jewelry.offsetHeight) / 2) + 'px';
-    jewelry.style.display   = 'block';
-    if (hint) hint.style.display = '';
-    _initTryonDrag();
-  };
-
-  if (img.src === LAB.imageUrl && img.complete && img.naturalWidth > 0) {
-    placeAndShow();
-  } else {
-    img.onload = placeAndShow;
-    img.src    = LAB.imageUrl;
+  startTryOnCamera();
+  if (typeof window._loadPendantForTryOn === 'function') {
+    window._loadPendantForTryOn(LAB.imageUrl);
   }
 }
 
 function teardownTryOn() {
-  const video   = document.getElementById('tryonVideo');
-  const jewelry = document.getElementById('tryonJewelry');
-  const hint    = document.getElementById('tryonHint');
-
   if (LAB.cameraStream) {
     LAB.cameraStream.getTracks().forEach(t => t.stop());
     LAB.cameraStream = null;
-    if (video) { video.srcObject = null; video.style.display = 'none'; }
+    const v = document.getElementById('tryon-video');
+    if (v) v.srcObject = null;
   }
-  if (jewelry) jewelry.style.display = 'none';
-  if (hint)    hint.style.display    = 'none';
+  const pendant = document.getElementById('tryon-pendant');
+  const rh      = document.getElementById('tryon-resize');
+  if (pendant) pendant.style.display = 'none';
+  if (rh)      rh.style.display      = 'none';
 }
 
 
@@ -2891,6 +2784,39 @@ async function s2ConfirmSave() {
 // Module is deferred — DOM is fully parsed and ready here
 document.getElementById('s2SaveBtn').addEventListener('click', s2SaveDesign);
 document.getElementById('s2ConfirmBtn').addEventListener('click', s2ConfirmSave);
+</script>
+
+<!-- Try-On: background removal + pendant loader -->
+<script type="module">
+import { removeBackground } from '@imgly/background-removal';
+
+async function loadPendantForTryOn(imageUrl) {
+  const pendant = document.getElementById('tryon-pendant');
+  const rh      = document.getElementById('tryon-resize');
+  if (!pendant || !rh) return;
+
+  // Show immediately with original image while removal runs
+  pendant.src           = imageUrl;
+  pendant.style.display = 'block';
+  rh.style.display      = 'block';
+  window.updateResizeHandlePosition?.();
+
+  try {
+    const blob     = await removeBackground(imageUrl, {
+      model:  'small',
+      output: { format: 'image/png', quality: 0.8 }
+    });
+    const cleanUrl = URL.createObjectURL(blob);
+    pendant.src = cleanUrl;
+    window.updateResizeHandlePosition?.();
+    console.log('[JWLZIFY] background removed successfully');
+  } catch(e) {
+    console.warn('[JWLZIFY] bg removal failed, using original:', e.message);
+    // Original image already showing — no change needed
+  }
+}
+
+window._loadPendantForTryOn = loadPendantForTryOn;
 </script>
 
 
