@@ -732,7 +732,8 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
                     transform:translate(-50%,-50%);
                     width:130px;height:auto;
                     cursor:grab;user-select:none;
-                    display:none;pointer-events:auto;">
+                    display:none;pointer-events:auto;
+                    z-index:10;opacity:1;">
 
         <div id="tryon-resize"
              style="position:absolute;width:14px;height:14px;
@@ -2470,8 +2471,33 @@ async function startTryOnCamera() {
 
 async function setupTryOn() {
   isTryOnActive = true;
+  console.log('[JWLZIFY] try-on step reached');
+
   if (!LAB.imageUrl) { goStep(5); return; }
+
   startTryOnCamera();
+
+  // Show pendant immediately — do not depend on the module script being loaded
+  const pendant = document.getElementById('tryon-pendant');
+  const rh      = document.getElementById('tryon-resize');
+
+  console.log('[JWLZIFY] image url passed:', LAB.imageUrl);
+  console.log('[JWLZIFY] pendant element:', pendant);
+
+  if (pendant) {
+    pendant.src           = LAB.imageUrl;
+    pendant.style.display = 'block';
+    pendant.style.zIndex  = '10';
+    pendant.style.opacity = '1';
+    console.log('[JWLZIFY] pendant src set to:', pendant.src);
+  }
+  if (rh) {
+    rh.style.display = 'block';
+    rh.style.zIndex  = '11';
+  }
+  updateResizeHandlePosition();
+
+  // Optional upgrade: replace with bg-removed version if module loaded
   if (typeof window._loadPendantForTryOn === 'function') {
     window._loadPendantForTryOn(LAB.imageUrl);
   }
@@ -2791,16 +2817,11 @@ document.getElementById('s2ConfirmBtn').addEventListener('click', s2ConfirmSave)
 import { removeBackground } from '@imgly/background-removal';
 
 async function loadPendantForTryOn(imageUrl) {
+  console.log('[JWLZIFY] loadPendantForTryOn called');
   const pendant = document.getElementById('tryon-pendant');
-  const rh      = document.getElementById('tryon-resize');
-  if (!pendant || !rh) return;
+  if (!pendant) return;
 
-  // Show immediately with original image while removal runs
-  pendant.src           = imageUrl;
-  pendant.style.display = 'block';
-  rh.style.display      = 'block';
-  window.updateResizeHandlePosition?.();
-
+  // Pendant is already visible (set in setupTryOn) — only upgrade the src
   try {
     const blob     = await removeBackground(imageUrl, {
       model:  'small',
@@ -2812,7 +2833,6 @@ async function loadPendantForTryOn(imageUrl) {
     console.log('[JWLZIFY] background removed successfully');
   } catch(e) {
     console.warn('[JWLZIFY] bg removal failed, using original:', e.message);
-    // Original image already showing — no change needed
   }
 }
 
