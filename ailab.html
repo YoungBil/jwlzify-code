@@ -226,16 +226,19 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
 @keyframes arPulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
 #arLoading p { animation: arPulse 2.4s ease-in-out infinite; }
 </style>
+<!-- Background removal (global — window.BackgroundRemoval) -->
+<script src="https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.4.5/dist/background-removal.browser.js" defer></script>
+
 <!-- importmap (must precede all module scripts) -->
 <script type="importmap">
 {
   "imports": {
     "three": "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js",
-    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/",
-    "@imgly/background-removal": "https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.4.5/dist/background-removal.browser.mjs"
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/"
   }
 }
 </script>
+<style>#tryon-necklace { background: transparent !important; }</style>
 </head>
 <body class="bg-[#fbf9f9] text-[#1b1c1c]">
 
@@ -2391,20 +2394,29 @@ function drawNecklace(pendantImg, pendantSize) {
   const canvas = document.getElementById('tryon-necklace');
   if (!canvas) return;
   const chainH = 80;
-  const totalW = pendantSize + 40;
+  const totalW = pendantSize + 200; // wide enough for V-shape chain spread
   const totalH = chainH + pendantSize;
 
   canvas.width  = totalW;
   canvas.height = totalH;
   const ctx = canvas.getContext('2d');
-  ctx.clearRect(0, 0, totalW, totalH);
+  ctx.clearRect(0, 0, totalW, totalH); // fully transparent — never fill
 
-  // Ultra-thin delicate chain: single line from top-center to pendant top
-  ctx.beginPath();
-  ctx.moveTo(totalW / 2, 0);
-  ctx.lineTo(totalW / 2, chainH);
-  ctx.strokeStyle = 'rgba(176, 176, 176, 0.6)';
+  console.log('[JWLZIFY] canvas size:', canvas.width, canvas.height);
+  console.log('[JWLZIFY] pendant img naturalSize:', pendantImg.naturalWidth, pendantImg.naturalHeight);
+
+  // V-shape chain: two thin lines from top corners to pendant top center
+  ctx.strokeStyle = 'rgba(176, 176, 176, 0.65)';
   ctx.lineWidth   = 0.8;
+
+  ctx.beginPath();
+  ctx.moveTo(0, 0);                  // top-left corner
+  ctx.lineTo(totalW / 2, chainH);    // pendant top center
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.moveTo(totalW, 0);             // top-right corner
+  ctx.lineTo(totalW / 2, chainH);    // pendant top center
   ctx.stroke();
 
   // Pendant image: centered horizontally, directly below chain end
@@ -2839,19 +2851,33 @@ document.getElementById('s2ConfirmBtn').addEventListener('click', s2ConfirmSave)
 </script>
 
 <!-- Try-On: background removal + canvas necklace loader -->
-<script type="module">
-import { removeBackground } from '@imgly/background-removal';
-
+<script>
 async function removePendantBackground(imageUrl) {
+  console.log('[JWLZIFY] starting bg removal for:', imageUrl);
+  console.log('[JWLZIFY] BackgroundRemoval loaded:', !!window.BackgroundRemoval);
+
   try {
-    const blob = await removeBackground(imageUrl, {
+    if (!window.BackgroundRemoval) {
+      console.error('[JWLZIFY] BackgroundRemoval not loaded');
+      return imageUrl;
+    }
+
+    const response  = await fetch(imageUrl);
+    const inputBlob = await response.blob();
+    console.log('[JWLZIFY] input blob size:', inputBlob.size);
+
+    const outputBlob = await window.BackgroundRemoval.removeBackground(inputBlob, {
       model:  'small',
       output: { format: 'image/png', quality: 0.9 }
     });
-    return URL.createObjectURL(blob);
+
+    const cleanUrl = URL.createObjectURL(outputBlob);
+    console.log('[JWLZIFY] bg removal SUCCESS:', cleanUrl);
+    return cleanUrl;
+
   } catch(e) {
-    console.warn('[JWLZIFY] bg removal failed:', e.message);
-    return imageUrl; // fallback to original
+    console.error('[JWLZIFY] bg removal FAILED:', e);
+    return imageUrl;
   }
 }
 
@@ -2860,12 +2886,12 @@ async function loadPendantForTryOn(imageUrl) {
   const canvas = document.getElementById('tryon-necklace');
   if (!canvas) return;
 
-  // Step 1: draw original image immediately so chain+pendant show right away
+  // Step 1: draw original image immediately so chain + pendant show right away
   const tempImg = new Image();
   tempImg.crossOrigin = 'anonymous';
   tempImg.onload = () => {
     window._tryonPendantImg = tempImg;
-    window.drawNecklace?.(tempImg, window._tryonPendantSize || 144);
+    if (typeof drawNecklace === 'function') drawNecklace(tempImg, window._tryonPendantSize || 144);
   };
   tempImg.src = imageUrl;
 
@@ -2875,7 +2901,7 @@ async function loadPendantForTryOn(imageUrl) {
   realImg.crossOrigin = 'anonymous';
   realImg.onload = () => {
     window._tryonPendantImg = realImg;
-    window.drawNecklace?.(realImg, window._tryonPendantSize || 144);
+    if (typeof drawNecklace === 'function') drawNecklace(realImg, window._tryonPendantSize || 144);
     console.log('[JWLZIFY] pendant loaded with bg removed');
   };
   realImg.src = cleanUrl;
