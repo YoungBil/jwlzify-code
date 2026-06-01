@@ -1518,8 +1518,17 @@ function buildPrompt(type, material, gem, style, desc) {
   }
 
   if (type === 'earrings') {
-    // Single earring only — we duplicate it ourselves in try-on
-    return `${base}luxury ${style} ${wPart}single earring, single earring only, one earring isolated, no pair shown, ${mDisp}, ${gemPart}, isolated fine jewelry product photograph, pure white seamless background, no shadows, no reflections on background, professional diffuse studio lighting, hyper realistic, 8K ultra high definition, macro lens, sharp focus, precious metal gleam, gemstone sparkle and brilliance, luxury brand catalog`;
+    // Single earring only — we mirror it ourselves in try-on to make a pair
+    const earringAdditions = [
+      'ONE single earring only',
+      'single individual earring',
+      'NOT a pair',
+      'only one earring in frame',
+      'centered single earring',
+      'isolated single piece',
+      'white background'
+    ].join(', ');
+    return `${base}${earringAdditions}, luxury ${style} ${wPart}earring, ${mDisp}, ${gemPart}, professional jewelry product photography, pure white seamless background, no shadows, hyper realistic, 8K ultra high definition, macro lens, sharp focus, highly detailed, photorealistic, precious metal gleam, gemstone sparkle and brilliance`;
   }
 
   const typeMap = {
@@ -3389,6 +3398,33 @@ function makeEarringDraggable(earringEl, handleEl) {
   });
 }
 
+async function cropToSingleEarring(imageUrl) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    if (!imageUrl.startsWith('blob:')) img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      // Pairs are usually landscape; single earrings portrait/square
+      const isPair = img.naturalWidth > img.naturalHeight * 1.3;
+      if (!isPair) {
+        console.log('[JWLZIFY] single earring detected, no crop needed');
+        resolve(imageUrl);
+        return;
+      }
+      console.log('[JWLZIFY] pair detected, cropping to left half');
+      const cropW = Math.floor(img.naturalWidth * 0.48);
+      const canvas = document.createElement('canvas');
+      canvas.width  = cropW;
+      canvas.height = img.naturalHeight;
+      canvas.getContext('2d').drawImage(
+        img, 0, 0, cropW, img.naturalHeight,
+             0, 0, cropW, img.naturalHeight);
+      canvas.toBlob(blob => resolve(URL.createObjectURL(blob)), 'image/png');
+    };
+    img.onerror = () => resolve(imageUrl);
+    img.src = imageUrl;
+  });
+}
+
 async function loadEarringsForTryOn(imageUrl) {
   // Hide all pendant/necklace elements — earrings only
   ['tryon-necklace', 'tryon-pendant', 'tryon-resize'].forEach(id => {
@@ -3404,8 +3440,11 @@ async function loadEarringsForTryOn(imageUrl) {
   const leftHandle = document.getElementById('tryon-earring-left-handle');
   const rightHandle= document.getElementById('tryon-earring-right-handle');
 
-  // Remove background from the earring image
-  const cleanUrl = await removePendantBackground(imageUrl);
+  // Step 1: Crop to single earring if AI returned a pair
+  const singleUrl = await cropToSingleEarring(imageUrl);
+
+  // Step 2: Remove background
+  const cleanUrl = await removePendantBackground(singleUrl);
 
   // Left: normal, Right: mirrored — looks like a natural pair
   leftEl.src = cleanUrl;
