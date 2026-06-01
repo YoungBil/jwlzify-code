@@ -2394,7 +2394,7 @@ function drawNecklace(pendantImg, pendantSize) {
   const canvas = document.getElementById('tryon-necklace');
   if (!canvas) return;
   const chainH = 80;
-  const totalW = pendantSize + 200; // wide enough for V-shape chain spread
+  const totalW = pendantSize + 80; // narrower V to match natural neck width
   const totalH = chainH + pendantSize;
 
   canvas.width  = totalW;
@@ -2853,30 +2853,21 @@ document.getElementById('s2ConfirmBtn').addEventListener('click', s2ConfirmSave)
 <!-- Try-On: background removal + canvas necklace loader -->
 <script>
 async function removePendantBackground(imageUrl) {
-  console.log('[JWLZIFY] starting bg removal for:', imageUrl);
-  console.log('[JWLZIFY] BackgroundRemoval loaded:', !!window.BackgroundRemoval);
-
   try {
-    if (!window.BackgroundRemoval) {
-      console.error('[JWLZIFY] BackgroundRemoval not loaded');
-      return imageUrl;
-    }
-
-    const response  = await fetch(imageUrl, { mode: 'cors', credentials: 'omit' });
-    const inputBlob = await response.blob();
-    console.log('[JWLZIFY] input blob size:', inputBlob.size);
-
-    const outputBlob = await window.BackgroundRemoval.removeBackground(inputBlob, {
+    const { removeBackground } = await import(
+      'https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.4.5/dist/background-removal.browser.mjs'
+    );
+    const response   = await fetch(imageUrl, { mode: 'cors', credentials: 'omit' });
+    const inputBlob  = await response.blob();
+    const outputBlob = await removeBackground(inputBlob, {
       model:  'small',
       output: { format: 'image/png', quality: 0.9 }
     });
-
     const cleanUrl = URL.createObjectURL(outputBlob);
-    console.log('[JWLZIFY] bg removal SUCCESS:', cleanUrl);
+    console.log('[JWLZIFY] bg removal SUCCESS');
     return cleanUrl;
-
   } catch(e) {
-    console.error('[JWLZIFY] bg removal FAILED:', e);
+    console.error('[JWLZIFY] bg removal FAILED:', e.message);
     return imageUrl;
   }
 }
