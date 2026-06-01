@@ -1,11 +1,11 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html class="light" lang="en">
 <head>
 <meta charset="utf-8">
 <link rel="icon" type="image/png" href="favicon_transparent.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <meta content="width=device-width, initial-scale=1.0" name="viewport">
-<title>JWLZIFY — Support</title>
+<title>JWLZIFY — Authenticity Guaranteed</title>
 <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
@@ -33,9 +33,6 @@ tailwind.config = {
 </head>
 <body class="text-[#1b1c1c] min-h-screen" style="background-image:url('supportpagepic.png');background-size:cover;background-position:center top;background-attachment:fixed;background-repeat:no-repeat;">
 
-<!-- ════════════════════════════
-     NAVIGATION
-════════════════════════════ -->
 <header id="siteHeader" class="sticky top-0 w-full z-50 nav-glass border-b border-[#c1c7cb]/20"
         style="box-shadow:0 1px 18px rgba(0,0,0,0.04);">
   <nav class="flex justify-between items-center w-full max-w-[1600px] mx-auto px-4 md:px-16 py-5">
@@ -74,143 +71,32 @@ tailwind.config = {
 
 <main>
 
-<!-- ════════════════════════════
-     HERO
-════════════════════════════ -->
 <section class="py-24 md:py-32" style="position:relative;">
   <div style="position:absolute;inset:0;background:rgba(0,0,0,0.45);z-index:1;"></div>
   <div class="max-w-[1600px] mx-auto px-4 md:px-16 text-center" style="position:relative;z-index:2;">
-    <span class="eyebrow" style="color:rgba(255,255,255,0.95);">WE'RE HERE TO HELP</span>
-    <h1 class="h-section" style="font-size:clamp(40px,5vw,60px);color:rgba(255,255,255,0.95);">Support</h1>
+    <span class="eyebrow" style="color:rgba(255,255,255,0.95);">SUPPORT</span>
+    <h1 class="h-section" style="font-size:clamp(40px,5vw,60px);color:rgba(255,255,255,0.95);">Authenticity Guaranteed</h1>
   </div>
 </section>
 
-<!-- ════════════════════════════
-     SUPPORT CARDS GRID
-════════════════════════════ -->
-<section class="py-24 md:py-32">
-  <div class="max-w-[1200px] mx-auto px-4 md:px-16">
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-
-      <!-- Account -->
-      <div class="bg-white rounded-[24px] p-10 border border-[#c1c7cb]/20 ambient flex flex-col gap-6 hover:-translate-y-1 transition-transform">
-        <div class="flex items-center justify-center rounded-full" style="width:48px;height:48px;background:rgba(60,100,116,0.08);">
-          <span class="material-symbols-outlined" style="color:#3c6474;font-size:24px;">manage_accounts</span>
-        </div>
-        <div>
-          <h3 class="h-sub mb-3">Account</h3>
-          <p class="body-copy">Manage your profile, saved designs, and past purchases from your account page.</p>
-        </div>
-        <!-- Signed-in state -->
-        <div id="supportAccountSignedIn" style="display:none;">
-          <p id="supportAccountGreeting" style="font-family:Inter,sans-serif;font-size:13px;color:#6b7280;margin:0 0 14px;"></p>
-          <a href="account.html">
-            <button class="btn-primary" style="font-size:11px;letter-spacing:0.14em;padding:12px 24px;gap:8px;">
-              <span class="material-symbols-outlined" style="font-size:16px;">person</span>
-              Go to My Account
-            </button>
-          </a>
-        </div>
-        <!-- Signed-out state -->
-        <div id="supportAccountSignedOut">
-          <p style="font-family:Inter,sans-serif;font-size:13px;color:#6b7280;margin:0 0 14px;">Sign in to access your designs, orders, and profile settings.</p>
-          <button onclick="signInWithGoogle()" class="btn-ghost" style="font-size:11px;">Sign In</button>
-        </div>
-      </div>
-
-      <!-- Order Status -->
-      <div class="bg-white rounded-[24px] p-10 border border-[#c1c7cb]/20 ambient flex flex-col gap-6 hover:-translate-y-1 transition-transform">
-        <div class="flex items-center justify-center rounded-full" style="width:48px;height:48px;background:rgba(60,100,116,0.08);">
-          <span class="material-symbols-outlined" style="color:#3c6474;font-size:24px;">package_2</span>
-        </div>
-        <div>
-          <h3 class="h-sub mb-3">Order Status</h3>
-          <p class="body-copy">Track your current orders, view past purchases, and get real-time updates on your piece as it's being crafted.</p>
-        </div>
-        <div>
-          <a href="orders.html"><button class="btn-ghost" style="font-size:11px;">View</button></a>
-        </div>
-      </div>
-
-      <!-- Shipping & Delivery -->
-      <div class="bg-white rounded-[24px] p-10 border border-[#c1c7cb]/20 ambient flex flex-col gap-6 hover:-translate-y-1 transition-transform">
-        <div class="flex items-center justify-center rounded-full" style="width:48px;height:48px;background:rgba(60,100,116,0.08);">
-          <span class="material-symbols-outlined" style="color:#3c6474;font-size:24px;">local_shipping</span>
-        </div>
-        <div>
-          <h3 class="h-sub mb-3">Shipping &amp; Delivery</h3>
-          <p class="body-copy">Learn about our delivery timelines, courier partners, international shipping options, and packaging.</p>
-        </div>
-        <div>
-          <a href="shipping.html"><button class="btn-ghost" style="font-size:11px;">View</button></a>
-        </div>
-      </div>
-
-      <!-- Returns & Exchanges -->
-      <div class="bg-white rounded-[24px] p-10 border border-[#c1c7cb]/20 ambient flex flex-col gap-6 hover:-translate-y-1 transition-transform">
-        <div class="flex items-center justify-center rounded-full" style="width:48px;height:48px;background:rgba(60,100,116,0.08);">
-          <span class="material-symbols-outlined" style="color:#3c6474;font-size:24px;">keyboard_return</span>
-        </div>
-        <div>
-          <h3 class="h-sub mb-3">Returns &amp; Exchanges</h3>
-          <p class="body-copy">Understand our return window, exchange process, and how to initiate a return for your custom piece.</p>
-        </div>
-        <div>
-          <a href="returns.html"><button class="btn-ghost" style="font-size:11px;">View</button></a>
-        </div>
-      </div>
-
-      <!-- Warranty -->
-      <div class="bg-white rounded-[24px] p-10 border border-[#c1c7cb]/20 ambient flex flex-col gap-6 hover:-translate-y-1 transition-transform">
-        <div class="flex items-center justify-center rounded-full" style="width:48px;height:48px;background:rgba(60,100,116,0.08);">
-          <span class="material-symbols-outlined" style="color:#3c6474;font-size:24px;">shield</span>
-        </div>
-        <div>
-          <h3 class="h-sub mb-3">Warranty</h3>
-          <p class="body-copy">Every JWLZIFY piece comes with a lifetime craftsmanship warranty. Learn what's covered and how to make a claim.</p>
-        </div>
-        <div>
-          <a href="warranty.html"><button class="btn-ghost" style="font-size:11px;">View</button></a>
-        </div>
-      </div>
-
-      <!-- Authenticity Guaranteed -->
-      <div class="bg-white rounded-[24px] p-10 border border-[#c1c7cb]/20 ambient flex flex-col gap-6 hover:-translate-y-1 transition-transform">
-        <div class="flex items-center justify-center rounded-full" style="width:48px;height:48px;background:rgba(60,100,116,0.08);">
-          <span class="material-symbols-outlined" style="color:#3c6474;font-size:24px;">verified</span>
-        </div>
-        <div>
-          <h3 class="h-sub mb-3">Authenticity Guaranteed</h3>
-          <p class="body-copy">All stones are GIA certified. Learn how we verify and document the authenticity of every piece we create.</p>
-        </div>
-        <div>
-          <a href="authenticity.html"><button class="btn-ghost" style="font-size:11px;">View</button></a>
-        </div>
-      </div>
-
-      <!-- Size Guide (full width last card) -->
-      <div class="md:col-span-2 bg-white rounded-[24px] p-10 border border-[#c1c7cb]/20 ambient flex flex-col gap-6 hover:-translate-y-1 transition-transform">
-        <div class="flex items-center justify-center rounded-full" style="width:48px;height:48px;background:rgba(60,100,116,0.08);">
-          <span class="material-symbols-outlined" style="color:#3c6474;font-size:24px;">straighten</span>
-        </div>
-        <div>
-          <h3 class="h-sub mb-3">Size Guide</h3>
-          <p class="body-copy" style="max-width:680px;">Find your perfect fit with our ring, bracelet, and necklace sizing guides, including international size charts.</p>
-        </div>
-        <div>
-          <button class="btn-ghost" style="font-size:11px;">View</button>
-        </div>
-      </div>
-
+<section class="py-16 md:py-24">
+  <div class="max-w-[800px] mx-auto px-4 md:px-16">
+    <div class="mb-8">
+      <a href="support.html" style="display:inline-flex;align-items:center;gap:6px;font-family:Inter,sans-serif;font-size:13px;font-weight:500;letter-spacing:0.06em;color:#3c6474;text-decoration:none;transition:opacity 0.2s;" onmouseover="this.style.opacity='0.7'" onmouseout="this.style.opacity='1'">
+        <span class="material-symbols-outlined" style="font-size:16px;">arrow_back</span>
+        Back to Support
+      </a>
+    </div>
+    <div class="bg-white rounded-[20px] p-12 border border-[#c1c7cb]/20 ambient text-center">
+      <span class="material-symbols-outlined" style="color:#3c6474;font-size:40px;display:block;margin-bottom:20px;">verified</span>
+      <h2 class="h-sub mb-4">Coming Soon</h2>
+      <p class="body-copy" style="color:rgba(65,72,75,0.75);max-width:440px;margin:0 auto;">Details on GIA certification, stone verification, and how we document the authenticity of every piece will be available here shortly.</p>
     </div>
   </div>
 </section>
 
 </main>
 
-<!-- ════════════════════════════
-     FOOTER
-════════════════════════════ -->
 <footer class="w-full py-24 bg-white border-t border-[#c1c7cb]/12">
   <div class="max-w-[1600px] mx-auto px-4 md:px-16">
     <div class="grid grid-cols-12 gap-16 mb-20">
@@ -246,11 +132,11 @@ tailwind.config = {
           <p class="label" style="font-size:12px;letter-spacing:0.13em;color:#1b1c1c;font-weight:700;">Support</p>
           <ul class="flex flex-col gap-3">
             <li><a href="support.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Account</a></li>
-            <li><a href="support.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Order Status</a></li>
-            <li><a href="support.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Shipping &amp; Delivery</a></li>
-            <li><a href="support.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Returns &amp; Exchanges</a></li>
-            <li><a href="support.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Warranty</a></li>
-            <li><a href="support.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Authenticity</a></li>
+            <li><a href="orders.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Order Status</a></li>
+            <li><a href="shipping.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Shipping &amp; Delivery</a></li>
+            <li><a href="returns.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Returns &amp; Exchanges</a></li>
+            <li><a href="warranty.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Warranty</a></li>
+            <li><a href="authenticity.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Authenticity</a></li>
             <li><a href="support.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Size Guide</a></li>
           </ul>
         </div>
@@ -280,21 +166,5 @@ tailwind.config = {
 </script>
 <script type="module" src="firebase-auth.js"></script>
 <script type="module" src="firestore-service.js"></script>
-<script type="module">
-import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
-onAuthStateChanged(window._jwlAuth, (user) => {
-  const signedIn  = document.getElementById('supportAccountSignedIn');
-  const signedOut = document.getElementById('supportAccountSignedOut');
-  const greeting  = document.getElementById('supportAccountGreeting');
-  if (user) {
-    greeting.textContent = 'Signed in as ' + (user.displayName || user.email);
-    signedIn.style.display  = '';
-    signedOut.style.display = 'none';
-  } else {
-    signedIn.style.display  = 'none';
-    signedOut.style.display = '';
-  }
-});
-</script>
 </body>
 </html>
