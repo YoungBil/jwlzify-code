@@ -235,8 +235,6 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
   }
 }
 </script>
-<!-- MediaPipe Pose (classic global — sets window.Pose) -->
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
 </head>
 <body class="bg-[#fbf9f9] text-[#1b1c1c]">
 
@@ -715,81 +713,92 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
         See It On You
       </h2>
       <p class="body-copy" style="color:#71787c;max-width:420px;margin:auto;">
-        Your live camera with the piece overlaid — exactly like a Snapchat filter.
+        Place your photo or camera as the background, then drag and resize your piece to position it.
       </p>
     </div>
 
     <div class="flex flex-col items-center gap-5">
 
-      <!-- ── Camera viewport ── -->
-      <div id="camWrap" class="rounded-3xl"
-           style="width:100%;max-width:780px;aspect-ratio:16/9;">
+      <!-- ── Try-on viewport ── -->
+      <div id="tryonViewport" class="rounded-3xl overflow-hidden shadow-xl"
+           style="position:relative;width:100%;max-width:780px;aspect-ratio:16/9;background:#e9e8e7;">
 
-        <!-- Video feed (filled by JS srcObject) -->
-        <video id="camVideo" autoplay playsinline muted
-               style="width:100%;height:100%;object-fit:cover;transform:scaleX(-1);"></video>
-
-        <!-- ── Pendant / necklace pendant unit ── -->
-        <div id="jewelryUnit">
-          <canvas id="chainCanvas"></canvas>
-          <img id="jewelryImg" src="" alt="">
+        <!-- Default placeholder -->
+        <div id="tryonBg" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px;">
+          <span class="material-symbols-outlined" style="font-size:56px;color:#c1c7cb;">add_a_photo</span>
+          <p style="font-family:Inter,sans-serif;font-size:13px;color:#9ca3af;letter-spacing:0.04em;">Upload a photo or use your camera</p>
         </div>
 
-        <!-- ── Per-type overlays ── -->
-        <img id="necklaceOverlay" src="" alt="" style="display:none;">
-        <img id="ringOverlay"     src="" alt="" style="display:none;">
-        <img id="earringLeft"     src="" alt="" style="display:none;">
-        <img id="earringRight"    src="" alt="" style="display:none;">
-        <img id="braceletOverlay" src="" alt="" style="display:none;">
+        <!-- Live camera feed -->
+        <video id="tryonVideo" autoplay playsinline muted
+               style="display:none;position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform:scaleX(-1);"></video>
 
-        <!-- ── Loading state ── -->
-        <div id="camLoading" class="absolute inset-0 flex flex-col items-center justify-center gap-5">
-          <div class="d-spinner"></div>
-          <p style="font-family:'Playfair Display',serif;font-size:18px;font-style:italic;color:rgba(255,255,255,0.7);">Starting camera…</p>
+        <!-- Uploaded photo -->
+        <img id="tryonPhoto" src="" alt=""
+             style="display:none;position:absolute;inset:0;width:100%;height:100%;object-fit:cover;">
+
+        <!-- Draggable jewelry overlay -->
+        <div id="tryonJewelry"
+             style="display:none;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);touch-action:none;cursor:grab;user-select:none;">
+          <img id="tryonJewelryImg" src="" alt="jewelry"
+               style="width:160px;height:auto;display:block;pointer-events:none;border-radius:4px;">
+          <!-- Resize handle (bottom-right corner) -->
+          <div id="tryonResizeHandle"
+               style="position:absolute;bottom:-9px;right:-9px;width:20px;height:20px;background:#3c6474;border-radius:50%;cursor:se-resize;touch-action:none;border:2px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.35);z-index:10;"></div>
         </div>
 
-        <!-- ── Camera denied ── -->
-        <div id="camDenied" class="hidden absolute inset-0 flex flex-col items-center justify-center gap-6 px-10 text-center">
-          <span class="material-symbols-outlined" style="font-size:52px;color:rgba(255,255,255,0.45);">videocam_off</span>
-          <p style="color:rgba(255,255,255,0.7);font-size:15px;font-family:'Inter',sans-serif;max-width:260px;line-height:1.6;">Camera access is needed. Allow it in your browser settings and try again.</p>
-          <button onclick="startCamera()" class="btn-primary" style="font-size:11px;letter-spacing:0.16em;padding:12px 28px;">Allow &amp; Retry</button>
+        <!-- Camera starting overlay -->
+        <div id="tryonCamLoading"
+             style="display:none;position:absolute;inset:0;background:rgba(27,28,28,0.65);align-items:center;justify-content:center;flex-direction:column;gap:14px;z-index:5;">
+          <div style="width:42px;height:42px;border-radius:50%;border:3px solid rgba(255,255,255,0.25);border-top-color:white;animation:jwlz-spin 0.85s linear infinite;"></div>
+          <p style="font-family:Inter,sans-serif;font-size:13px;color:rgba(255,255,255,0.8);">Starting camera…</p>
         </div>
 
-        <!-- ── Guide pill (top) — appears once camera is live ── -->
-        <div id="camGuide" class="hidden absolute top-5 left-0 right-0 flex justify-center pointer-events-none">
-          <div class="px-4 py-2 rounded-full" style="background:rgba(0,0,0,0.48);backdrop-filter:blur(10px);">
-            <span class="label" style="font-size:9.5px;letter-spacing:0.18em;color:rgba(255,255,255,0.88);" id="guideText">CENTER YOUR CHEST IN FRAME</span>
-          </div>
+        <!-- Camera denied -->
+        <div id="tryonCamDenied"
+             style="display:none;position:absolute;inset:0;background:rgba(27,28,28,0.88);align-items:center;justify-content:center;flex-direction:column;gap:14px;text-align:center;padding:32px;z-index:5;">
+          <span class="material-symbols-outlined" style="font-size:48px;color:rgba(255,255,255,0.4);">videocam_off</span>
+          <p style="font-family:Inter,sans-serif;font-size:13px;color:rgba(255,255,255,0.65);max-width:240px;line-height:1.6;margin:0;">Camera access needed. Allow it in your browser settings and try again.</p>
+          <button onclick="tryonStartCamera()"
+                  style="font-family:Inter,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.12em;background:#3c6474;color:white;border:none;border-radius:10px;padding:10px 24px;cursor:pointer;">
+            Allow &amp; Retry
+          </button>
         </div>
 
-        <!-- ── Jewelry type badge (top-right) ── -->
-        <div id="jewBadge" class="hidden absolute top-5 right-5">
-          <div class="px-3 py-1.5 rounded-full flex items-center gap-2"
-               style="background:rgba(185,226,245,0.18);backdrop-filter:blur(12px);border:1px solid rgba(185,226,245,0.38);">
-            <span class="w-1.5 h-1.5 rounded-full bg-[#b9e2f5] animate-pulse"></span>
-            <span class="label" style="font-size:9px;letter-spacing:0.18em;color:#b9e2f5;" id="jewBadgeText">RING</span>
-          </div>
-        </div>
-
-        <!-- ── Screenshot hint (bottom) ── -->
-        <div id="camHint" class="hidden absolute bottom-5 left-0 right-0 flex justify-center pointer-events-none">
-          <span class="label" style="font-size:8.5px;letter-spacing:0.14em;color:rgba(255,255,255,0.4);">WIN+SHIFT+S TO SCREENSHOT</span>
-        </div>
-
-        <!-- ── AR pipeline loading overlay ── -->
-        <div id="arLoading" class="hidden absolute inset-0 flex flex-col items-center justify-center gap-6"
-             style="background:rgba(10,24,32,0.92);backdrop-filter:blur(10px);z-index:20;">
-          <div style="width:52px;height:52px;border-radius:50%;border:3px solid rgba(193,164,90,0.22);border-top-color:#c1a45a;animation:tryOnSpin 0.9s linear infinite;"></div>
-          <div class="text-center">
-            <p style="font-family:'Playfair Display',serif;font-size:19px;font-style:italic;color:rgba(193,164,90,0.92);margin:0;">Preparing your piece…</p>
-            <p id="arLoadingDetail" style="font-family:Inter,sans-serif;font-size:10px;letter-spacing:0.14em;color:rgba(255,255,255,0.38);margin-top:10px;"></p>
-          </div>
+        <!-- Instruction hint (shown once jewelry is loaded) -->
+        <div style="position:absolute;bottom:14px;left:0;right:0;text-align:center;pointer-events:none;z-index:4;">
+          <span id="tryonHint"
+                style="display:none;font-family:Inter,sans-serif;font-size:9.5px;letter-spacing:0.14em;color:rgba(255,255,255,0.7);background:rgba(0,0,0,0.38);padding:5px 14px;border-radius:20px;backdrop-filter:blur(6px);">
+            DRAG TO POSITION &nbsp;·&nbsp; DRAG CORNER TO RESIZE
+          </span>
         </div>
 
       </div>
 
+      <!-- ── Controls ── -->
+      <div class="flex gap-3 flex-wrap justify-center" style="max-width:780px;width:100%;">
+        <button onclick="tryonStartCamera()"
+                class="btn-outline"
+                style="font-size:11px;letter-spacing:0.12em;padding:12px 20px;gap:6px;">
+          <span class="material-symbols-outlined" style="font-size:16px;">videocam</span>
+          Use Camera
+        </button>
+        <label class="btn-outline"
+               style="font-size:11px;letter-spacing:0.12em;padding:12px 20px;gap:6px;cursor:pointer;display:inline-flex;align-items:center;">
+          <span class="material-symbols-outlined" style="font-size:16px;">image</span>
+          Upload Photo
+          <input id="tryonPhotoInput" type="file" accept="image/*"
+                 style="display:none;" onchange="tryonLoadPhoto(event)">
+        </label>
+        <button onclick="tryonResetPosition()"
+                class="btn-outline"
+                style="font-size:11px;letter-spacing:0.12em;padding:12px 20px;gap:6px;">
+          <span class="material-symbols-outlined" style="font-size:16px;">restart_alt</span>
+          Reset Position
+        </button>
+      </div>
 
-      <!-- ── Controls below camera ── -->
+      <!-- ── Next / Back ── -->
       <div class="flex gap-3 justify-center flex-wrap" style="width:100%;max-width:720px;">
         <button onclick="goStep(5)"
                 class="btn-primary btn-glow flex-1"
@@ -1148,7 +1157,6 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
 </script>
 <script type="module" src="firebase-auth.js"></script>
 <script type="module" src="firestore-service.js"></script>
-<script type="module" src="ar-tryon.js"></script>
 
 <!-- ════════════════════════════
      JAVASCRIPT
@@ -1408,12 +1416,7 @@ async function goStep(n) {
   if (LAB.step === 4 && n !== 4) {
     isTryOnActive = false;
     isProcessing  = false;
-    window.teardownARPipeline?.();
-    if (LAB.cameraStream) {
-      LAB.cameraStream.getTracks().forEach(t => t.stop());
-      LAB.cameraStream = null;
-    }
-    hideAllOverlays();
+    teardownTryOn();
   }
   document.querySelectorAll('.sp').forEach(el => el.classList.remove('active'));
   const el = document.getElementById('s' + n) || document.getElementById('sSuccess');
@@ -2426,632 +2429,17 @@ function submitOrder(e) {
    Stage 3: Return original as last resort
 ════════════════════════════════════════════════ */
 
-const TRYON_GUIDE = {
-  ring:     'HOLD YOUR LEFT HAND IN FRAME',
-  necklace: 'CENTER YOUR NECK & CHEST IN FRAME',
-  pendant:  'CENTER YOUR CHEST IN FRAME',
-  bracelet: 'HOLD YOUR WRIST IN FRAME',
-  earrings: 'CENTER YOUR FACE IN FRAME',
-};
-
-function canvasToBlob(canvas) {
-  return new Promise(resolve => {
-    canvas.toBlob(
-      blob => resolve(URL.createObjectURL(blob)),
-      'image/png'
-    );
-  });
-}
-
-let _segmenter = null;
-
-async function getSegmenter() {
-  if (_segmenter) return _segmenter;
-  try {
-    _segmenter = await bodySegmentation.createSegmenter(
-      bodySegmentation.SupportedModels.MediaPipeSelfieSegmentation,
-      {
-        runtime: 'mediapipe',
-        solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation',
-        modelType: 'general'
-      }
-    );
-    console.log('Segmenter loaded successfully');
-  } catch(e) {
-    console.warn('Segmenter failed:', e.message);
-    _segmenter = null;
-    throw e;
-  }
-  return _segmenter;
-}
-
-window.addEventListener('load', () => {
-  getSegmenter().catch(() => {
-    console.warn('Segmenter preload failed — flood fill will be used as fallback');
-  });
-});
-
-async function tfSegmentationRemoval(img, W, H) {
-  if (!W || !H || W <= 0 || H <= 0) throw new Error('Invalid image dimensions for segmentation');
-  const segmenter = await getSegmenter();
-
-  const segs = await segmenter.segmentPeople(img, {
-    multiSegmentation: false,
-    segmentBodyParts:  false,
-    flipHorizontal:    false,
-  });
-
-  const fgColor = { r:0, g:0, b:0, a:0   };
-  const bgColor = { r:0, g:0, b:0, a:255 };
-
-  const mask = await bodySegmentation.toBinaryMask(
-    segs, fgColor, bgColor, false, 0.35
-  );
-
-  const canvas  = document.createElement('canvas');
-  canvas.width  = W;
-  canvas.height = H;
-  const ctx     = canvas.getContext('2d');
-  ctx.drawImage(img, 0, 0, W, H);
-
-  const frame = ctx.getImageData(0, 0, W, H);
-  const px    = frame.data;
-
-  for (let i = 0; i < W * H; i++) {
-    const isBgMask = mask.data[i * 4 + 3] > 128;
-    if (!isBgMask) {
-      px[i * 4 + 3] = 255;
-      continue;
-    }
-    const r = px[i*4], g = px[i*4+1], b = px[i*4+2];
-    const sat = Math.max(r,g,b) - Math.min(r,g,b);
-    const lum = r*0.299 + g*0.587 + b*0.114;
-    if (lum < 80 || sat > 45) {
-      px[i * 4 + 3] = 255;
-    } else {
-      px[i * 4 + 3] = 0;
-    }
-  }
-
-  for (let y = 1; y < H-1; y++) {
-    for (let x = 1; x < W-1; x++) {
-      const i = y * W + x;
-      if (px[i*4+3] > 0) continue;
-      const surrounded =
-        px[(i-1)*4+3] > 128 &&
-        px[(i+1)*4+3] > 128 &&
-        px[(i-W)*4+3] > 128 &&
-        px[(i+W)*4+3] > 128;
-      if (surrounded) px[i*4+3] = 255;
-    }
-  }
-
-  ctx.putImageData(frame, 0, 0);
-  return canvasToBlob(canvas);
-}
-
-async function checkRemovalQuality(blobUrl) {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.onload = () => {
-      const c = document.createElement('canvas');
-      c.width = img.naturalWidth;
-      c.height = img.naturalHeight;
-      const ctx = c.getContext('2d');
-      ctx.drawImage(img, 0, 0);
-      const d = ctx.getImageData(0, 0, c.width, c.height).data;
-      let transparent = 0;
-      const total = c.width * c.height;
-      for (let i = 3; i < d.length; i += 4) {
-        if (d[i] < 128) transparent++;
-      }
-      resolve({ transparentRatio: transparent / total });
-    };
-    img.src = blobUrl;
-  });
-}
-
-async function advancedFloodFill(img, W, H) {
-  const canvas  = document.createElement('canvas');
-  canvas.width  = W;
-  canvas.height = H;
-  const ctx     = canvas.getContext('2d');
-  ctx.drawImage(img, 0, 0, W, H);
-
-  const frame = ctx.getImageData(0, 0, W, H);
-  const px    = frame.data;
-  const N     = W * H;
-
-  const samplePoints = [];
-  const divisions = 10;
-  for (let i = 0; i <= divisions; i++) {
-    const t = i / divisions;
-    samplePoints.push(
-      Math.floor(t * (W-1)),
-      (H-1)*W + Math.floor(t * (W-1)),
-      Math.floor(t * (H-1)) * W,
-      Math.floor(t * (H-1)) * W + (W-1)
-    );
-  }
-
-  const sampleData = samplePoints.map(idx => ({
-    idx,
-    r: px[idx*4], g: px[idx*4+1], b: px[idx*4+2],
-    lum: px[idx*4]*0.299 + px[idx*4+1]*0.587 + px[idx*4+2]*0.114,
-    sat: Math.max(px[idx*4],px[idx*4+1],px[idx*4+2]) -
-         Math.min(px[idx*4],px[idx*4+1],px[idx*4+2])
-  }));
-
-  const bgSamples = sampleData.filter(s => s.lum > 140 && s.sat < 50);
-  const validSamples = bgSamples.length >= 4 ? bgSamples : sampleData;
-
-  validSamples.sort((a,b) => a.lum - b.lum);
-  const mid = validSamples.slice(
-    Math.floor(validSamples.length * 0.25),
-    Math.floor(validSamples.length * 0.75)
-  );
-
-  const bgR   = mid.reduce((s,x) => s+x.r, 0) / mid.length;
-  const bgG   = mid.reduce((s,x) => s+x.g, 0) / mid.length;
-  const bgB   = mid.reduce((s,x) => s+x.b, 0) / mid.length;
-  const bgLum = bgR*0.299 + bgG*0.587 + bgB*0.114;
-
-  const bgVariance = mid.reduce((s,x) => {
-    return s + Math.abs(x.r-bgR) + Math.abs(x.g-bgG) + Math.abs(x.b-bgB);
-  }, 0) / mid.length;
-
-  const BASE_TOL = Math.min(60, Math.max(25, bgVariance * 1.5));
-
-  function isBg(idx, tolerance) {
-    const r = px[idx*4], g = px[idx*4+1], b = px[idx*4+2];
-    const dist = Math.sqrt((r-bgR)**2 + (g-bgG)**2 + (b-bgB)**2);
-    if (dist >= tolerance) return false;
-    const lum = r*0.299 + g*0.587 + b*0.114;
-    if (lum < 55) return false;
-    const sat = Math.max(r,g,b) - Math.min(r,g,b);
-    if (sat > 65) return false;
-    return true;
-  }
-
-  const gone  = new Uint8Array(N);
-  const queue = new Int32Array(N * 2);
-  let head = 0, tail = 0;
-
-  function seed(i) {
-    if (i>=0 && i<N && !gone[i] && isBg(i, BASE_TOL)) {
-      gone[i]=1; queue[tail++]=i;
-    }
-  }
-
-  for (let x=0; x<W; x++) { seed(x); seed((H-1)*W+x); }
-  for (let y=1; y<H-1; y++) { seed(y*W); seed(y*W+W-1); }
-
-  while (head < tail) {
-    const i = queue[head++];
-    seed(i-1); seed(i+1); seed(i-W); seed(i+W);
-  }
-
-  const SHADOW_TOL = BASE_TOL * 1.6;
-  const gone2 = new Uint8Array(gone);
-  const q2    = new Int32Array(N);
-  let h2=0, t2=0;
-
-  for (let i=0; i<N; i++) { if (gone[i]) q2[t2++]=i; }
-
-  while (h2 < t2) {
-    const i = q2[h2++];
-    const neighbors = [i-1, i+1, i-W, i+W];
-    for (const n of neighbors) {
-      if (n<0||n>=N||gone2[n]) continue;
-      if (isBg(n, SHADOW_TOL)) { gone2[n]=1; q2[t2++]=n; }
-    }
-  }
-
-  for (let i=0; i<N; i++) {
-    if (gone2[i] && !gone[i]) {
-      const lum = px[i*4]*0.299 + px[i*4+1]*0.587 + px[i*4+2]*0.114;
-      if (lum > bgLum * 0.60) gone[i] = 1;
-    }
-  }
-
-  for (let y=2; y<H-2; y++) {
-    for (let x=2; x<W-2; x++) {
-      const i = y*W+x;
-      if (!gone[i]) continue;
-      let opaqueCount = 0;
-      for (let dy=-1; dy<=1; dy++) {
-        for (let dx=-1; dx<=1; dx++) {
-          if (dy===0 && dx===0) continue;
-          if (!gone[(y+dy)*W+(x+dx)]) opaqueCount++;
-        }
-      }
-      if (opaqueCount >= 7) gone[i] = 0;
-    }
-  }
-
-  for (let i=0; i<N; i++) { px[i*4+3] = gone[i] ? 0 : 255; }
-
-  ctx.putImageData(frame, 0, 0);
-  return canvasToBlob(canvas);
-}
-
-async function floodFillRemoveBackground(imageUrl) {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => {
-      const c   = document.createElement('canvas');
-      c.width   = img.naturalWidth;
-      c.height  = img.naturalHeight;
-      const ctx = c.getContext('2d');
-      ctx.drawImage(img, 0, 0);
-
-      const frame = ctx.getImageData(0, 0, c.width, c.height);
-      const px    = frame.data;
-      const W     = c.width;
-      const H     = c.height;
-      const N     = W * H;
-
-      // Sample background color from borders
-      const samples = [];
-      for (let x = 0; x < W; x++) {
-        samples.push(x);
-        samples.push((H-1)*W + x);
-      }
-      for (let y = 1; y < H-1; y++) {
-        samples.push(y*W);
-        samples.push(y*W + W-1);
-      }
-
-      const valid = samples.filter(i => {
-        const r=px[i*4],g=px[i*4+1],b=px[i*4+2];
-        return (r*0.299+g*0.587+b*0.114) > 140;
-      });
-
-      const bgR = valid.reduce((s,i)=>s+px[i*4],0)/valid.length;
-      const bgG = valid.reduce((s,i)=>s+px[i*4+1],0)/valid.length;
-      const bgB = valid.reduce((s,i)=>s+px[i*4+2],0)/valid.length;
-
-      const TOL = 52;
-
-      function isBg(i) {
-        const r=px[i*4],g=px[i*4+1],b=px[i*4+2];
-        return Math.sqrt((r-bgR)**2+(g-bgG)**2+(b-bgB)**2) < TOL;
-      }
-
-      const gone  = new Uint8Array(N);
-      const queue = new Int32Array(N*2);
-      let head=0, tail=0;
-
-      function seed(i) {
-        if (i>=0&&i<N&&!gone[i]&&isBg(i)) {
-          gone[i]=1; queue[tail++]=i;
-        }
-      }
-
-      for (let x=0;x<W;x++) { seed(x); seed((H-1)*W+x); }
-      for (let y=1;y<H-1;y++) { seed(y*W); seed(y*W+W-1); }
-
-      while (head<tail) {
-        const i=queue[head++];
-        seed(i-1);seed(i+1);seed(i-W);seed(i+W);
-      }
-
-      for (let i=0;i<N;i++) {
-        px[i*4+3] = gone[i] ? 0 : 255;
-      }
-
-      ctx.putImageData(frame, 0, 0);
-      c.toBlob(
-        blob => resolve(URL.createObjectURL(blob)),
-        'image/png'
-      );
-    };
-    img.onerror = () => resolve(imageUrl);
-    img.src = imageUrl;
-  });
-}
-
-async function removeBackground(imageUrl) {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = async () => {
-      // Try TF segmentation first
-      try {
-        if (_segmenter) {
-          const result = await tfSegmentationRemoval(img, img.naturalWidth, img.naturalHeight);
-          resolve(result);
-          return;
-        }
-      } catch(e) {
-        console.warn('TF removal failed:', e.message);
-      }
-      // Fall back to flood fill
-      resolve(await floodFillRemoveBackground(imageUrl));
-    };
-    img.onerror = () => resolve(imageUrl);
-    img.src = imageUrl;
-  });
-}
-
-function enforceCleanOverlay(el) {
-  const camWrap = document.getElementById('camWrap');
-  let node = el;
-  while (node && node !== camWrap) {
-    node.style.background        = 'transparent';
-    node.style.backgroundColor   = 'transparent';
-    node.style.boxShadow         = 'none';
-    node.style.webkitBoxShadow   = 'none';
-    node.style.border            = 'none';
-    node.style.outline           = 'none';
-    node.style.filter            = 'none';
-    node.style.webkitFilter      = 'none';
-    node.style.mixBlendMode      = 'normal';
-    node.style.backdropFilter    = 'none';
-    node.style.opacity           = '1';
-    node = node.parentElement;
-  }
-}
-
-/* ═══════════════════════════════════════════════
-   HARDCODED OVERLAY SYSTEM
-════════════════════════════════════════════════ */
-
-function inchesToPx(inches) {
-  return (document.getElementById('camWrap').offsetWidth / 24) * inches;
-}
-
-function drawChain(chainPx) {
-  const cvs = document.getElementById('chainCanvas');
-  const chainW = Math.round(chainPx * 3);
-  const chainH = Math.round(chainPx * 1.4);
-  cvs.width  = chainW;
-  cvs.height = chainH;
-  cvs.style.width  = chainW + 'px';
-  cvs.style.height = chainH + 'px';
-  const ctx = cvs.getContext('2d');
-  ctx.clearRect(0, 0, chainW, chainH);
-
-  const meetX  = chainW / 2;
-  const meetY  = chainH;
-  const spread = chainPx * 1.1;
-  const topY   = chainH * 0.06;
-  const metal  = document.getElementById('materialSelect')?.value || '925silver';
-  const color  = metal.includes('14ct') ? '#d4af65'
-               : metal.includes('10ct') ? '#c9a96e'
-               : '#b8c0c8';
-
-  ctx.strokeStyle = color;
-  ctx.lineWidth   = 1.6;
-  ctx.setLineDash([2.5, 2]);
-  ctx.lineCap     = 'round';
-  ctx.globalAlpha = 0.85;
-
-  ctx.beginPath();
-  ctx.moveTo(meetX - spread, topY);
-  ctx.quadraticCurveTo(meetX - spread * 0.5, chainH * 0.75, meetX, meetY);
-  ctx.stroke();
-
-  ctx.beginPath();
-  ctx.moveTo(meetX + spread, topY);
-  ctx.quadraticCurveTo(meetX + spread * 0.5, chainH * 0.75, meetX, meetY);
-  ctx.stroke();
-
-  ctx.setLineDash([]);
-  ctx.globalAlpha = 1;
-}
-
-function makeDraggable(el) {
-  let dragging = false, ox, oy, oleft, otop;
-  const wrap = () => document.getElementById('camWrap');
-
-  const startDrag = (cx, cy) => {
-    dragging = true;
-    el.style.cursor = 'grabbing';
-    ox = cx; oy = cy;
-    const r = el.getBoundingClientRect(), cr = wrap().getBoundingClientRect();
-    oleft = r.left - cr.left; otop = r.top - cr.top;
-    el.style.transform = 'none';
-    el.style.left = oleft + 'px'; el.style.top = otop + 'px';
-  };
-
-  const moveDrag = (cx, cy) => {
-    if (!dragging) return;
-    const cw = wrap();
-    let nl = oleft + (cx - ox), nt = otop + (cy - oy);
-    nl = Math.max(0, Math.min(nl, cw.offsetWidth  - el.offsetWidth));
-    nt = Math.max(0, Math.min(nt, cw.offsetHeight - el.offsetHeight));
-    el.style.left = nl + 'px'; el.style.top = nt + 'px';
-  };
-
-  el.addEventListener('mousedown',  e => { startDrag(e.clientX, e.clientY); e.preventDefault(); });
-  document.addEventListener('mousemove', e => moveDrag(e.clientX, e.clientY));
-  document.addEventListener('mouseup',   () => { dragging = false; el.style.cursor = 'grab'; });
-
-  el.addEventListener('touchstart', e => {
-    startDrag(e.touches[0].clientX, e.touches[0].clientY); e.preventDefault();
-  }, { passive: false });
-  document.addEventListener('touchmove', e => {
-    moveDrag(e.touches[0].clientX, e.touches[0].clientY);
-  }, { passive: false });
-  document.addEventListener('touchend', () => { dragging = false; });
-}
-
-function hideAllOverlays() {
-  ['jewelryUnit','necklaceOverlay','ringOverlay',
-   'earringLeft','earringRight','braceletOverlay']
-    .forEach(id => {
-      const el = document.getElementById(id);
-      if (el) el.style.display = 'none';
-    });
-}
-
-function showTryOnLoading() {
-  const wrap = document.getElementById('camWrap');
-  let loader = document.getElementById('tryOnLoader');
-  if (!loader) {
-    loader = document.createElement('div');
-    loader.id = 'tryOnLoader';
-    loader.style.cssText =
-      'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;' +
-      'background:rgba(0,0,0,0.28);z-index:20;border-radius:inherit;';
-    loader.innerHTML =
-      '<div style="width:40px;height:40px;border:3px solid rgba(255,255,255,0.3);' +
-      'border-top-color:#fff;border-radius:50%;animation:tryOnSpin 0.8s linear infinite;"></div>';
-    wrap.appendChild(loader);
-  }
-  loader.style.display = 'flex';
-}
-
-function hideTryOnLoading() {
-  const loader = document.getElementById('tryOnLoader');
-  if (loader) loader.style.display = 'none';
-}
-
-/* — per-type show functions — */
-
-async function showPendantOverlay(rawUrl) {
-  showTryOnLoading();
-  const cleanUrl = rawUrl.startsWith('blob:')
-    ? rawUrl
-    : await removeBackground(rawUrl);
-
-  const img      = document.getElementById('jewelryImg');
-  const unit     = document.getElementById('jewelryUnit');
-  const camWrap  = document.getElementById('camWrap');
-
-  img.onload = () => {
-    const chainPx  = inchesToPx(1.5);
-    const pendantW = inchesToPx(2);
-    drawChain(chainPx);
-    img.style.width  = pendantW + 'px';
-    img.style.height = 'auto';
-
-    const chainW = Math.round(chainPx * 3);
-    const cW = camWrap.offsetWidth, cH = camWrap.offsetHeight;
-    unit.style.left    = Math.round(cW / 2 - chainW / 2) + 'px';
-    unit.style.top     = Math.round(cH * 0.18) + 'px';
-    unit.style.display = 'flex';
-    enforceCleanOverlay(img);
-    hideTryOnLoading();
-    makeDraggable(unit);
-  };
-  img.src = cleanUrl || rawUrl;
-}
-
-async function showNecklaceOverlay(rawUrl) {
-  showTryOnLoading();
-  const cleanUrl = rawUrl.startsWith('blob:')
-    ? rawUrl
-    : await removeBackground(rawUrl);
-
-  const el = document.getElementById('necklaceOverlay');
-  el.onload = () => {
-    const camWrap = document.getElementById('camWrap');
-    const w = Math.round(camWrap.offsetWidth * 0.65);
-    el.style.width     = w + 'px';
-    el.style.height    = 'auto';
-    el.style.left      = Math.round(camWrap.offsetWidth * 0.175) + 'px';
-    el.style.top       = Math.round(camWrap.offsetHeight * 0.18) + 'px';
-    el.style.display   = 'block';
-    enforceCleanOverlay(el);
-    hideTryOnLoading();
-    makeDraggable(el);
-  };
-  el.src = cleanUrl || rawUrl;
-}
-
-async function showRingOverlay(rawUrl) {
-  showTryOnLoading();
-  const cleanUrl = await removeBackground(rawUrl);
-
-  const el = document.getElementById('ringOverlay');
-  el.onload = () => {
-    const camWrap = document.getElementById('camWrap');
-    const w = Math.round(camWrap.offsetWidth * 0.14);
-    el.style.width     = w + 'px';
-    el.style.height    = 'auto';
-    el.style.left      = Math.round(camWrap.offsetWidth  * 0.50 - w / 2) + 'px';
-    el.style.top       = Math.round(camWrap.offsetHeight * 0.68 - el.offsetHeight / 2) + 'px';
-    el.style.display   = 'block';
-    enforceCleanOverlay(el);
-    hideTryOnLoading();
-    makeDraggable(el);
-  };
-  el.src = cleanUrl || rawUrl;
-}
-
-async function showEarringOverlay(rawUrl) {
-  showTryOnLoading();
-  const cleanUrl = await removeBackground(rawUrl);
-  let loaded = 0;
-
-  const camWrap = document.getElementById('camWrap');
-  const leftEl  = document.getElementById('earringLeft');
-  const rightEl = document.getElementById('earringRight');
-
-  const onBothLoaded = () => {
-    hideTryOnLoading();
-    makeDraggable(leftEl);
-    makeDraggable(rightEl);
-  };
-
-  const positionEarring = (el, xFrac) => {
-    const w = Math.round(camWrap.offsetWidth * 0.07);
-    el.style.width   = w + 'px';
-    el.style.height  = 'auto';
-    el.style.left    = Math.round(camWrap.offsetWidth  * xFrac - w / 2) + 'px';
-    el.style.top     = Math.round(camWrap.offsetHeight * 0.26 - el.offsetHeight / 2) + 'px';
-    el.style.display = 'block';
-    enforceCleanOverlay(el);
-    if (++loaded === 2) onBothLoaded();
-  };
-
-  leftEl.onload  = () => positionEarring(leftEl,  0.28);
-  rightEl.onload = () => positionEarring(rightEl, 0.72);
-  leftEl.src  = cleanUrl || rawUrl;
-  rightEl.src = cleanUrl || rawUrl;
-}
-
-async function showBraceletOverlay(rawUrl) {
-  showTryOnLoading();
-  const cleanUrl = await removeBackground(rawUrl);
-
-  const el = document.getElementById('braceletOverlay');
-  el.onload = () => {
-    const camWrap = document.getElementById('camWrap');
-    const w = Math.round(camWrap.offsetWidth * 0.28);
-    el.style.width     = w + 'px';
-    el.style.height    = 'auto';
-    el.style.left      = Math.round(camWrap.offsetWidth  * 0.50 - w / 2) + 'px';
-    el.style.top       = Math.round(camWrap.offsetHeight * 0.72 - el.offsetHeight / 2) + 'px';
-    el.style.display   = 'block';
-    enforceCleanOverlay(el);
-    hideTryOnLoading();
-    makeDraggable(el);
-  };
-  el.src = cleanUrl || rawUrl;
-}
-
-function activateTryOnOverlay(type, rawUrl) {
-  hideAllOverlays();
-  switch (type) {
-    case 'pendant':  showPendantOverlay(rawUrl);  break;
-    case 'necklace': showNecklaceOverlay(rawUrl); break;
-    case 'ring':     showRingOverlay(rawUrl);     break;
-    case 'earrings': showEarringOverlay(rawUrl);  break;
-    case 'bracelet': showBraceletOverlay(rawUrl); break;
-  }
-}
-
-/* ── Camera + try-on entry ── */
-
-async function startCamera() {
-  const loading = document.getElementById('camLoading');
-  const denied  = document.getElementById('camDenied');
-  loading.classList.remove('hidden');
-  denied.classList.add('hidden');
+/* ── Try On — drag-and-drop overlay ─────────── */
+
+async function tryonStartCamera() {
+  const loading = document.getElementById('tryonCamLoading');
+  const denied  = document.getElementById('tryonCamDenied');
+  const bg      = document.getElementById('tryonBg');
+  const video   = document.getElementById('tryonVideo');
+  const photo   = document.getElementById('tryonPhoto');
+
+  loading.style.display = 'flex';
+  denied.style.display  = 'none';
 
   if (LAB.cameraStream) {
     LAB.cameraStream.getTracks().forEach(t => t.stop());
@@ -3063,44 +2451,153 @@ async function startCamera() {
       video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } }
     });
     LAB.cameraStream = stream;
-    const video = document.getElementById('camVideo');
     video.srcObject = stream;
     await new Promise(res => { video.onloadedmetadata = res; });
     await video.play();
-    loading.classList.add('hidden');
-  } catch (err) {
-    loading.classList.add('hidden');
-    denied.classList.remove('hidden');
-    throw err;
+    video.style.display = 'block';
+    bg.style.display    = 'none';
+    if (photo) photo.style.display = 'none';
+    loading.style.display = 'none';
+  } catch {
+    loading.style.display = 'none';
+    denied.style.display  = 'flex';
   }
+}
+
+function tryonLoadPhoto(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const url   = URL.createObjectURL(file);
+  const photo = document.getElementById('tryonPhoto');
+  const video = document.getElementById('tryonVideo');
+  const bg    = document.getElementById('tryonBg');
+
+  if (LAB.cameraStream) {
+    LAB.cameraStream.getTracks().forEach(t => t.stop());
+    LAB.cameraStream = null;
+    video.srcObject  = null;
+    video.style.display = 'none';
+  }
+
+  photo.src           = url;
+  photo.style.display = 'block';
+  bg.style.display    = 'none';
+}
+
+function tryonResetPosition() {
+  const jewelry  = document.getElementById('tryonJewelry');
+  const viewport = document.getElementById('tryonViewport');
+  if (!jewelry || jewelry.style.display === 'none') return;
+  const vw = viewport.offsetWidth;
+  const vh = viewport.offsetHeight;
+  jewelry.style.transform = 'none';
+  jewelry.style.left = Math.round((vw - jewelry.offsetWidth)  / 2) + 'px';
+  jewelry.style.top  = Math.round((vh - jewelry.offsetHeight) / 2) + 'px';
+}
+
+function _initTryonDrag() {
+  const jewelry      = document.getElementById('tryonJewelry');
+  const resizeHandle = document.getElementById('tryonResizeHandle');
+  const viewport     = document.getElementById('tryonViewport');
+  const img          = document.getElementById('tryonJewelryImg');
+  if (!jewelry || jewelry._dragInited) return;
+  jewelry._dragInited = true;
+
+  // ── Drag ──
+  let drag = null;
+
+  jewelry.addEventListener('pointerdown', e => {
+    if (e.target === resizeHandle) return;
+    jewelry.setPointerCapture(e.pointerId);
+    const jr = jewelry.getBoundingClientRect();
+    const vr = viewport.getBoundingClientRect();
+    drag = { sx: e.clientX, sy: e.clientY, ol: jr.left - vr.left, ot: jr.top - vr.top };
+    jewelry.style.cursor = 'grabbing';
+    e.preventDefault();
+  });
+
+  jewelry.addEventListener('pointermove', e => {
+    if (!drag) return;
+    let nl = drag.ol + (e.clientX - drag.sx);
+    let nt = drag.ot + (e.clientY - drag.sy);
+    nl = Math.max(0, Math.min(nl, viewport.offsetWidth  - jewelry.offsetWidth));
+    nt = Math.max(0, Math.min(nt, viewport.offsetHeight - jewelry.offsetHeight));
+    jewelry.style.left = nl + 'px';
+    jewelry.style.top  = nt + 'px';
+    e.preventDefault();
+  });
+
+  const endDrag = () => { drag = null; jewelry.style.cursor = 'grab'; };
+  jewelry.addEventListener('pointerup',     endDrag);
+  jewelry.addEventListener('pointercancel', endDrag);
+
+  // ── Resize ──
+  let rz = null;
+
+  resizeHandle.addEventListener('pointerdown', e => {
+    resizeHandle.setPointerCapture(e.pointerId);
+    rz = { sx: e.clientX, sy: e.clientY, sw: img.offsetWidth };
+    e.stopPropagation();
+    e.preventDefault();
+  });
+
+  resizeHandle.addEventListener('pointermove', e => {
+    if (!rz) return;
+    const delta = ((e.clientX - rz.sx) + (e.clientY - rz.sy)) / 2;
+    img.style.width = Math.max(60, Math.min(400, rz.sw + delta)) + 'px';
+    e.preventDefault();
+  });
+
+  const endResize = () => { rz = null; };
+  resizeHandle.addEventListener('pointerup',     endResize);
+  resizeHandle.addEventListener('pointercancel', endResize);
 }
 
 async function setupTryOn() {
   isTryOnActive = true;
   if (!LAB.imageUrl) { goStep(5); return; }
 
-  ['camGuide','jewBadge','camHint'].forEach(id =>
-    document.getElementById(id).classList.add('hidden'));
-  hideAllOverlays();
+  const jewelry  = document.getElementById('tryonJewelry');
+  const img      = document.getElementById('tryonJewelryImg');
+  const viewport = document.getElementById('tryonViewport');
+  const hint     = document.getElementById('tryonHint');
 
-  // Original flow: always open camera and show step 3 view first
-  try {
-    await startCamera();
-  } catch { return; }
+  img.style.width = '160px';
 
-  // Always show 2D overlay immediately — for pendant, 3D canvas renders on top when ready
-  activateTryOnOverlay(LAB.type, LAB.imageUrl);
+  const placeAndShow = () => {
+    const vw = viewport.offsetWidth;
+    const vh = viewport.offsetHeight;
+    jewelry.style.transform = 'none';
+    jewelry.style.left      = Math.round((vw - jewelry.offsetWidth)  / 2) + 'px';
+    jewelry.style.top       = Math.round((vh - jewelry.offsetHeight) / 2) + 'px';
+    jewelry.style.display   = 'block';
+    if (hint) hint.style.display = '';
+    _initTryonDrag();
+  };
 
-  document.getElementById('guideText').textContent    = TRYON_GUIDE[LAB.type] || 'CENTER YOURSELF IN FRAME';
-  document.getElementById('jewBadgeText').textContent = LAB.type.toUpperCase();
-  ['camGuide','jewBadge','camHint'].forEach(id =>
-    document.getElementById(id).classList.remove('hidden'));
-
-  // Once camera is live, start 3D AR pipeline for pendant (non-blocking)
-  if (LAB.type === 'pendant' && typeof window.initARPipeline === 'function') {
-    window.initARPipeline();
+  if (img.src === LAB.imageUrl && img.complete && img.naturalWidth > 0) {
+    placeAndShow();
+  } else {
+    img.onload = placeAndShow;
+    img.src    = LAB.imageUrl;
   }
 }
+
+function teardownTryOn() {
+  const video   = document.getElementById('tryonVideo');
+  const jewelry = document.getElementById('tryonJewelry');
+  const hint    = document.getElementById('tryonHint');
+
+  if (LAB.cameraStream) {
+    LAB.cameraStream.getTracks().forEach(t => t.stop());
+    LAB.cameraStream = null;
+    if (video) { video.srcObject = null; video.style.display = 'none'; }
+  }
+  if (jewelry) jewelry.style.display = 'none';
+  if (hint)    hint.style.display    = 'none';
+}
+
+
 
 
 /* ═══════════════════════════════════════════════
@@ -3396,12 +2893,6 @@ document.getElementById('s2SaveBtn').addEventListener('click', s2SaveDesign);
 document.getElementById('s2ConfirmBtn').addEventListener('click', s2ConfirmSave);
 </script>
 
-<!-- TensorFlow.js + MediaPipe body segmentation — must load after page scripts -->
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core@3.21.0/dist/tf-core.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl@3.21.0/dist/tf-backend-webgl.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/selfie_segmentation.js"
-  crossorigin="anonymous"></script>
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/body-segmentation@1.0.1/dist/body-segmentation.js"></script>
 
 </body>
 </html>
