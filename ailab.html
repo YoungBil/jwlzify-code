@@ -1230,7 +1230,7 @@ const CLAUDE_API_KEY = '';
 
 /* ── Gemini image generation ── */
 const GEMINI_API_KEY = 'AIzaSyCLOMIAySPZ-5oax7-tVeyd0rAs6l5lvJ0';
-const GEMINI_MODEL   = 'gemini-2.0-flash-exp';
+const GEMINI_MODEL   = 'gemini-2.5-flash-preview-05-20';
 
 /* ── Chain style selection for necklace type ── */
 let selectedChainStyle  = null;
@@ -1352,7 +1352,7 @@ async function generateWithGemini(prompt) {
       }]
     }],
     generationConfig: {
-      responseModalities: ['IMAGE']
+      responseModalities: ['TEXT', 'IMAGE']
     }
   };
   const response = await fetch(url, {
