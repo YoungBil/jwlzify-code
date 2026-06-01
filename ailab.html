@@ -727,18 +727,18 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
         <video id="tryon-video" autoplay playsinline muted
                style="width:100%;height:100%;object-fit:cover;display:block;transform:scaleX(-1);"></video>
 
-        <img id="tryon-pendant"
-             style="position:absolute;left:50%;top:38%;
-                    transform:translate(-50%,-50%);
-                    width:130px;height:auto;
-                    cursor:grab;user-select:none;
-                    display:none;pointer-events:auto;
-                    z-index:10;opacity:1;">
+        <canvas id="tryon-necklace"
+                style="position:absolute;
+                       left:50%;top:30%;
+                       transform:translate(-50%,0);
+                       cursor:grab;
+                       display:none;
+                       z-index:10;"></canvas>
 
         <div id="tryon-resize"
              style="position:absolute;width:14px;height:14px;
                     background:#C0C0C0;border-radius:50%;
-                    cursor:se-resize;display:none;z-index:10;
+                    cursor:s-resize;display:none;z-index:11;
                     border:1.5px solid rgba(255,255,255,0.7);
                     box-shadow:0 1px 4px rgba(0,0,0,0.4);">
         </div>
@@ -2383,70 +2383,99 @@ function submitOrder(e) {
 
 /* ── Try On ─────────────────────────────────── */
 
-function updateResizeHandlePosition() {
+// Shared state on window so the module script can read/write it too
+window._tryonPendantImg  = null;
+window._tryonPendantSize = 144;
+
+function drawNecklace(pendantImg, pendantSize) {
+  const canvas = document.getElementById('tryon-necklace');
+  if (!canvas) return;
+  const chainH = 80;
+  const totalW = pendantSize + 40;
+  const totalH = chainH + pendantSize;
+
+  canvas.width  = totalW;
+  canvas.height = totalH;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, totalW, totalH);
+
+  // Ultra-thin delicate chain: single line from top-center to pendant top
+  ctx.beginPath();
+  ctx.moveTo(totalW / 2, 0);
+  ctx.lineTo(totalW / 2, chainH);
+  ctx.strokeStyle = 'rgba(176, 176, 176, 0.6)';
+  ctx.lineWidth   = 0.8;
+  ctx.stroke();
+
+  // Pendant image: centered horizontally, directly below chain end
+  const pendantX = (totalW - pendantSize) / 2;
+  ctx.drawImage(pendantImg, pendantX, chainH, pendantSize, pendantSize);
+
+  updateHandlePosition();
+}
+
+function updateHandlePosition() {
+  const canvas    = document.getElementById('tryon-necklace');
   const container = document.getElementById('tryon-container');
-  const pendant   = document.getElementById('tryon-pendant');
-  const rh        = document.getElementById('tryon-resize');
-  if (!container || !pendant || !rh || pendant.style.display === 'none') return;
+  const handle    = document.getElementById('tryon-resize');
+  if (!canvas || !container || !handle || canvas.style.display === 'none') return;
   const c = container.getBoundingClientRect();
-  const p = pendant.getBoundingClientRect();
-  rh.style.left = (p.right  - c.left - 7) + 'px';
-  rh.style.top  = (p.bottom - c.top  - 7) + 'px';
+  const r = canvas.getBoundingClientRect();
+  handle.style.left = (r.left - c.left + canvas.width / 2 - 7) + 'px';
+  handle.style.top  = (r.bottom - c.top - 7) + 'px';
 }
 
 // Drag and resize — set up once when the script parses (DOM is ready at this point)
 (function () {
-  const pendant      = document.getElementById('tryon-pendant');
-  const resizeHandle = document.getElementById('tryon-resize');
-  if (!pendant || !resizeHandle) return;
+  const canvas = document.getElementById('tryon-necklace');
+  const handle = document.getElementById('tryon-resize');
+  if (!canvas || !handle) return;
 
   let isDragging = false, isResizing = false;
   let startX, startY, startLeft, startTop;
-  let resizeStartX, resizeStartWidth;
+  let resizeStartY, resizeStartSize;
 
-  pendant.addEventListener('pointerdown', e => {
+  canvas.addEventListener('pointerdown', e => {
     isDragging = true;
-    pendant.style.cursor = 'grabbing';
+    canvas.style.cursor = 'grabbing';
     const c = document.getElementById('tryon-container').getBoundingClientRect();
-    const p = pendant.getBoundingClientRect();
+    const r = canvas.getBoundingClientRect();
     startX    = e.clientX;
     startY    = e.clientY;
-    startLeft = p.left - c.left;
-    startTop  = p.top  - c.top;
-    pendant.style.transform = 'none';
-    pendant.style.left = startLeft + 'px';
-    pendant.style.top  = startTop  + 'px';
-    pendant.setPointerCapture(e.pointerId);
+    startLeft = r.left - c.left;
+    startTop  = r.top  - c.top;
+    canvas.style.transform = 'none';
+    canvas.style.left = startLeft + 'px';
+    canvas.style.top  = startTop  + 'px';
+    canvas.setPointerCapture(e.pointerId);
     e.preventDefault();
   });
 
   document.addEventListener('pointermove', e => {
     if (isDragging) {
-      const dx = e.clientX - startX;
-      const dy = e.clientY - startY;
-      pendant.style.left = (startLeft + dx) + 'px';
-      pendant.style.top  = (startTop  + dy) + 'px';
-      updateResizeHandlePosition();
+      canvas.style.left = (startLeft + e.clientX - startX) + 'px';
+      canvas.style.top  = (startTop  + e.clientY - startY) + 'px';
+      updateHandlePosition();
     }
     if (isResizing) {
-      const newW = Math.max(60, Math.min(400,
-        resizeStartWidth + (e.clientX - resizeStartX)));
-      pendant.style.width = newW + 'px';
-      updateResizeHandlePosition();
+      const dy = e.clientY - resizeStartY;
+      window._tryonPendantSize = Math.max(60, Math.min(400, resizeStartSize + dy));
+      if (window._tryonPendantImg) drawNecklace(window._tryonPendantImg, window._tryonPendantSize);
+      updateHandlePosition();
     }
   });
 
   document.addEventListener('pointerup', () => {
     isDragging = false;
     isResizing = false;
-    pendant.style.cursor = 'grab';
+    canvas.style.cursor = 'grab';
   });
 
-  resizeHandle.addEventListener('pointerdown', e => {
-    isResizing       = true;
-    resizeStartX     = e.clientX;
-    resizeStartWidth = pendant.offsetWidth;
-    resizeHandle.setPointerCapture(e.pointerId);
+  handle.addEventListener('pointerdown', e => {
+    isResizing      = true;
+    resizeStartY    = e.clientY;
+    resizeStartSize = window._tryonPendantSize || 144;
+    handle.setPointerCapture(e.pointerId);
     e.preventDefault();
     e.stopPropagation();
   });
@@ -2472,34 +2501,31 @@ async function startTryOnCamera() {
 async function setupTryOn() {
   isTryOnActive = true;
   console.log('[JWLZIFY] try-on step reached');
-
   if (!LAB.imageUrl) { goStep(5); return; }
 
   startTryOnCamera();
+  window._tryonPendantSize = 144;
+  window._tryonPendantImg  = null;
 
-  // Show pendant immediately — do not depend on the module script being loaded
-  const pendant = document.getElementById('tryon-pendant');
-  const rh      = document.getElementById('tryon-resize');
+  const canvas = document.getElementById('tryon-necklace');
+  const handle = document.getElementById('tryon-resize');
+  if (canvas) canvas.style.display = 'block';
+  if (handle) handle.style.display = 'block';
 
   console.log('[JWLZIFY] image url passed:', LAB.imageUrl);
-  console.log('[JWLZIFY] pendant element:', pendant);
 
-  if (pendant) {
-    pendant.src           = LAB.imageUrl;
-    pendant.style.display = 'block';
-    pendant.style.zIndex  = '10';
-    pendant.style.opacity = '1';
-    console.log('[JWLZIFY] pendant src set to:', pendant.src);
-  }
-  if (rh) {
-    rh.style.display = 'block';
-    rh.style.zIndex  = '11';
-  }
-  updateResizeHandlePosition();
-
-  // Optional upgrade: replace with bg-removed version if module loaded
   if (typeof window._loadPendantForTryOn === 'function') {
     window._loadPendantForTryOn(LAB.imageUrl);
+  } else {
+    // Module not loaded — draw original image directly without bg removal
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      window._tryonPendantImg = img;
+      drawNecklace(img, window._tryonPendantSize);
+    };
+    img.onerror = () => console.warn('[JWLZIFY] failed to load pendant image directly');
+    img.src = LAB.imageUrl;
   }
 }
 
@@ -2510,10 +2536,10 @@ function teardownTryOn() {
     const v = document.getElementById('tryon-video');
     if (v) v.srcObject = null;
   }
-  const pendant = document.getElementById('tryon-pendant');
-  const rh      = document.getElementById('tryon-resize');
-  if (pendant) pendant.style.display = 'none';
-  if (rh)      rh.style.display      = 'none';
+  const canvas = document.getElementById('tryon-necklace');
+  const handle = document.getElementById('tryon-resize');
+  if (canvas) canvas.style.display = 'none';
+  if (handle) handle.style.display = 'none';
 }
 
 
@@ -2812,28 +2838,47 @@ document.getElementById('s2SaveBtn').addEventListener('click', s2SaveDesign);
 document.getElementById('s2ConfirmBtn').addEventListener('click', s2ConfirmSave);
 </script>
 
-<!-- Try-On: background removal + pendant loader -->
+<!-- Try-On: background removal + canvas necklace loader -->
 <script type="module">
 import { removeBackground } from '@imgly/background-removal';
 
-async function loadPendantForTryOn(imageUrl) {
-  console.log('[JWLZIFY] loadPendantForTryOn called');
-  const pendant = document.getElementById('tryon-pendant');
-  if (!pendant) return;
-
-  // Pendant is already visible (set in setupTryOn) — only upgrade the src
+async function removePendantBackground(imageUrl) {
   try {
-    const blob     = await removeBackground(imageUrl, {
+    const blob = await removeBackground(imageUrl, {
       model:  'small',
-      output: { format: 'image/png', quality: 0.8 }
+      output: { format: 'image/png', quality: 0.9 }
     });
-    const cleanUrl = URL.createObjectURL(blob);
-    pendant.src = cleanUrl;
-    window.updateResizeHandlePosition?.();
-    console.log('[JWLZIFY] background removed successfully');
+    return URL.createObjectURL(blob);
   } catch(e) {
-    console.warn('[JWLZIFY] bg removal failed, using original:', e.message);
+    console.warn('[JWLZIFY] bg removal failed:', e.message);
+    return imageUrl; // fallback to original
   }
+}
+
+async function loadPendantForTryOn(imageUrl) {
+  console.log('[JWLZIFY] loadPendantForTryOn called, url:', imageUrl);
+  const canvas = document.getElementById('tryon-necklace');
+  if (!canvas) return;
+
+  // Step 1: draw original image immediately so chain+pendant show right away
+  const tempImg = new Image();
+  tempImg.crossOrigin = 'anonymous';
+  tempImg.onload = () => {
+    window._tryonPendantImg = tempImg;
+    window.drawNecklace?.(tempImg, window._tryonPendantSize || 144);
+  };
+  tempImg.src = imageUrl;
+
+  // Step 2: remove background then redraw with clean transparent pendant
+  const cleanUrl = await removePendantBackground(imageUrl);
+  const realImg  = new Image();
+  realImg.crossOrigin = 'anonymous';
+  realImg.onload = () => {
+    window._tryonPendantImg = realImg;
+    window.drawNecklace?.(realImg, window._tryonPendantSize || 144);
+    console.log('[JWLZIFY] pendant loaded with bg removed');
+  };
+  realImg.src = cleanUrl;
 }
 
 window._loadPendantForTryOn = loadPendantForTryOn;
