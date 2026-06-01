@@ -1228,6 +1228,11 @@ window.addEventListener('DOMContentLoaded', () => {
 /* ── Claude API key (fill in to enable AI spec cards) ── */
 const CLAUDE_API_KEY = '';
 
+/* ── Chain style selection for necklace type ── */
+let selectedChainStyle  = null;
+let selectedChainPrompt = '';
+let selectedChainLabel  = '';
+
 /* ── BG removal cache — avoids repeat API calls per session ── */
 const bgRemovalCache = new Map();
 async function removePendantBackgroundCached(imageUrl) {
@@ -1456,6 +1461,10 @@ function updateProgress(n) {
 
 /* ── Step navigation ─────────────────────────── */
 async function goStep(n) {
+  // Reset chain style on new design / start over
+  if (n === 1) {
+    selectedChainStyle = null; selectedChainPrompt = ''; selectedChainLabel = '';
+  }
   // Kill camera when leaving step 4 (Try On)
   if (LAB.step === 4 && n !== 4) {
     isTryOnActive = false;
@@ -1478,6 +1487,61 @@ async function goStep(n) {
   if (n === 6) populateOrderSummary();
 }
 
+/* ── Chain style modal ───────────────────────── */
+function showChainStyleModal() {
+  const modal = document.getElementById('chain-style-modal');
+  if (!modal) return;
+  modal.style.display = 'flex';
+  document.querySelectorAll('.chain-style-btn').forEach(b => {
+    b.style.border = '1.5px solid #e0e0e0';
+    b.style.background = '#fff';
+  });
+}
+
+function hideChainStyleModal() {
+  const modal = document.getElementById('chain-style-modal');
+  if (modal) modal.style.display = 'none';
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.chain-style-btn').forEach(btn => {
+    btn.addEventListener('mouseenter', () => {
+      if (btn.dataset.style !== selectedChainStyle) {
+        btn.style.border = '1.5px solid #aaa';
+        btn.style.background = '#f9f9f9';
+      }
+    });
+    btn.addEventListener('mouseleave', () => {
+      if (btn.dataset.style !== selectedChainStyle) {
+        btn.style.border = '1.5px solid #e0e0e0';
+        btn.style.background = '#fff';
+      }
+    });
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.chain-style-btn').forEach(b => {
+        b.style.border = '1.5px solid #e0e0e0';
+        b.style.background = '#fff';
+      });
+      btn.style.border = '1.5px solid #1a1a1a';
+      btn.style.background = '#f5f5f5';
+      selectedChainStyle  = btn.dataset.style;
+      selectedChainPrompt = btn.dataset.prompt;
+      selectedChainLabel  = btn.dataset.label;
+      console.log('[JWLZIFY] chain style selected:', selectedChainLabel);
+      setTimeout(() => hideChainStyleModal(), 200);
+    });
+  });
+  const cancelBtn = document.getElementById('chain-style-cancel');
+  if (cancelBtn) cancelBtn.addEventListener('click', () => {
+    selectedChainStyle = null; selectedChainPrompt = ''; selectedChainLabel = '';
+    hideChainStyleModal();
+  });
+  const modal = document.getElementById('chain-style-modal');
+  if (modal) modal.addEventListener('click', e => {
+    if (e.target.id === 'chain-style-modal') hideChainStyleModal();
+  });
+});
+
 /* ── Jewelry type selector ───────────────────── */
 function setType(btn, type) {
   document.querySelectorAll('.type-btn').forEach(b => b.classList.remove('active'));
@@ -1486,6 +1550,7 @@ function setType(btn, type) {
     window.teardownARPipeline?.();
   }
   LAB.type = type;
+  if (type === 'necklace') showChainStyleModal();
 }
 
 /* ── Style chip selector ─────────────────────── */
@@ -1503,7 +1568,7 @@ function useInspiration(btn) {
 
 /* ── Prompt building ─────────────────────────── */
 function buildPrompt(type, material, gem, style, desc) {
-  const isPendantType = (type === 'pendant' || type === 'necklace');
+  const isPendantType = (type === 'pendant');
   const mDisp = matLabel(material);
   const gDisp = gemLabel(gem);
   const base  = desc.trim() ? desc.trim() + ', ' : '';
@@ -1528,6 +1593,25 @@ function buildPrompt(type, material, gem, style, desc) {
     // BiRefNet post-processes chain removal universally — prompt only needs the
     // pendant to be the unambiguous main subject (macro, centered, clean bg).
     return `${base}luxury ${style} ${wPart}pendant charm, bail connector at top, ${mDisp}, ${gemPart}, close-up macro product photograph, pendant centered filling the frame, high contrast separation between pendant and background, soft even studio lighting with no shadows on background, pure white seamless background, ultra sharp focus, hyper realistic, 8K ultra high definition, precious metal gleam, gemstone sparkle and brilliance`;
+  }
+
+  if (type === 'necklace') {
+    const isChainOnly = ['cable', 'box', 'rope'].includes(selectedChainStyle);
+    const chainSpecific = selectedChainPrompt || 'chain necklace';
+    const noPendantParts = isChainOnly
+      ? ['absolutely no pendant', 'no hanging charm', 'chain only full length visible', 'flat lay showing complete chain']
+      : [];
+    return [
+      base + chainSpecific,
+      ...noPendantParts,
+      `luxury ${style} ${wPart}necklace`,
+      mDisp, gemPart,
+      'professional jewelry photography',
+      'pure white seamless background', 'no shadows',
+      'hyper realistic', '8K ultra high definition',
+      'macro lens', 'sharp focus', 'highly detailed', 'photorealistic',
+      'precious metal gleam', 'gemstone sparkle and brilliance'
+    ].filter(Boolean).join(', ');
   }
 
   if (type === 'earrings') {
@@ -1932,7 +2016,9 @@ function showRefineStep() {
   if (ot) ot.src = LAB.imageUrl;
 
   // Badge
-  const badge = `${LAB.type.toUpperCase()} · ${matLabel(LAB.material).toUpperCase()} · ${LAB.style.toUpperCase()}`;
+  const chainPart = (LAB.type === 'necklace' && selectedChainLabel)
+    ? ` · ${selectedChainLabel.toUpperCase()}` : '';
+  const badge = `${LAB.type.toUpperCase()}${chainPart} · ${matLabel(LAB.material).toUpperCase()} · ${LAB.style.toUpperCase()}`;
   document.getElementById('refineBadge').textContent = badge;
 
   // Detail fields (fallback card)
@@ -3642,9 +3728,17 @@ async function loadNecklaceForTryOn(imageUrl) {
   const container  = document.getElementById('tryon-container');
   const W          = container.offsetWidth;
   const H          = container.offsetHeight;
-  const defaultW   = Math.floor(W * 0.70);
+  const necklaceDefaults = {
+    cable:     { widthRatio: 0.55, topRatio: 0.32 },
+    box:       { widthRatio: 0.55, topRatio: 0.32 },
+    rope:      { widthRatio: 0.55, topRatio: 0.32 },
+    statement: { widthRatio: 0.80, topRatio: 0.38 },
+    collar:    { widthRatio: 0.65, topRatio: 0.28 },
+  };
+  const necklaceDef = necklaceDefaults[selectedChainStyle] || { widthRatio: 0.65, topRatio: 0.32 };
+  const defaultW   = Math.floor(W * necklaceDef.widthRatio);
   const defaultLeft= Math.floor((W - defaultW) / 2);
-  const defaultTop = Math.floor(H * 0.28);
+  const defaultTop = Math.floor(H * necklaceDef.topRatio);
 
   // Show immediately with original while bg removal runs
   necklaceImg.src           = imageUrl;
@@ -3664,6 +3758,87 @@ async function loadNecklaceForTryOn(imageUrl) {
 }
 </script>
 
+<!-- ── Chain style selector modal ──────────────── -->
+<div id="chain-style-modal" style="
+  display:none;position:fixed;top:0;left:0;
+  width:100%;height:100%;
+  background:rgba(0,0,0,0.6);
+  z-index:1000;
+  align-items:center;justify-content:center;">
+
+  <div style="
+    background:#fff;border-radius:16px;
+    padding:36px 32px;max-width:480px;width:90%;
+    box-shadow:0 20px 60px rgba(0,0,0,0.3);
+    font-family:'Inter',sans-serif;">
+
+    <p style="font-size:11px;letter-spacing:0.12em;text-transform:uppercase;
+              color:#888;margin:0 0 8px;">Necklace Type</p>
+
+    <h2 style="font-size:22px;font-weight:400;margin:0 0 24px;
+               color:#1a1a1a;font-family:'Playfair Display',serif;">
+      Choose a chain style
+    </h2>
+
+    <div style="display:flex;flex-direction:column;gap:10px;">
+
+      <button class="chain-style-btn" data-style="cable"
+        data-prompt="cable chain necklace, classic oval links, simple elegant chain, no pendant"
+        data-label="Cable Chain"
+        style="padding:14px 18px;border:1.5px solid #e0e0e0;border-radius:10px;
+               background:#fff;cursor:pointer;text-align:left;transition:all 0.15s;">
+        <div style="font-size:14px;font-weight:500;color:#1a1a1a;">Cable Chain</div>
+        <div style="font-size:12px;color:#888;margin-top:2px;">Classic oval interlocking links</div>
+      </button>
+
+      <button class="chain-style-btn" data-style="box"
+        data-prompt="box chain necklace, square links chain, geometric chain, no pendant"
+        data-label="Box Chain"
+        style="padding:14px 18px;border:1.5px solid #e0e0e0;border-radius:10px;
+               background:#fff;cursor:pointer;text-align:left;transition:all 0.15s;">
+        <div style="font-size:14px;font-weight:500;color:#1a1a1a;">Box Chain</div>
+        <div style="font-size:12px;color:#888;margin-top:2px;">Square geometric links</div>
+      </button>
+
+      <button class="chain-style-btn" data-style="rope"
+        data-prompt="rope chain necklace, twisted rope chain, spiral links, no pendant"
+        data-label="Rope Chain"
+        style="padding:14px 18px;border:1.5px solid #e0e0e0;border-radius:10px;
+               background:#fff;cursor:pointer;text-align:left;transition:all 0.15s;">
+        <div style="font-size:14px;font-weight:500;color:#1a1a1a;">Rope Chain</div>
+        <div style="font-size:12px;color:#888;margin-top:2px;">Twisted spiral links</div>
+      </button>
+
+      <button class="chain-style-btn" data-style="statement"
+        data-prompt="statement bib necklace, large decorative centerpiece, bold dramatic necklace, drapes across collarbone"
+        data-label="Statement / Bib"
+        style="padding:14px 18px;border:1.5px solid #e0e0e0;border-radius:10px;
+               background:#fff;cursor:pointer;text-align:left;transition:all 0.15s;">
+        <div style="font-size:14px;font-weight:500;color:#1a1a1a;">Statement / Bib</div>
+        <div style="font-size:12px;color:#888;margin-top:2px;">Bold decorative centerpiece</div>
+      </button>
+
+      <button class="chain-style-btn" data-style="collar"
+        data-prompt="collar choker necklace, tight fitting neck collar, close fitting necklace, no pendant, sits at base of neck"
+        data-label="Collar / Choker"
+        style="padding:14px 18px;border:1.5px solid #e0e0e0;border-radius:10px;
+               background:#fff;cursor:pointer;text-align:left;transition:all 0.15s;">
+        <div style="font-size:14px;font-weight:500;color:#1a1a1a;">Collar / Choker</div>
+        <div style="font-size:12px;color:#888;margin-top:2px;">Close-fitting neck piece</div>
+      </button>
+
+    </div>
+
+    <button id="chain-style-cancel" style="
+      margin-top:20px;width:100%;padding:12px;
+      border:none;background:none;color:#999;
+      font-family:'Inter',sans-serif;font-size:13px;
+      cursor:pointer;letter-spacing:0.05em;">
+      CANCEL
+    </button>
+
+  </div>
+</div>
 
 </body>
 </html>
