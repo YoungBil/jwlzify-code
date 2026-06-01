@@ -725,10 +725,13 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
 
       <div id="tryon-container"
            style="position:relative;width:100%;max-width:780px;height:520px;
-                  background:#000;overflow:visible;border-radius:12px;">
+                  background:#000;overflow:hidden;border-radius:12px;">
 
         <video id="tryon-video" autoplay playsinline muted
-               style="width:100%;height:100%;object-fit:cover;display:block;transform:scaleX(-1);"></video>
+               style="position:absolute;top:0;left:0;
+                      width:100%;height:100%;
+                      object-fit:cover;display:block;
+                      transform:scaleX(-1);z-index:1;"></video>
 
         <canvas id="tryon-necklace"
                 style="position:absolute;
@@ -2494,6 +2497,7 @@ function updateHandlePosition() {
 })();
 
 async function startTryOnCamera() {
+  console.log('[JWLZIFY] starting camera...');
   try {
     const video = document.getElementById('tryon-video');
     if (LAB.cameraStream) {
@@ -2507,6 +2511,13 @@ async function startTryOnCamera() {
     video.srcObject  = stream;
   } catch(e) {
     console.warn('[JWLZIFY] camera access denied:', e.message);
+    const container = document.getElementById('tryon-container');
+    if (container) {
+      const msg = document.createElement('p');
+      msg.style.cssText = 'color:white;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:20;font-family:Inter,sans-serif;font-size:13px;text-align:center;';
+      msg.textContent = 'Camera access denied — please allow camera';
+      container.appendChild(msg);
+    }
   }
 }
 
