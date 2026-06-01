@@ -41,7 +41,8 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
   border:2px solid #c1c7cb; color:#71787c;
   transition:all 0.3s ease; flex-shrink:0;
 }
-.prog-dot.done { background:#3c6474; border-color:#3c6474; color:#fff; }
+.prog-dot.done { background:#3c6474; border-color:#3c6474; color:#fff; cursor:pointer; }
+.prog-dot.done:hover { filter:brightness(0.82); transform:scale(1.08); }
 .prog-dot.current { background:#b9e2f5; border-color:#3c6474; color:#3c6474; }
 .prog-line { flex:1; height:1px; background:#c1c7cb; transition:background 0.3s ease; }
 .prog-line.done { background:#3c6474; }
@@ -292,12 +293,12 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
       <div id="dot6" class="prog-dot">6</div>
     </div>
     <div class="flex justify-between mt-2">
-      <span class="label text-[#3c6474]" style="font-size:9px;letter-spacing:0.12em;">DESIGN</span>
-      <span class="label text-[#71787c]" style="font-size:9px;letter-spacing:0.12em;">SPECS</span>
-      <span class="label text-[#71787c]" style="font-size:9px;letter-spacing:0.12em;">REFINE</span>
-      <span class="label text-[#71787c]" style="font-size:9px;letter-spacing:0.12em;">TRY ON</span>
-      <span class="label text-[#71787c]" style="font-size:9px;letter-spacing:0.12em;">QUOTE</span>
-      <span class="label text-[#71787c]" style="font-size:9px;letter-spacing:0.12em;">ORDER</span>
+      <span id="steplabel1" class="label text-[#3c6474]" style="font-size:9px;letter-spacing:0.12em;">DESIGN</span>
+      <span id="steplabel2" class="label text-[#71787c]" style="font-size:9px;letter-spacing:0.12em;">SPECS</span>
+      <span id="steplabel3" class="label text-[#71787c]" style="font-size:9px;letter-spacing:0.12em;">REFINE</span>
+      <span id="steplabel4" class="label text-[#71787c]" style="font-size:9px;letter-spacing:0.12em;">TRY ON</span>
+      <span id="steplabel5" class="label text-[#71787c]" style="font-size:9px;letter-spacing:0.12em;">QUOTE</span>
+      <span id="steplabel6" class="label text-[#71787c]" style="font-size:9px;letter-spacing:0.12em;">ORDER</span>
     </div>
   </div>
 </div>
@@ -519,19 +520,12 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
     </div>
 
     <!-- Bottom bar -->
-    <div class="mt-10 p-6 rounded-2xl" style="background:linear-gradient(135deg,rgba(185,226,245,0.12),rgba(255,255,255,0.8));border:1px solid rgba(185,226,245,0.4);">
-      <div class="flex items-center justify-between flex-wrap gap-4">
-        <div>
-          <p class="label" style="font-size:10px;letter-spacing:0.16em;color:#3c6474;">ESTIMATED MATERIAL COST</p>
-          <p id="specCostEstimate" style="font-family:'Playfair Display',serif;font-size:28px;font-weight:700;color:#3c6474;margin:4px 0 2px;">—</p>
-          <p id="specCostDetail" style="font-family:Inter,sans-serif;font-size:11px;color:#9ca3af;"></p>
-        </div>
-        <button onclick="goStep(3)" class="btn-primary btn-glow"
-          style="font-size:12px;letter-spacing:0.16em;padding:16px 32px;gap:8px;">
-          Continue to Refine
-          <span class="material-symbols-outlined" style="font-size:18px;">arrow_forward</span>
-        </button>
-      </div>
+    <div class="mt-10 flex justify-end">
+      <button onclick="goStep(3)" class="btn-primary btn-glow"
+        style="font-size:12px;letter-spacing:0.16em;padding:16px 32px;gap:8px;">
+        Continue to Refine
+        <span class="material-symbols-outlined" style="font-size:18px;">arrow_forward</span>
+      </button>
     </div>
 
   </div>
@@ -1363,10 +1357,39 @@ function _cancelGen() {
 /* ── Progress bar ────────────────────────────── */
 function updateProgress(n) {
   for (let i = 1; i <= 6; i++) {
-    const dot = document.getElementById('dot' + i);
+    const dot   = document.getElementById('dot' + i);
+    const label = document.getElementById('steplabel' + i);
     dot.className = 'prog-dot';
-    if (i < n)  dot.classList.add('done');
-    if (i === n) dot.classList.add('current');
+
+    if (i < n) {
+      // Completed step — clickable
+      dot.classList.add('done');
+      dot.onclick = () => goStep(i);
+      if (label) {
+        label.style.cursor     = 'pointer';
+        label.style.color      = '#3c6474';
+        label.style.opacity    = '1';
+        label.style.transition = 'opacity 0.15s';
+        label.onclick = () => goStep(i);
+        label.onmouseover = () => { label.style.opacity = '0.65'; };
+        label.onmouseout  = () => { label.style.opacity = '1'; };
+      }
+    } else {
+      // Current or future step — not clickable
+      dot.onclick = null;
+      if (label) {
+        label.style.cursor    = 'default';
+        label.onclick         = null;
+        label.onmouseover     = null;
+        label.onmouseout      = null;
+      }
+      if (i === n) {
+        dot.classList.add('current');
+        if (label) { label.style.color = '#3c6474'; label.style.opacity = '1'; }
+      } else {
+        if (label) { label.style.color = '#71787c'; label.style.opacity = '0.7'; }
+      }
+    }
   }
   for (let i = 1; i <= 5; i++) {
     const line = document.getElementById('line' + i + (i+1));
