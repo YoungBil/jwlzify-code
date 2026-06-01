@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html class="light" lang="en">
+<head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>JWLZIFY — Shipping &amp; Delivery</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;0,700;1,300;1,400;1,600;1,700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+<script>
+tailwind.config = {
+  darkMode:"class",
+  theme:{extend:{colors:{
+    "primary":"#3c6474","on-primary":"#ffffff",
+    "primary-container":"#b9e2f5","on-primary-container":"#3e6576",
+    "primary-fixed":"#c0e9fc","primary-fixed-dim":"#a4cddf",
+    "secondary":"#5e5e5b","on-secondary":"#ffffff",
+    "secondary-container":"#e1dfdb","on-secondary-container":"#63635f",
+    "surface":"#fbf9f9","surface-dim":"#dbdad9",
+    "surface-container-lowest":"#ffffff","surface-container-low":"#f5f3f3",
+    "surface-container":"#efeded","surface-container-high":"#e9e8e7",
+    "surface-container-highest":"#e3e2e2",
+    "on-surface":"#1b1c1c","on-surface-variant":"#41484b",
+    "outline":"#71787c","outline-variant":"#c1c7cb",
+    "background":"#fbf9f9",
+  }}}
+}
+</script>
+<style>
+  .accordion-body {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.45s cubic-bezier(0.4, 0, 0.2, 1), padding 0.3s ease;
+  }
+  .accordion-body.open {
+    max-height: 600px;
+  }
+  .accordion-icon {
+    transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .accordion-icon.open {
+    transform: rotate(45deg);
+  }
+
+  /* Delivery timeline */
+  .timeline-track {
+    display: flex;
+    align-items: flex-start;
+    gap: 0;
+  }
+  .timeline-step {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    position: relative;
+  }
+  .timeline-step:not(:last-child)::after {
+    content: '';
+    position: absolute;
+    top: 16px;
+    left: calc(50% + 16px);
+    right: calc(-50% + 16px);
+    height: 2px;
+    background: linear-gradient(90deg, #3c6474, rgba(60,100,116,0.25));
+  }
+  .timeline-dot {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: #3c6474;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    z-index: 1;
+    flex-shrink: 0;
+  }
+  .timeline-dot span {
+    color: #fff;
+    font-size: 14px;
+  }
+  .timeline-label {
+    font-family: Inter, sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #3c6474;
+    margin-top: 10px;
+    text-align: center;
+  }
+  .timeline-sub {
+    font-family: Inter, sans-serif;
+    font-size: 12px;
+    color: rgba(65,72,75,0.65);
+    margin-top: 4px;
+    text-align: center;
+  }
+</style>
+</head>
+<body class="text-[#1b1c1c] min-h-screen" style="background-image:url('supportpagepic.png');background-size:cover;background-position:center top;background-attachment:fixed;background-repeat:no-repeat;">
+
+<!-- ════════════════════════════
+     NAVIGATION
+════════════════════════════ -->
+<header id="siteHeader" class="sticky top-0 w-full z-50 nav-glass border-b border-[#c1c7cb]/20"
+        style="box-shadow:0 1px 18px rgba(0,0,0,0.04);">
+  <nav class="flex justify-between items-center w-full max-w-[1600px] mx-auto px-4 md:px-16 py-5">
+    <div class="flex items-center gap-10">
+      <a href="index.html" style="font-family:'Playfair Display',serif;font-size:22px;font-weight:600;letter-spacing:0.32em;color:#3c6474;text-transform:uppercase;">JWLZIFY</a>
+      <div class="hidden lg:flex items-center gap-8">
+        <a href="index.html"       class="nav-link">Home</a>
+        <a href="collections.html" class="nav-link">Collections</a>
+        <a href="ailab.html"       class="nav-link">AI Lab</a>
+        <a href="about.html"       class="nav-link">About Us</a>
+        <a href="support.html"     class="nav-link nav-active">Support</a>
+      </div>
+    </div>
+    <div class="flex items-center gap-5">
+      <div class="hidden lg:flex items-center">
+        <button id="signInBtn" onclick="signInWithGoogle()"
+          style="font-family:Inter,sans-serif;font-size:12px;font-weight:500;letter-spacing:0.08em;color:rgba(65,72,75,0.8);background:transparent;border:none;cursor:pointer;padding:6px 0;transition:color 0.2s ease;">Sign In</button>
+        <div id="userMenu" style="display:none;align-items:center;gap:8px;position:relative;cursor:pointer;" onclick="toggleDropdown()">
+          <img id="userAvatar" style="width:32px;height:32px;border-radius:50%;object-fit:cover;border:2px solid rgba(60,100,116,0.3);" src="" alt="avatar">
+          <span id="userName" style="font-family:Inter;font-size:13px;font-weight:500;color:#1b1c1c;"></span>
+          <div id="userDropdown" style="display:none;position:absolute;top:calc(100% + 12px);right:0;background:white;border:0.5px solid rgba(193,199,203,0.6);border-radius:12px;padding:8px;min-width:160px;box-shadow:0 8px 32px rgba(0,0,0,0.08);z-index:1000;">
+            <button onclick="signOut()" style="width:100%;text-align:left;padding:10px 14px;font-family:Inter;font-size:13px;color:#1b1c1c;background:transparent;border:none;border-radius:8px;cursor:pointer;transition:background 0.15s ease;" onmouseover="this.style.background='#f5f3f3'" onmouseout="this.style.background='transparent'">Sign Out</button>
+          </div>
+        </div>
+      </div>
+      <a href="ailab.html">
+        <button class="label text-white px-7 py-3 rounded-lg active:scale-95 transition-all hover:brightness-110 btn-glow"
+                style="background:#3c6474;font-size:11px;letter-spacing:0.16em;border:none;">GENERATE</button>
+      </a>
+      <button class="lg:hidden text-[#1b1c1c]" aria-label="Menu" style="background:none;border:none;">
+        <span class="material-symbols-outlined">menu</span>
+      </button>
+    </div>
+  </nav>
+</header>
+
+<main>
+
+<!-- ════════════════════════════
+     HERO
+════════════════════════════ -->
+<section class="py-24 md:py-32" style="position:relative;">
+  <div style="position:absolute;inset:0;background:rgba(0,0,0,0.45);z-index:1;"></div>
+  <div class="max-w-[1600px] mx-auto px-4 md:px-16 text-center" style="position:relative;z-index:2;">
+    <span class="eyebrow" style="color:rgba(255,255,255,0.95);">SUPPORT</span>
+    <h1 class="h-section" style="font-size:clamp(40px,5vw,60px);color:rgba(255,255,255,0.95);">Shipping &amp; Delivery</h1>
+    <p style="font-family:Inter,sans-serif;font-size:16px;color:rgba(255,255,255,0.75);margin-top:16px;max-width:520px;margin-left:auto;margin-right:auto;line-height:1.7;">Everything you need to know about getting your piece to you.</p>
+  </div>
+</section>
+
+<!-- ════════════════════════════
+     BACK LINK
+════════════════════════════ -->
+<section class="pt-12 pb-0">
+  <div class="max-w-[800px] mx-auto px-4 md:px-16">
+    <a href="support.html" style="display:inline-flex;align-items:center;gap:6px;font-family:Inter,sans-serif;font-size:13px;font-weight:500;letter-spacing:0.06em;color:#3c6474;text-decoration:none;transition:opacity 0.2s;" onmouseover="this.style.opacity='0.7'" onmouseout="this.style.opacity='1'">
+      <span class="material-symbols-outlined" style="font-size:16px;">arrow_back</span>
+      Back to Support
+    </a>
+  </div>
+</section>
+
+<!-- ════════════════════════════
+     ACCORDION SECTIONS
+════════════════════════════ -->
+<section class="py-16 md:py-24">
+  <div class="max-w-[800px] mx-auto px-4 md:px-16 flex flex-col gap-4">
+
+    <!-- ── 1. Delivery Timelines ── -->
+    <div class="bg-white rounded-[20px] border border-[#c1c7cb]/20 ambient overflow-hidden">
+      <button class="accordion-trigger w-full flex items-center justify-between px-8 py-7 text-left" onclick="toggleAccordion(this)" aria-expanded="true">
+        <div class="flex items-center gap-4">
+          <div class="flex items-center justify-center rounded-full flex-shrink-0" style="width:40px;height:40px;background:rgba(60,100,116,0.08);">
+            <span class="material-symbols-outlined" style="color:#3c6474;font-size:20px;">schedule</span>
+          </div>
+          <span style="font-family:'Playfair Display',serif;font-size:20px;font-weight:600;color:#1b1c1c;">Delivery Timelines</span>
+        </div>
+        <span class="material-symbols-outlined accordion-icon open" style="color:#3c6474;font-size:22px;flex-shrink:0;">add</span>
+      </button>
+      <div class="accordion-body open">
+        <div class="px-8 pb-8">
+          <p class="body-copy mb-8" style="color:rgba(65,72,75,0.8);">Every piece is made to order. Once your design is confirmed and payment is received, your order moves through our crafting and shipping pipeline.</p>
+
+          <!-- Horizontal timeline -->
+          <div class="timeline-track mb-10">
+            <div class="timeline-step">
+              <div class="timeline-dot">
+                <span class="material-symbols-outlined" style="font-size:14px;">check_circle</span>
+              </div>
+              <p class="timeline-label">Order<br>Confirmed</p>
+              <p class="timeline-sub">Day 0</p>
+            </div>
+            <div class="timeline-step">
+              <div class="timeline-dot">
+                <span class="material-symbols-outlined" style="font-size:14px;">precision_manufacturing</span>
+              </div>
+              <p class="timeline-label">Crafting<br>Begins</p>
+              <p class="timeline-sub">Days 1–2</p>
+            </div>
+            <div class="timeline-step">
+              <div class="timeline-dot">
+                <span class="material-symbols-outlined" style="font-size:14px;">diamond</span>
+              </div>
+              <p class="timeline-label">Quality<br>Inspection</p>
+              <p class="timeline-sub">Days 10–14</p>
+            </div>
+            <div class="timeline-step">
+              <div class="timeline-dot">
+                <span class="material-symbols-outlined" style="font-size:14px;">inventory_2</span>
+              </div>
+              <p class="timeline-label">Packaged<br>&amp; Dispatched</p>
+              <p class="timeline-sub">Days 14–16</p>
+            </div>
+            <div class="timeline-step">
+              <div class="timeline-dot" style="background:linear-gradient(135deg,#3c6474,#5a8fa3);">
+                <span class="material-symbols-outlined" style="font-size:14px;">local_shipping</span>
+              </div>
+              <p class="timeline-label">Delivered<br>to You</p>
+              <p class="timeline-sub">Days 16–21</p>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div class="rounded-[14px] p-5" style="background:rgba(60,100,116,0.06);border:1px solid rgba(60,100,116,0.12);">
+              <p style="font-family:Inter,sans-serif;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#3c6474;margin-bottom:6px;">Standard</p>
+              <p style="font-family:'Playfair Display',serif;font-size:22px;font-weight:600;color:#1b1c1c;margin-bottom:4px;">16–21 days</p>
+              <p style="font-family:Inter,sans-serif;font-size:13px;color:rgba(65,72,75,0.7);">Includes crafting + shipping</p>
+            </div>
+            <div class="rounded-[14px] p-5" style="background:rgba(60,100,116,0.06);border:1px solid rgba(60,100,116,0.12);">
+              <p style="font-family:Inter,sans-serif;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#3c6474;margin-bottom:6px;">Express</p>
+              <p style="font-family:'Playfair Display',serif;font-size:22px;font-weight:600;color:#1b1c1c;margin-bottom:4px;">10–14 days</p>
+              <p style="font-family:Inter,sans-serif;font-size:13px;color:rgba(65,72,75,0.7);">Priority crafting queue</p>
+            </div>
+            <div class="rounded-[14px] p-5" style="background:rgba(60,100,116,0.06);border:1px solid rgba(60,100,116,0.12);">
+              <p style="font-family:Inter,sans-serif;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#3c6474;margin-bottom:6px;">International</p>
+              <p style="font-family:'Playfair Display',serif;font-size:22px;font-weight:600;color:#1b1c1c;margin-bottom:4px;">21–30 days</p>
+              <p style="font-family:Inter,sans-serif;font-size:13px;color:rgba(65,72,75,0.7);">Customs may add 3–5 days</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── 2. Courier Partners ── -->
+    <div class="bg-white rounded-[20px] border border-[#c1c7cb]/20 ambient overflow-hidden">
+      <button class="accordion-trigger w-full flex items-center justify-between px-8 py-7 text-left" onclick="toggleAccordion(this)" aria-expanded="false">
+        <div class="flex items-center gap-4">
+          <div class="flex items-center justify-center rounded-full flex-shrink-0" style="width:40px;height:40px;background:rgba(60,100,116,0.08);">
+            <span class="material-symbols-outlined" style="color:#3c6474;font-size:20px;">local_shipping</span>
+          </div>
+          <span style="font-family:'Playfair Display',serif;font-size:20px;font-weight:600;color:#1b1c1c;">Courier Partners</span>
+        </div>
+        <span class="material-symbols-outlined accordion-icon" style="color:#3c6474;font-size:22px;flex-shrink:0;">add</span>
+      </button>
+      <div class="accordion-body">
+        <div class="px-8 pb-8">
+          <p class="body-copy mb-6" style="color:rgba(65,72,75,0.8);">We partner with the world's most trusted white-glove courier services to ensure your piece arrives safely and discreetly.</p>
+          <div class="flex flex-col gap-4">
+            <div class="flex items-start gap-4 rounded-[14px] p-5" style="background:#f5f3f3;border:1px solid rgba(193,199,203,0.3);">
+              <span class="material-symbols-outlined flex-shrink-0 mt-0.5" style="color:#3c6474;font-size:20px;">verified</span>
+              <div>
+                <p style="font-family:Inter,sans-serif;font-size:14px;font-weight:600;color:#1b1c1c;margin-bottom:3px;">FedEx International Priority</p>
+                <p style="font-family:Inter,sans-serif;font-size:13px;color:rgba(65,72,75,0.7);">Primary carrier for North America and Europe. Full signature-on-delivery and real-time tracking included on all shipments.</p>
+              </div>
+            </div>
+            <div class="flex items-start gap-4 rounded-[14px] p-5" style="background:#f5f3f3;border:1px solid rgba(193,199,203,0.3);">
+              <span class="material-symbols-outlined flex-shrink-0 mt-0.5" style="color:#3c6474;font-size:20px;">verified</span>
+              <div>
+                <p style="font-family:Inter,sans-serif;font-size:14px;font-weight:600;color:#1b1c1c;margin-bottom:3px;">DHL Express</p>
+                <p style="font-family:Inter,sans-serif;font-size:13px;color:rgba(65,72,75,0.7);">Used for Middle East, Asia-Pacific, and select international destinations. Proactive customs clearance support included.</p>
+              </div>
+            </div>
+            <div class="flex items-start gap-4 rounded-[14px] p-5" style="background:#f5f3f3;border:1px solid rgba(193,199,203,0.3);">
+              <span class="material-symbols-outlined flex-shrink-0 mt-0.5" style="color:#3c6474;font-size:20px;">verified</span>
+              <div>
+                <p style="font-family:Inter,sans-serif;font-size:14px;font-weight:600;color:#1b1c1c;margin-bottom:3px;">Brinks Secure Logistics</p>
+                <p style="font-family:Inter,sans-serif;font-size:13px;color:rgba(65,72,75,0.7);">Available on request for high-value pieces exceeding $25,000. Insured door-to-door with armed courier service.</p>
+              </div>
+            </div>
+          </div>
+          <p class="body-copy mt-6" style="font-size:13px;color:rgba(65,72,75,0.65);">All shipments are fully insured for the declared value of your piece. Tracking details are emailed automatically at dispatch.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── 3. International Shipping ── -->
+    <div class="bg-white rounded-[20px] border border-[#c1c7cb]/20 ambient overflow-hidden">
+      <button class="accordion-trigger w-full flex items-center justify-between px-8 py-7 text-left" onclick="toggleAccordion(this)" aria-expanded="false">
+        <div class="flex items-center gap-4">
+          <div class="flex items-center justify-center rounded-full flex-shrink-0" style="width:40px;height:40px;background:rgba(60,100,116,0.08);">
+            <span class="material-symbols-outlined" style="color:#3c6474;font-size:20px;">public</span>
+          </div>
+          <span style="font-family:'Playfair Display',serif;font-size:20px;font-weight:600;color:#1b1c1c;">International Shipping</span>
+        </div>
+        <span class="material-symbols-outlined accordion-icon" style="color:#3c6474;font-size:22px;flex-shrink:0;">add</span>
+      </button>
+      <div class="accordion-body">
+        <div class="px-8 pb-8">
+          <p class="body-copy mb-6" style="color:rgba(65,72,75,0.8);">We ship to over 80 countries worldwide. International orders ship from our atelier in Antwerp, Belgium.</p>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+            <div class="rounded-[14px] p-5" style="border:1px solid rgba(193,199,203,0.4);">
+              <p style="font-family:Inter,sans-serif;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#3c6474;margin-bottom:8px;">Duties &amp; Taxes</p>
+              <p style="font-family:Inter,sans-serif;font-size:13px;color:rgba(65,72,75,0.75);line-height:1.6;">Import duties and local taxes are the responsibility of the recipient and vary by destination country. We declare the full insured value on all customs forms.</p>
+            </div>
+            <div class="rounded-[14px] p-5" style="border:1px solid rgba(193,199,203,0.4);">
+              <p style="font-family:Inter,sans-serif;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#3c6474;margin-bottom:8px;">Restricted Countries</p>
+              <p style="font-family:Inter,sans-serif;font-size:13px;color:rgba(65,72,75,0.75);line-height:1.6;">We currently cannot ship to sanctioned destinations. If your country is not available at checkout, please contact our concierge team for alternative arrangements.</p>
+            </div>
+            <div class="rounded-[14px] p-5" style="border:1px solid rgba(193,199,203,0.4);">
+              <p style="font-family:Inter,sans-serif;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#3c6474;margin-bottom:8px;">Currency</p>
+              <p style="font-family:Inter,sans-serif;font-size:13px;color:rgba(65,72,75,0.75);line-height:1.6;">All prices are displayed and charged in USD. Your card issuer applies the conversion rate at time of purchase.</p>
+            </div>
+            <div class="rounded-[14px] p-5" style="border:1px solid rgba(193,199,203,0.4);">
+              <p style="font-family:Inter,sans-serif;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#3c6474;margin-bottom:8px;">Insurance</p>
+              <p style="font-family:Inter,sans-serif;font-size:13px;color:rgba(65,72,75,0.75);line-height:1.6;">Every international shipment is insured for full replacement value. In the event of loss or damage in transit, we will remake your piece at no additional cost.</p>
+            </div>
+          </div>
+          <div class="flex items-center gap-3 rounded-[14px] p-5" style="background:rgba(60,100,116,0.05);border:1px solid rgba(60,100,116,0.15);">
+            <span class="material-symbols-outlined flex-shrink-0" style="color:#3c6474;font-size:20px;">support_agent</span>
+            <p style="font-family:Inter,sans-serif;font-size:13px;color:rgba(65,72,75,0.8);">For shipping questions specific to your country, reach our concierge team at <span style="color:#3c6474;font-weight:500;">hello@jwlzify.com</span></p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── 4. Packaging ── -->
+    <div class="bg-white rounded-[20px] border border-[#c1c7cb]/20 ambient overflow-hidden">
+      <button class="accordion-trigger w-full flex items-center justify-between px-8 py-7 text-left" onclick="toggleAccordion(this)" aria-expanded="false">
+        <div class="flex items-center gap-4">
+          <div class="flex items-center justify-center rounded-full flex-shrink-0" style="width:40px;height:40px;background:rgba(60,100,116,0.08);">
+            <span class="material-symbols-outlined" style="color:#3c6474;font-size:20px;">inventory_2</span>
+          </div>
+          <span style="font-family:'Playfair Display',serif;font-size:20px;font-weight:600;color:#1b1c1c;">Packaging</span>
+        </div>
+        <span class="material-symbols-outlined accordion-icon" style="color:#3c6474;font-size:22px;flex-shrink:0;">add</span>
+      </button>
+      <div class="accordion-body">
+        <div class="px-8 pb-8">
+          <p class="body-copy mb-6" style="color:rgba(65,72,75,0.8);">The unboxing is part of the experience. Every JWLZIFY piece ships in our signature presentation packaging, designed to reflect the craftsmanship inside.</p>
+          <div class="flex flex-col gap-4">
+            <div class="flex items-start gap-4">
+              <div class="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center" style="background:rgba(60,100,116,0.08);margin-top:2px;">
+                <span style="font-family:Inter,sans-serif;font-size:12px;font-weight:700;color:#3c6474;">1</span>
+              </div>
+              <div>
+                <p style="font-family:Inter,sans-serif;font-size:14px;font-weight:600;color:#1b1c1c;margin-bottom:3px;">Signature Lacquered Box</p>
+                <p style="font-family:Inter,sans-serif;font-size:13px;color:rgba(65,72,75,0.7);">Your piece arrives in a rigid matte-black lacquered box with gold JWLZIFY embossing. Lined with custom-cut velvet to cradle your piece securely.</p>
+              </div>
+            </div>
+            <div class="flex items-start gap-4">
+              <div class="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center" style="background:rgba(60,100,116,0.08);margin-top:2px;">
+                <span style="font-family:Inter,sans-serif;font-size:12px;font-weight:700;color:#3c6474;">2</span>
+              </div>
+              <div>
+                <p style="font-family:Inter,sans-serif;font-size:14px;font-weight:600;color:#1b1c1c;margin-bottom:3px;">Authentication Card &amp; Certificate</p>
+                <p style="font-family:Inter,sans-serif;font-size:13px;color:rgba(65,72,75,0.7);">A hand-numbered certificate of authenticity, GIA stone documentation (where applicable), and your personalized design card are included with every order.</p>
+              </div>
+            </div>
+            <div class="flex items-start gap-4">
+              <div class="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center" style="background:rgba(60,100,116,0.08);margin-top:2px;">
+                <span style="font-family:Inter,sans-serif;font-size:12px;font-weight:700;color:#3c6474;">3</span>
+              </div>
+              <div>
+                <p style="font-family:Inter,sans-serif;font-size:14px;font-weight:600;color:#1b1c1c;margin-bottom:3px;">Discreet Outer Shipping</p>
+                <p style="font-family:Inter,sans-serif;font-size:13px;color:rgba(65,72,75,0.7);">The presentation box is secured inside a plain outer carton with no external branding. Only a shipping label and barcode are visible externally.</p>
+              </div>
+            </div>
+            <div class="flex items-start gap-4">
+              <div class="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center" style="background:rgba(60,100,116,0.08);margin-top:2px;">
+                <span style="font-family:Inter,sans-serif;font-size:12px;font-weight:700;color:#3c6474;">4</span>
+              </div>
+              <div>
+                <p style="font-family:Inter,sans-serif;font-size:14px;font-weight:600;color:#1b1c1c;margin-bottom:3px;">Sustainable Materials</p>
+                <p style="font-family:Inter,sans-serif;font-size:13px;color:rgba(65,72,75,0.7);">All packaging materials are FSC-certified and fully recyclable. Our velvet inserts are made from recycled textile fibres. We use zero single-use plastics.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ════════════════════════════
+     BOTTOM CTA
+════════════════════════════ -->
+<section class="pb-24">
+  <div class="max-w-[800px] mx-auto px-4 md:px-16 text-center">
+    <div class="bg-white rounded-[20px] p-10 border border-[#c1c7cb]/20 ambient">
+      <span class="material-symbols-outlined" style="color:#3c6474;font-size:32px;display:block;margin-bottom:16px;">support_agent</span>
+      <h3 class="h-sub mb-3">Still have questions?</h3>
+      <p class="body-copy mb-6" style="color:rgba(65,72,75,0.75);max-width:440px;margin-left:auto;margin-right:auto;">Our concierge team is available Monday–Friday, 9am–6pm EST. We typically respond within 2 hours.</p>
+      <a href="mailto:hello@jwlzify.com">
+        <button class="btn-primary" style="font-size:11px;letter-spacing:0.14em;padding:14px 28px;gap:8px;">
+          <span class="material-symbols-outlined" style="font-size:16px;">mail</span>
+          Contact Concierge
+        </button>
+      </a>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<!-- ════════════════════════════
+     FOOTER
+════════════════════════════ -->
+<footer class="w-full py-24 bg-white border-t border-[#c1c7cb]/12">
+  <div class="max-w-[1600px] mx-auto px-4 md:px-16">
+    <div class="grid grid-cols-12 gap-16 mb-20">
+      <div class="col-span-12 lg:col-span-4 flex flex-col gap-8">
+        <span style="font-family:'Playfair Display',serif;font-size:24px;font-weight:600;letter-spacing:0.32em;color:#3c6474;text-transform:uppercase;">JWLZIFY</span>
+        <p class="body-copy" style="max-width:280px;color:rgba(65,72,75,0.72);">The future of high jewelry. Leading the global revolution in AI-driven bespoke craftsmanship and ethical luxury.</p>
+        <div class="flex gap-4">
+          <div class="w-10 h-10 rounded-full flex items-center justify-center cursor-pointer hover:bg-[#3c6474] hover:text-white transition-all" style="background:#efeded;border:1px solid rgba(193,199,203,0.3);"><span class="material-symbols-outlined" style="font-size:18px;">share</span></div>
+          <div class="w-10 h-10 rounded-full flex items-center justify-center cursor-pointer hover:bg-[#3c6474] hover:text-white transition-all" style="background:#efeded;border:1px solid rgba(193,199,203,0.3);"><span class="material-symbols-outlined" style="font-size:18px;">public</span></div>
+          <div class="w-10 h-10 rounded-full flex items-center justify-center cursor-pointer hover:bg-[#3c6474] hover:text-white transition-all" style="background:#efeded;border:1px solid rgba(193,199,203,0.3);"><span class="material-symbols-outlined" style="font-size:18px;">mail</span></div>
+        </div>
+      </div>
+      <div class="col-span-12 lg:col-span-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-10">
+        <div class="flex flex-col gap-6">
+          <p class="label" style="font-size:12px;letter-spacing:0.13em;color:#1b1c1c;font-weight:700;">Experience</p>
+          <ul class="flex flex-col gap-3">
+            <li><a href="ailab.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">The Lab</a></li>
+            <li><a href="about.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Expert Jewelers</a></li>
+            <li><a href="about.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Your Journey</a></li>
+            <li><a href="collections.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Collections</a></li>
+          </ul>
+        </div>
+        <div class="flex flex-col gap-6">
+          <p class="label" style="font-size:12px;letter-spacing:0.13em;color:#1b1c1c;font-weight:700;">Philosophy</p>
+          <ul class="flex flex-col gap-3">
+            <li><a href="about.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Ethical Sourcing</a></li>
+            <li><a href="about.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Sustainability</a></li>
+            <li><a href="about.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Blockchain Trust</a></li>
+            <li><a href="about.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Our Story</a></li>
+          </ul>
+        </div>
+        <div class="flex flex-col gap-6">
+          <p class="label" style="font-size:12px;letter-spacing:0.13em;color:#1b1c1c;font-weight:700;">Support</p>
+          <ul class="flex flex-col gap-3">
+            <li><a href="support.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Account</a></li>
+            <li><a href="support.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Order Status</a></li>
+            <li><a href="shipping.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Shipping &amp; Delivery</a></li>
+            <li><a href="support.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Returns &amp; Exchanges</a></li>
+            <li><a href="support.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Warranty</a></li>
+            <li><a href="support.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Authenticity</a></li>
+            <li><a href="support.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Size Guide</a></li>
+          </ul>
+        </div>
+        <div class="flex flex-col gap-6">
+          <p class="label" style="font-size:12px;letter-spacing:0.13em;color:#1b1c1c;font-weight:700;">Legal</p>
+          <ul class="flex flex-col gap-3">
+            <li><a href="legal.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Privacy Policy</a></li>
+            <li><a href="legal.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Terms &amp; Conditions</a></li>
+            <li><a href="legal.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Returns &amp; Exchanges</a></li>
+            <li><a href="legal.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Shipping Policy</a></li>
+            <li><a href="legal.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Warranty</a></li>
+            <li><a href="legal.html" class="body-copy hover:text-[#3c6474] transition-colors" style="font-size:14px;">Cookies Policy</a></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="pt-10 flex flex-col sm:flex-row justify-between items-center gap-4"
+         style="border-top:0.5px solid rgba(193,199,203,0.3);">
+      <p class="label" style="font-size:11px;letter-spacing:0.13em;color:rgba(65,72,75,0.5);">© 2025 JWLZIFY Holdings. All Rights Reserved.</p>
+      <p class="label" style="font-size:11px;letter-spacing:0.13em;color:rgba(65,72,75,0.5);">Crafted with Precision in Toronto &amp; Antwerp</p>
+    </div>
+  </div>
+</footer>
+
+<script>
+  document.getElementById('siteHeader').classList.add('nav-visible');
+
+  function toggleAccordion(trigger) {
+    const allTriggers = document.querySelectorAll('.accordion-trigger');
+    allTriggers.forEach(function(t) {
+      if (t === trigger) return;
+      t.setAttribute('aria-expanded', 'false');
+      t.querySelector('.accordion-icon').classList.remove('open');
+      t.nextElementSibling.classList.remove('open');
+    });
+
+    var body = trigger.nextElementSibling;
+    var icon = trigger.querySelector('.accordion-icon');
+    var isOpen = body.classList.contains('open');
+    if (isOpen) {
+      body.classList.remove('open');
+      icon.classList.remove('open');
+      trigger.setAttribute('aria-expanded', 'false');
+    } else {
+      body.classList.add('open');
+      icon.classList.add('open');
+      trigger.setAttribute('aria-expanded', 'true');
+    }
+  }
+</script>
+<script type="module" src="firebase-auth.js"></script>
+<script type="module" src="firestore-service.js"></script>
+</body>
+</html>
