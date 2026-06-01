@@ -3401,27 +3401,31 @@ function makeEarringDraggable(earringEl, handleEl) {
 async function cropToSingleEarring(imageUrl) {
   return new Promise((resolve) => {
     const img = new Image();
-    if (!imageUrl.startsWith('blob:')) img.crossOrigin = 'anonymous';
+    if (!imageUrl.startsWith('blob:')) {
+      img.crossOrigin = 'anonymous';
+    }
     img.onload = () => {
-      // Pairs are usually landscape; single earrings portrait/square
-      const isPair = img.naturalWidth > img.naturalHeight * 1.3;
-      if (!isPair) {
-        console.log('[JWLZIFY] single earring detected, no crop needed');
-        resolve(imageUrl);
-        return;
-      }
-      console.log('[JWLZIFY] pair detected, cropping to left half');
-      const cropW = Math.floor(img.naturalWidth * 0.48);
       const canvas = document.createElement('canvas');
-      canvas.width  = cropW;
+      // ALWAYS crop to left 45% of image no matter what
+      // This guarantees one earring every single time
+      const cropW = Math.floor(img.naturalWidth * 0.45);
+      canvas.width = cropW;
       canvas.height = img.naturalHeight;
-      canvas.getContext('2d').drawImage(
-        img, 0, 0, cropW, img.naturalHeight,
-             0, 0, cropW, img.naturalHeight);
-      canvas.toBlob(blob => resolve(URL.createObjectURL(blob)), 'image/png');
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(
+        img,
+        0, 0, cropW, img.naturalHeight,
+        0, 0, cropW, img.naturalHeight
+      );
+      canvas.toBlob((blob) => {
+        console.log('[JWLZIFY] cropped to single earring');
+        resolve(URL.createObjectURL(blob));
+      }, 'image/png');
     };
     img.onerror = () => resolve(imageUrl);
-    img.src = imageUrl;
+    img.src = imageUrl.startsWith('blob:')
+      ? imageUrl
+      : imageUrl + '?cb=' + Date.now();
   });
 }
 
