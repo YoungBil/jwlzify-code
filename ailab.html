@@ -1230,7 +1230,7 @@ const CLAUDE_API_KEY = '';
 
 /* ── Gemini image generation ── */
 const GEMINI_API_KEY = 'AIzaSyCLOMIAySPZ-5oax7-tVeyd0rAs6l5lvJ0';
-const GEMINI_MODEL   = 'gemini-2.0-flash-preview-image-generation';
+const GEMINI_MODEL   = 'gemini-2.0-flash-exp';
 
 /* ── Chain style selection for necklace type ── */
 let selectedChainStyle  = null;
@@ -1343,16 +1343,14 @@ async function _fetchWithRetry(makeUrl) {
 }
 
 async function generateWithGemini(prompt) {
-  console.log('[JWLZIFY] generating with Gemini Flash:', prompt);
+  console.log('[JWLZIFY] generating with Gemini:', prompt);
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
   const body = {
     contents: [{
-      parts: [{
-        text: `Generate a photorealistic jewelry image: ${prompt}`
-      }]
+      parts: [{ text: `Generate a photorealistic jewelry image: ${prompt}` }]
     }],
     generationConfig: {
-      responseModalities: ['IMAGE']
+      responseModalities: ['TEXT', 'IMAGE']
     }
   };
   const response = await fetch(url, {
@@ -1361,33 +1359,32 @@ async function generateWithGemini(prompt) {
     body: JSON.stringify(body)
   });
   if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error(`Gemini ${response.status}: ${err.error?.message || response.statusText}`);
+    const errText = await response.text();
+    console.error('[JWLZIFY] Gemini raw error:', errText);
+    throw new Error('Gemini failed: ' + response.status);
   }
   const data = await response.json();
+  console.log('[JWLZIFY] Gemini response:', JSON.stringify(data).slice(0, 200));
 
   const candidates = data.candidates || [];
   let imagePart = null;
   for (const candidate of candidates) {
-    const parts = candidate?.content?.parts || [];
-    for (const part of parts) {
+    for (const part of (candidate?.content?.parts || [])) {
       if (part.inlineData?.data) { imagePart = part; break; }
     }
     if (imagePart) break;
   }
-
   if (!imagePart?.inlineData?.data) {
     console.error('[JWLZIFY] Gemini full response:', JSON.stringify(data));
     throw new Error('No image in Gemini response');
   }
-
   const base64 = imagePart.inlineData.data;
   const mimeType = imagePart.inlineData.mimeType || 'image/png';
   const byteChars = atob(base64);
   const byteArray = new Uint8Array(byteChars.length);
   for (let i = 0; i < byteChars.length; i++) byteArray[i] = byteChars.charCodeAt(i);
   const blob = new Blob([byteArray], { type: mimeType });
-  console.log('[JWLZIFY] Gemini image generated successfully');
+  console.log('[JWLZIFY] Gemini image SUCCESS');
   return URL.createObjectURL(blob);
 }
 
