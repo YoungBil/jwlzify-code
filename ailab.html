@@ -781,7 +781,7 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
 
       </div>
 
-      <p style="font-family:Inter,sans-serif;text-align:center;font-size:11px;
+      <p id="tryon-hint-text" style="font-family:Inter,sans-serif;text-align:center;font-size:11px;
                 opacity:0.4;margin-top:2px;letter-spacing:0.05em;">
         DRAG TO POSITION &nbsp;·&nbsp; DRAG CORNER TO RESIZE
       </p>
@@ -2780,23 +2780,35 @@ async function setupTryOn() {
   if (!LAB.imageUrl) { goStep(5); return; }
 
   startTryOnCamera();
-  console.log('[JWLZIFY] image url passed:', LAB.imageUrl);
+  console.log('[JWLZIFY] try-on jewelry type:', LAB.type);
+  console.log('[JWLZIFY] currentImageUrl:', LAB.imageUrl?.slice(0, 50));
+
+  const hintEl = document.getElementById('tryon-hint-text');
 
   if (LAB.type === 'earrings') {
-    // Hide pendant/necklace elements
+    if (hintEl) hintEl.textContent = 'DRAG TO POSITION · DRAG CORNER TO RESIZE';
     const canvas = document.getElementById('tryon-necklace');
     const handle = document.getElementById('tryon-resize');
     if (canvas) canvas.style.display = 'none';
     if (handle) handle.style.display = 'none';
     loadEarringsForTryOn(LAB.imageUrl);
   } else if (LAB.type === 'necklace') {
+    if (hintEl) hintEl.textContent = 'DRAG TO POSITION · DRAG CORNER TO RESIZE';
     const canvas = document.getElementById('tryon-necklace');
     const handle = document.getElementById('tryon-resize');
     if (canvas) canvas.style.display = 'none';
     if (handle) handle.style.display = 'none';
     loadNecklaceForTryOn(LAB.imageUrl);
+  } else if (LAB.type === 'ring') {
+    if (hintEl) hintEl.textContent = 'Hold up your hand to the camera';
+    const canvas = document.getElementById('tryon-necklace');
+    const handle = document.getElementById('tryon-resize');
+    if (canvas) canvas.style.display = 'none';
+    if (handle) handle.style.display = 'none';
+    loadRingForTryOn(LAB.imageUrl);
   } else {
-    // Pendant / ring / bracelet flow
+    // Pendant / bracelet flow
+    if (hintEl) hintEl.textContent = 'DRAG TO POSITION · DRAG CORNER TO RESIZE';
     window._tryonPendantSize = 160;
     window._tryonPendantImg  = null;
 
@@ -2834,11 +2846,14 @@ function teardownTryOn() {
   if (handle) handle.style.display = 'none';
   ['tryon-earring-left', 'tryon-earring-right',
    'tryon-earring-left-handle', 'tryon-earring-right-handle',
-   'tryon-necklace-img', 'tryon-necklace-resize'
+   'tryon-necklace-img', 'tryon-necklace-resize',
+   'tryon-ring-img', 'tryon-ring-resize'
   ].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.style.display = 'none';
   });
+  const hintEl = document.getElementById('tryon-hint-text');
+  if (hintEl) hintEl.textContent = 'DRAG TO POSITION · DRAG CORNER TO RESIZE';
 }
 
 
@@ -3495,6 +3510,154 @@ async function loadPendantForTryOn(imageUrl) {
 }
 
 window._loadPendantForTryOn = loadPendantForTryOn;
+
+/* ── Ring try-on ────────────────────────────── */
+
+async function loadRingForTryOn(imageUrl) {
+  console.log('[JWLZIFY] loading ring try-on');
+
+  ['tryon-necklace', 'tryon-pendant', 'tryon-resize',
+   'tryon-earring-left', 'tryon-earring-right',
+   'tryon-earring-left-handle', 'tryon-earring-right-handle',
+   'tryon-necklace-img', 'tryon-necklace-resize',
+   'tryon-chain', 'tryon-chain-handle']
+  .forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'none';
+  });
+
+  let ringImg    = document.getElementById('tryon-ring-img');
+  let ringResize = document.getElementById('tryon-ring-resize');
+
+  if (!ringImg) {
+    ringImg = document.createElement('img');
+    ringImg.id = 'tryon-ring-img';
+    ringImg.style.cssText = `
+      position: absolute;
+      cursor: grab;
+      user-select: none;
+      display: none;
+      z-index: 10;
+      pointer-events: auto;
+    `;
+    document.getElementById('tryon-container').appendChild(ringImg);
+  }
+
+  if (!ringResize) {
+    ringResize = document.createElement('div');
+    ringResize.id = 'tryon-ring-resize';
+    ringResize.style.cssText = `
+      position: absolute;
+      width: 14px; height: 14px;
+      background: #C0C0C0;
+      border-radius: 50%;
+      cursor: se-resize;
+      display: none;
+      z-index: 11;
+      border: 1.5px solid rgba(255,255,255,0.7);
+      box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+    `;
+    document.getElementById('tryon-container').appendChild(ringResize);
+  }
+
+  const container = document.getElementById('tryon-container');
+  const W = container.offsetWidth;
+  const H = container.offsetHeight;
+
+  const defaultW    = Math.floor(W * 0.25);
+  const defaultLeft = Math.floor((W - defaultW) / 2);
+  const defaultTop  = Math.floor(H * 0.45);
+
+  ringImg.src          = imageUrl;
+  ringImg.style.width  = defaultW + 'px';
+  ringImg.style.height = 'auto';
+  ringImg.style.left   = defaultLeft + 'px';
+  ringImg.style.top    = defaultTop + 'px';
+  ringImg.style.display = 'block';
+  ringResize.style.display = 'block';
+  updateRingResizeHandle();
+
+  try {
+    const cleanUrl = await removePendantBackgroundCached(imageUrl);
+    ringImg.src = cleanUrl;
+    updateRingResizeHandle();
+    console.log('[JWLZIFY] ring loaded with bg removed');
+  } catch (e) {
+    console.warn('[JWLZIFY] ring bg removal failed:', e);
+  }
+}
+
+function updateRingResizeHandle() {
+  const img    = document.getElementById('tryon-ring-img');
+  const handle = document.getElementById('tryon-ring-resize');
+  if (!img || !handle) return;
+  const c = document.getElementById('tryon-container').getBoundingClientRect();
+  const r = img.getBoundingClientRect();
+  handle.style.left = (r.right  - c.left - 7) + 'px';
+  handle.style.top  = (r.bottom - c.top  - 7) + 'px';
+}
+
+/* Ring drag + resize */
+let ringDragging = false;
+let ringResizing = false;
+let rStartX, rStartY, rStartLeft, rStartTop;
+let rResizeStartX, rResizeStartW;
+
+document.addEventListener('DOMContentLoaded', function() {
+  const container = document.getElementById('tryon-container');
+  if (!container) return;
+
+  container.addEventListener('pointerdown', function(e) {
+    const img    = document.getElementById('tryon-ring-img');
+    const handle = document.getElementById('tryon-ring-resize');
+    if (!img || img.style.display === 'none') return;
+
+    if (e.target === handle) {
+      ringResizing  = true;
+      rResizeStartX = e.clientX;
+      rResizeStartW = img.offsetWidth;
+      handle.setPointerCapture(e.pointerId);
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+    if (e.target === img) {
+      ringDragging = true;
+      img.style.cursor = 'grabbing';
+      const c = container.getBoundingClientRect();
+      const r = img.getBoundingClientRect();
+      rStartX    = e.clientX;
+      rStartY    = e.clientY;
+      rStartLeft = r.left - c.left;
+      rStartTop  = r.top  - c.top;
+      img.setPointerCapture(e.pointerId);
+      e.preventDefault();
+    }
+  });
+
+  document.addEventListener('pointermove', function(e) {
+    const img = document.getElementById('tryon-ring-img');
+    if (!img) return;
+    if (ringDragging) {
+      img.style.left = (rStartLeft + e.clientX - rStartX) + 'px';
+      img.style.top  = (rStartTop  + e.clientY - rStartY) + 'px';
+      updateRingResizeHandle();
+    }
+    if (ringResizing) {
+      const newW = Math.max(60, Math.min(300,
+        rResizeStartW + (e.clientX - rResizeStartX)));
+      img.style.width = newW + 'px';
+      updateRingResizeHandle();
+    }
+  });
+
+  document.addEventListener('pointerup', function() {
+    const img = document.getElementById('tryon-ring-img');
+    if (img) img.style.cursor = 'grab';
+    ringDragging = false;
+    ringResizing = false;
+  });
+});
 
 /* ── Earring try-on ─────────────────────────── */
 
