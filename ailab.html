@@ -1234,7 +1234,6 @@ const CLAUDE_API_KEY = '';
 /* ── Gemini image generation ── */
 const GEMINI_API_KEY = 'AIzaSyCLOMIAySPZ-5oax7-tVeyd0rAs6l5lvJ0';
 const GEMINI_MODEL   = 'imagen-3.0-generate-001';
-const HF_API_KEY     = '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';
 
 /* ── Chain style selection for necklace type ── */
 let selectedChainStyle  = null;
@@ -1387,20 +1386,14 @@ async function _generateImage(prompt) {
     console.warn('[JWLZIFY] Imagen failed, falling back to HuggingFace:', e.message);
   }
   const hfRes = await fetch(
-    'https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0',
+    'https://hf-image.sarkd333.workers.dev/',
     {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${HF_API_KEY}`
-      },
-      body: JSON.stringify({
-        inputs: prompt,
-        parameters: { width: 1024, height: 1024, num_inference_steps: 30, guidance_scale: 7.5 }
-      })
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ inputs: prompt })
     }
   );
-  if (!hfRes.ok) throw new Error('HuggingFace ' + hfRes.status);
+  if (!hfRes.ok) throw new Error('HuggingFace worker ' + hfRes.status);
   const blob = await hfRes.blob();
   console.log('[JWLZIFY] HuggingFace SUCCESS');
   return URL.createObjectURL(blob);
