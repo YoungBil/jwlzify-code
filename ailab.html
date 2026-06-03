@@ -398,6 +398,9 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
           <span id="genText">Generate Masterpiece</span>
         </button>
         <p id="genBusyHint" style="display:none;font-family:Inter,sans-serif;font-size:12px;color:#9ca3af;text-align:center;margin-top:10px;">Creating your piece… please wait</p>
+        <div id="s1GenError" style="display:none;margin-top:12px;padding:12px 16px;background:#fef2f2;border:1px solid #fecaca;border-radius:10px;font-family:Inter,sans-serif;font-size:13px;color:#dc2626;text-align:center;">
+          Something went wrong generating your design. Please try again.
+        </div>
       </div>
 
       <!-- RIGHT: Preview Placeholder / Loading -->
@@ -1448,6 +1451,8 @@ function setGenLoading(on) {
   const text = document.getElementById('genText');
   const loadOverlay = document.getElementById('genLoadingOverlay');
   const errOverlay  = document.getElementById('genErrorOverlay');
+  const previewPh   = document.getElementById('previewPlaceholder');
+  const previewLd   = document.getElementById('previewLoading');
   if (!btn) return;
 
   if (on) {
@@ -1459,11 +1464,15 @@ function setGenLoading(on) {
     if (text) text.textContent = 'Creating your piece…';
     if (loadOverlay) loadOverlay.style.display = 'flex';
     if (errOverlay)  errOverlay.style.display  = 'none';
+    if (previewPh)   previewPh.style.display   = 'none';
+    if (previewLd)   previewLd.classList.remove('hidden');
     _startCooldown();
   } else {
     // Image done — signal and check if cooldown is also done
     _genImgDone = true;
     if (loadOverlay) loadOverlay.style.display = 'none';
+    if (previewLd)   previewLd.classList.add('hidden');
+    if (previewPh)   previewPh.style.display   = '';
     _tryReEnable();
   }
 }
@@ -1473,6 +1482,10 @@ function _cancelGen() {
   _reEnableGenBtns();
   const loadOverlay = document.getElementById('genLoadingOverlay');
   if (loadOverlay) loadOverlay.style.display = 'none';
+  const previewLd = document.getElementById('previewLoading');
+  if (previewLd)   previewLd.classList.add('hidden');
+  const previewPh = document.getElementById('previewPlaceholder');
+  if (previewPh)   previewPh.style.display = '';
 }
 
 /* ── Progress bar ────────────────────────────── */
@@ -1977,6 +1990,10 @@ async function startGeneration(isTweak) {
     setGenLoading(false);
     const errOverlay = document.getElementById('genErrorOverlay');
     if (errOverlay) errOverlay.style.display = 'flex';
+    if (!isTweak) {
+      const s1Err = document.getElementById('s1GenError');
+      if (s1Err) { s1Err.style.display = 'block'; setTimeout(() => { s1Err.style.display = 'none'; }, 6000); }
+    }
   });
 }
 
