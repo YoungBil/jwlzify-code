@@ -1391,13 +1391,32 @@ async function generateWithGemini(prompt) {
   return URL.createObjectURL(blob);
 }
 
-async function _generateImage(prompt, pollinationsMakeUrl) {
+async function _generateImage(prompt) {
   try {
     return await generateWithGemini(prompt);
   } catch(e) {
-    console.warn('[JWLZIFY] Gemini failed, falling back to Pollinations:', e.message);
+    console.warn('[JWLZIFY] Gemini failed, falling back to HuggingFace:', e.message);
   }
-  return await _fetchWithRetry(pollinationsMakeUrl);
+  const hfRes = await fetch(
+    'https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        inputs: prompt,
+        parameters: {
+          width: 1024,
+          height: 1024,
+          num_inference_steps: 30,
+          guidance_scale: 7.5
+        }
+      })
+    }
+  );
+  if (!hfRes.ok) throw new Error('HuggingFace ' + hfRes.status);
+  const blob = await hfRes.blob();
+  console.log('[JWLZIFY] HuggingFace SUCCESS');
+  return URL.createObjectURL(blob);
 }
 
 /* ── Rate-limit / queue state ── */
@@ -1944,20 +1963,9 @@ async function startGeneration(isTweak) {
 
   const fullPrompt = buildPrompt(LAB.type, LAB.material, LAB.gem, LAB.style, desc);
   const isPendantGen = (LAB.type === 'pendant' || LAB.type === 'necklace');
-  // Pendants: disable enhance (Pollinations enhancer adds chain context back)
-  // and keep a negative_prompt as a belt-and-suspenders prompt guard.
-  const negParam = isPendantGen
-    ? `&negative_prompt=${encodeURIComponent('chain,necklace,cord,string,rope,clasp,links,neck,person,model,hanging,worn')}`
-    : '';
-
   console.log('[JWLZIFY] generating with prompt:', fullPrompt);
   console.log('[JWLZIFY] metal:', LAB.material, '| stone:', LAB.gem);
   console.log('[JWLZIFY] specs:', JSON.stringify(window.jwlSpecifications));
-
-  function makeUrl() {
-    const seed = (Date.now() + Math.floor(Math.random() * 9999)) % 99999;
-    return `https://image.pollinations.ai/prompt/${encodeURIComponent(fullPrompt)}?width=800&height=800&nologo=true&seed=${seed}&model=flux&enhance=${isPendantGen ? 'false' : 'true'}${negParam}`;
-  }
 
   const ri = document.getElementById('refineImg');
   if (isTweak) {
@@ -1965,8 +1973,8 @@ async function startGeneration(isTweak) {
     ri.style.filter = 'blur(14px) brightness(0.8)';
   }
 
-  // Queue the fetch — Gemini primary, Pollinations fallback, queue respects GEN_MAX_CONCURRENT
-  _enqueueGen(() => _generateImage(fullPrompt, makeUrl)).then((blobUrl) => {
+  // Queue the fetch — Gemini primary, HuggingFace fallback, queue respects GEN_MAX_CONCURRENT
+  _enqueueGen(() => _generateImage(fullPrompt)).then((blobUrl) => {
     if (thisGen !== generationId) { URL.revokeObjectURL(blobUrl); return; }
 
     LAB.imageUrl = blobUrl;
