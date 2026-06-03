@@ -1233,7 +1233,7 @@ const CLAUDE_API_KEY = '';
 
 /* ── Gemini image generation ── */
 const GEMINI_API_KEY = 'AIzaSyCLOMIAySPZ-5oax7-tVeyd0rAs6l5lvJ0';
-const GEMINI_MODEL   = 'gemini-2.0-flash-preview-image-generation';
+const GEMINI_MODEL   = 'imagen-3.0-generate-001';
 
 /* ── Chain style selection for necklace type ── */
 let selectedChainStyle  = null;
@@ -1346,15 +1346,11 @@ async function _fetchWithRetry(makeUrl) {
 }
 
 async function generateWithGemini(prompt) {
-  console.log('[JWLZIFY] generating with Gemini:', prompt);
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
+  console.log('[JWLZIFY] generating with Imagen 3:', prompt);
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:predict?key=${GEMINI_API_KEY}`;
   const body = {
-    contents: [{
-      parts: [{ text: `Generate a photorealistic jewelry image: ${prompt}` }]
-    }],
-    generationConfig: {
-      responseModalities: ['TEXT', 'IMAGE']
-    }
+    instances: [{ prompt: `Photorealistic jewelry product photo: ${prompt}` }],
+    parameters: { sampleCount: 1, aspectRatio: '1:1' }
   };
   const response = await fetch(url, {
     method: 'POST',
@@ -1363,31 +1359,23 @@ async function generateWithGemini(prompt) {
   });
   if (!response.ok) {
     const errText = await response.text();
-    console.error('[JWLZIFY] Gemini raw error:', errText);
-    throw new Error('Gemini failed: ' + response.status);
+    console.error('[JWLZIFY] Imagen raw error:', errText);
+    throw new Error('Imagen failed: ' + response.status);
   }
   const data = await response.json();
-  console.log('[JWLZIFY] Gemini response:', JSON.stringify(data).slice(0, 200));
+  console.log('[JWLZIFY] Imagen response:', JSON.stringify(data).slice(0, 200));
 
-  const candidates = data.candidates || [];
-  let imagePart = null;
-  for (const candidate of candidates) {
-    for (const part of (candidate?.content?.parts || [])) {
-      if (part.inlineData?.data) { imagePart = part; break; }
-    }
-    if (imagePart) break;
+  const prediction = data.predictions?.[0];
+  if (!prediction?.bytesBase64Encoded) {
+    console.error('[JWLZIFY] Imagen full response:', JSON.stringify(data));
+    throw new Error('No image in Imagen response');
   }
-  if (!imagePart?.inlineData?.data) {
-    console.error('[JWLZIFY] Gemini full response:', JSON.stringify(data));
-    throw new Error('No image in Gemini response');
-  }
-  const base64 = imagePart.inlineData.data;
-  const mimeType = imagePart.inlineData.mimeType || 'image/png';
-  const byteChars = atob(base64);
+  const mimeType = prediction.mimeType || 'image/png';
+  const byteChars = atob(prediction.bytesBase64Encoded);
   const byteArray = new Uint8Array(byteChars.length);
   for (let i = 0; i < byteChars.length; i++) byteArray[i] = byteChars.charCodeAt(i);
   const blob = new Blob([byteArray], { type: mimeType });
-  console.log('[JWLZIFY] Gemini image SUCCESS');
+  console.log('[JWLZIFY] Imagen 3 SUCCESS');
   return URL.createObjectURL(blob);
 }
 
@@ -1395,28 +1383,11 @@ async function _generateImage(prompt) {
   try {
     return await generateWithGemini(prompt);
   } catch(e) {
-    console.warn('[JWLZIFY] Gemini failed, falling back to HuggingFace:', e.message);
+    console.warn('[JWLZIFY] Imagen failed, falling back to Pollinations:', e.message);
   }
-  const hfRes = await fetch(
-    'https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0',
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        inputs: prompt,
-        parameters: {
-          width: 1024,
-          height: 1024,
-          num_inference_steps: 30,
-          guidance_scale: 7.5
-        }
-      })
-    }
-  );
-  if (!hfRes.ok) throw new Error('HuggingFace ' + hfRes.status);
-  const blob = await hfRes.blob();
-  console.log('[JWLZIFY] HuggingFace SUCCESS');
-  return URL.createObjectURL(blob);
+  const seed = (Date.now() + Math.floor(Math.random() * 9999)) % 99999;
+  const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=800&height=800&nologo=true&seed=${seed}&model=flux`;
+  return await _fetchWithRetry(() => pollinationsUrl);
 }
 
 /* ── Rate-limit / queue state ── */
