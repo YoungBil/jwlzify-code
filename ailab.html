@@ -1393,10 +1393,15 @@ async function _generateImage(prompt) {
       body: JSON.stringify({ inputs: prompt })
     }
   );
-  if (!hfRes.ok) throw new Error('HuggingFace worker ' + hfRes.status);
+  if (!hfRes.ok) throw new Error('HF ' + hfRes.status);
   const blob = await hfRes.blob();
+  console.log('[JWLZIFY] HF blob size:', blob.size, 'type:', blob.type);
+  if (blob.size < 1000) throw new Error('HF returned empty/invalid image');
+  const blobUrl = URL.createObjectURL(
+    new Blob([await blob.arrayBuffer()], { type: 'image/png' })
+  );
   console.log('[JWLZIFY] HuggingFace SUCCESS');
-  return URL.createObjectURL(blob);
+  return blobUrl;
 }
 
 /* ── Rate-limit / queue state ── */
@@ -1955,6 +1960,8 @@ async function startGeneration(isTweak) {
 
   // Queue the fetch — Gemini primary, HuggingFace fallback, queue respects GEN_MAX_CONCURRENT
   _enqueueGen(() => _generateImage(fullPrompt)).then((blobUrl) => {
+    console.log('[JWLZIFY] setting image src to:', blobUrl?.slice(0, 50));
+    if (!blobUrl) { console.error('[JWLZIFY] imageUrl is null/undefined'); return; }
     if (thisGen !== generationId) { URL.revokeObjectURL(blobUrl); return; }
 
     LAB.imageUrl = blobUrl;
