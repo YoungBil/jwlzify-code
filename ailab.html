@@ -1234,6 +1234,7 @@ const CLAUDE_API_KEY = '';
 /* ── Gemini image generation ── */
 const GEMINI_API_KEY = 'AIzaSyCLOMIAySPZ-5oax7-tVeyd0rAs6l5lvJ0';
 const GEMINI_MODEL   = 'imagen-3.0-generate-001';
+const HF_API_KEY     = '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';
 
 /* ── Chain style selection for necklace type ── */
 let selectedChainStyle  = null;
@@ -1383,11 +1384,26 @@ async function _generateImage(prompt) {
   try {
     return await generateWithGemini(prompt);
   } catch(e) {
-    console.warn('[JWLZIFY] Imagen failed, falling back to Pollinations:', e.message);
+    console.warn('[JWLZIFY] Imagen failed, falling back to HuggingFace:', e.message);
   }
-  const seed = (Date.now() + Math.floor(Math.random() * 9999)) % 99999;
-  const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=800&height=800&nologo=true&seed=${seed}&model=flux`;
-  return await _fetchWithRetry(() => pollinationsUrl);
+  const hfRes = await fetch(
+    'https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0',
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${HF_API_KEY}`
+      },
+      body: JSON.stringify({
+        inputs: prompt,
+        parameters: { width: 1024, height: 1024, num_inference_steps: 30, guidance_scale: 7.5 }
+      })
+    }
+  );
+  if (!hfRes.ok) throw new Error('HuggingFace ' + hfRes.status);
+  const blob = await hfRes.blob();
+  console.log('[JWLZIFY] HuggingFace SUCCESS');
+  return URL.createObjectURL(blob);
 }
 
 /* ── Rate-limit / queue state ── */
