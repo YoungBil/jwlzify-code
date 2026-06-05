@@ -1389,10 +1389,15 @@ async function _generateImage(prompt) {
       }
     );
 
+    if (res.status === 429) {
+      console.warn('[JWLZIFY] Gemini rate limited, using fallback');
+      throw new Error('rate_limited');
+    }
     if (!res.ok) throw new Error('Gemini worker ' + res.status);
 
     const data = await res.json();
 
+    if (data.error === 'rate_limited') throw new Error('rate_limited');
     if (data.error) {
       console.warn('[JWLZIFY] Gemini error:', data.error);
       throw new Error(data.error);
