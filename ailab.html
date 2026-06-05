@@ -1232,8 +1232,6 @@ window.addEventListener('DOMContentLoaded', () => {
 const CLAUDE_API_KEY = '';
 
 /* ── Gemini image generation ── */
-const GEMINI_API_KEY = 'AIzaSyCLOMIAySPZ-5oax7-tVeyd0rAs6l5lvJ0';
-const GEMINI_MODEL   = 'imagen-3.0-generate-001';
 
 /* ── Chain style selection for necklace type ── */
 let selectedChainStyle  = null;
@@ -1345,46 +1343,44 @@ async function _fetchWithRetry(makeUrl) {
   throw lastErr;
 }
 
-async function generateWithGemini(prompt) {
-  console.log('[JWLZIFY] generating with Imagen 3:', prompt);
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:predict?key=${GEMINI_API_KEY}`;
-  const body = {
-    instances: [{ prompt: `Photorealistic jewelry product photo: ${prompt}` }],
-    parameters: { sampleCount: 1, aspectRatio: '1:1' }
-  };
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
-  });
-  if (!response.ok) {
-    const errText = await response.text();
-    console.error('[JWLZIFY] Imagen raw error:', errText);
-    throw new Error('Imagen failed: ' + response.status);
-  }
-  const data = await response.json();
-  console.log('[JWLZIFY] Imagen response:', JSON.stringify(data).slice(0, 200));
-
-  const prediction = data.predictions?.[0];
-  if (!prediction?.bytesBase64Encoded) {
-    console.error('[JWLZIFY] Imagen full response:', JSON.stringify(data));
-    throw new Error('No image in Imagen response');
-  }
-  const mimeType = prediction.mimeType || 'image/png';
-  const byteChars = atob(prediction.bytesBase64Encoded);
-  const byteArray = new Uint8Array(byteChars.length);
-  for (let i = 0; i < byteChars.length; i++) byteArray[i] = byteChars.charCodeAt(i);
-  const blob = new Blob([byteArray], { type: mimeType });
-  console.log('[JWLZIFY] Imagen 3 SUCCESS');
-  return URL.createObjectURL(blob);
-}
-
-async function _generateImage(prompt, negativePrompt) {
+async function _generateImage(prompt) {
+  // PRIMARY: Gemini via Cloudflare Worker
   try {
-    return await generateWithGemini(prompt);
+    console.log('[JWLZIFY] calling Gemini worker...');
+    const res = await fetch(
+      'https://gemini-image.sarkd333.workers.dev/',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: prompt })
+      }
+    );
+
+    if (!res.ok) throw new Error('Gemini worker ' + res.status);
+
+    const data = await res.json();
+
+    if (data.error) {
+      console.warn('[JWLZIFY] Gemini error:', data.error);
+      throw new Error(data.error);
+    }
+
+    if (!data.imageData) throw new Error('No image data');
+
+    const bytes = atob(data.imageData);
+    const arr = new Uint8Array(bytes.length);
+    for (let i = 0; i < bytes.length; i++) {
+      arr[i] = bytes.charCodeAt(i);
+    }
+    const blob = new Blob([arr], { type: data.mimeType || 'image/png' });
+    console.log('[JWLZIFY] Gemini SUCCESS');
+    return URL.createObjectURL(blob);
+
   } catch(e) {
-    console.warn('[JWLZIFY] Imagen failed, falling back to HuggingFace:', e.message);
+    console.warn('[JWLZIFY] Gemini failed, trying fallback:', e.message);
   }
+
+  // FALLBACK: HuggingFace via Cloudflare Worker
   try {
     console.log('[JWLZIFY] calling HF worker...');
     const hfRes = await fetch(
@@ -1392,58 +1388,17 @@ async function _generateImage(prompt, negativePrompt) {
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ inputs: prompt, parameters: { negative_prompt: negativePrompt || '' } })
+        body: JSON.stringify({ inputs: prompt })
       }
     );
-
-    console.log('[JWLZIFY] HF response status:', hfRes.status);
-    console.log('[JWLZIFY] HF content-type:', hfRes.headers.get('content-type'));
-
-    if (!hfRes.ok) {
-      const errText = await hfRes.text();
-      console.error('[JWLZIFY] HF error:', errText);
-      throw new Error('HF failed: ' + hfRes.status);
-    }
-
-    const contentType = hfRes.headers.get('content-type') || '';
-
-    // If response is JSON it's an error message not an image
-    if (contentType.includes('application/json')) {
-      const errJson = await hfRes.json();
-      console.error('[JWLZIFY] HF returned JSON error:', errJson);
-
-      // If model is loading wait 20 seconds and retry once
-      if (errJson.error?.includes('loading')) {
-        console.log('[JWLZIFY] model loading, waiting 20s...');
-        await new Promise(r => setTimeout(r, 20000));
-        const retryRes = await fetch(
-          'https://hf-image.sarkd333.workers.dev/',
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ inputs: prompt, parameters: { negative_prompt: negativePrompt || '' } })
-          }
-        );
-        if (!retryRes.ok) throw new Error('HF retry failed');
-        const retryBlob = await retryRes.blob();
-        console.log('[JWLZIFY] HF retry SUCCESS, size:', retryBlob.size);
-        return URL.createObjectURL(retryBlob);
-      }
-      throw new Error('HF error: ' + JSON.stringify(errJson));
-    }
-
+    if (!hfRes.ok) throw new Error('HF ' + hfRes.status);
     const blob = await hfRes.blob();
-    console.log('[JWLZIFY] HF blob size:', blob.size);
-
-    if (blob.size < 5000) {
-      throw new Error('HF image too small, likely an error');
-    }
-
+    if (blob.size < 5000) throw new Error('HF image too small');
     console.log('[JWLZIFY] HuggingFace SUCCESS');
     return URL.createObjectURL(blob);
-
   } catch(e) {
-    console.error('[JWLZIFY] HF failed:', e.message);
+    console.error('[JWLZIFY] all generation failed:', e.message);
+    return null;
   }
 }
 
