@@ -261,6 +261,7 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
 </script>
 <style>#tryon-necklace { background: transparent !important; }</style>
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/selfie_segmentation.js" crossorigin="anonymous"></script>
 </head>
 <body class="bg-[#fbf9f9] text-[#1b1c1c]">
 
@@ -2988,6 +2989,7 @@ function teardownTryOn() {
 
   if (_ringAnimFrame) { cancelAnimationFrame(_ringAnimFrame); _ringAnimFrame = null; }
   if (_mpHands) { try { _mpHands.close(); } catch(e) {} _mpHands = null; }
+  if (_mpSeg)   { try { _mpSeg.close();   } catch(e) {} _mpSeg   = null; }
   const ringCanvas = document.getElementById('ring-tryon-canvas');
   if (ringCanvas) {
     const rCtx = ringCanvas.getContext('2d');
@@ -2996,9 +2998,13 @@ function teardownTryOn() {
   }
   const fingerSel = document.getElementById('ring-finger-selector');
   if (fingerSel) fingerSel.style.display = 'none';
-  _ringSmooth = { x:0, y:0, angle:0, scale:0 };
-  _ringLostFrames = 0;
-  _ringTryonImg = null;
+  _ringSmooth       = { x:0, y:0, angle:0, scale:0 };
+  _ringLostFrames   = 0;
+  _ringTryonImg     = null;
+  latestSegMask     = null;
+  _segInitDismissed = false;
+  _videoOffscreen   = null;
+  _maskOffscreen    = null;
 }
 
 
@@ -3669,14 +3675,33 @@ const _RING_FALLBACK_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0
 const _RING_FALLBACK_URL = 'data:image/svg+xml,' + encodeURIComponent(_RING_FALLBACK_SVG);
 
 let _mpHands           = null;
+let _mpSeg             = null;
+let latestSegMask      = null;
+let _segFrameSkip      = 0;
+let _segInitTime       = 0;
+let _segInitDismissed  = false;
+let _fpsFrameCount     = 0;
+let _fpsLastLog        = 0;
+let _videoOffscreen    = null;
+let _maskOffscreen     = null;
 let _ringAnimFrame     = null;
 let _ringTryonImg      = null;
 let _ringSelectedFinger = 'ring';
 let _ringSmooth        = { x: 0, y: 0, angle: 0, scale: 0 };
 let _ringLostFrames    = 0;
 
+const RING_FINGER_TIPS     = { index: 8, middle: 12, ring: 16, pinky: 20 };
+const RING_FINGER_WIDTH_LM = { index: [5,9], middle: [9,13], ring: [13,17], pinky: [17,0] };
+
+function _createOffscreenCanvas(w, h) {
+  if (typeof OffscreenCanvas !== 'undefined') return new OffscreenCanvas(w, h);
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  return c;
+}
+
 async function loadRingForTryOn(imageUrl) {
-  console.log('[JWLZIFY] loading ring try-on (MediaPipe Hands)');
+  console.log('[JWLZIFY] loading ring try-on (MediaPipe Hands + Selfie Segmentation)');
 
   // Hide all other try-on overlays — do not touch pendant code path
   ['tryon-necklace', 'tryon-pendant', 'tryon-resize',
@@ -3690,9 +3715,15 @@ async function loadRingForTryOn(imageUrl) {
   // Size and show the ring canvas
   const container  = document.getElementById('tryon-container');
   const ringCanvas = document.getElementById('ring-tryon-canvas');
-  ringCanvas.width  = container.offsetWidth;
-  ringCanvas.height = container.offsetHeight;
+  const W = container.offsetWidth;
+  const H = container.offsetHeight;
+  ringCanvas.width  = W;
+  ringCanvas.height = H;
   ringCanvas.style.display = 'block';
+
+  // Create / resize offscreen compositing canvases
+  _videoOffscreen = _createOffscreenCanvas(W, H);
+  _maskOffscreen  = _createOffscreenCanvas(W, H);
 
   // Show finger selector, update hint
   const fingerSel = document.getElementById('ring-finger-selector');
@@ -3729,17 +3760,44 @@ async function loadRingForTryOn(imageUrl) {
     console.log('MediaPipe Hands initialized — target 30fps');
   }
 
-  // Reset smooth state and lost-frame counter
-  _ringSmooth    = { x: 0, y: 0, angle: 0, scale: 0 };
-  _ringLostFrames = 0;
+  // Init MediaPipe Selfie Segmentation once per session
+  if (!_mpSeg) {
+    if (typeof SelfieSegmentation === 'undefined') {
+      console.warn('[JWLZIFY] SelfieSegmentation CDN not loaded — occlusion disabled');
+    } else {
+      _mpSeg = new SelfieSegmentation({
+        locateFile: (f) => `https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${f}`
+      });
+      _mpSeg.setOptions({ modelSelection: 1 });
+      _mpSeg.onResults(_onSegmentationResults);
+      await _mpSeg.initialize();
+      console.log('[JWLZIFY] MediaPipe SelfieSegmentation initialized');
+    }
+  }
 
-  // Start rAF loop — send video frames to MediaPipe
+  // Reset all state
+  _ringSmooth       = { x: 0, y: 0, angle: 0, scale: 0 };
+  _ringLostFrames   = 0;
+  latestSegMask     = null;
+  _segFrameSkip     = 0;
+  _segInitTime      = Date.now();
+  _segInitDismissed = false;
+  _fpsFrameCount    = 0;
+  _fpsLastLog       = 0;
+
+  // Start rAF loop — Hands every frame, Segmentation every other frame
   if (_ringAnimFrame) { cancelAnimationFrame(_ringAnimFrame); _ringAnimFrame = null; }
   async function _ringLoop() {
     if (!isTryOnActive) return;
     const video = document.getElementById('tryon-video');
-    if (_mpHands && video && video.readyState >= 2) {
-      try { await _mpHands.send({ image: video }); } catch(_) {}
+    if (video && video.readyState >= 2) {
+      if (_mpHands) {
+        try { await _mpHands.send({ image: video }); } catch(_) {}
+      }
+      _segFrameSkip++;
+      if (_mpSeg && _segFrameSkip % 2 === 0) {
+        try { await _mpSeg.send({ image: video }); } catch(_) {}
+      }
     }
     _ringAnimFrame = requestAnimationFrame(_ringLoop);
   }
@@ -3755,11 +3813,56 @@ function _onRingTryonResults(results) {
   const H     = ringCanvas.height;
   const video = document.getElementById('tryon-video');
 
-  // Draw mirrored video frame onto canvas
+  // FPS tracking — logs every 5 seconds
+  _fpsFrameCount++;
+  const _now = performance.now();
+  if (_fpsLastLog === 0) _fpsLastLog = _now;
+  if (_now - _fpsLastLog >= 5000) {
+    console.log(`Ring Try-On FPS: ${Math.round(_fpsFrameCount / ((_now - _fpsLastLog) / 1000))}`);
+    _fpsFrameCount = 0;
+    _fpsLastLog    = _now;
+  }
+
+  // Ensure offscreen canvases match current dimensions
+  if (!_videoOffscreen || _videoOffscreen.width !== W || _videoOffscreen.height !== H) {
+    _videoOffscreen = _createOffscreenCanvas(W, H);
+    _maskOffscreen  = _createOffscreenCanvas(W, H);
+  }
+
+  // --- Layer 1: Draw mirrored video onto both videoOffscreen and visible canvas ---
+  const vCtx = _videoOffscreen.getContext('2d');
+  vCtx.save();
+  vCtx.scale(-1, 1);
+  vCtx.drawImage(video, -W, 0, W, H);
+  vCtx.restore();
+
+  ctx.clearRect(0, 0, W, H);
   ctx.save();
   ctx.scale(-1, 1);
   ctx.drawImage(video, -W, 0, W, H);
   ctx.restore();
+
+  // "Initializing..." pill — shown until first segmentation mask arrives (max 2s)
+  if (!_segInitDismissed) {
+    if (latestSegMask !== null) {
+      _segInitDismissed = true;
+    } else if (Date.now() - _segInitTime < 2000) {
+      const pw = 180, ph = 34;
+      const px = (W - pw) / 2, py = 16;
+      ctx.save();
+      ctx.fillStyle = 'rgba(11,15,26,0.72)';
+      ctx.beginPath();
+      if (ctx.roundRect) ctx.roundRect(px, py, pw, ph, 17);
+      else ctx.rect(px, py, pw, ph);
+      ctx.fill();
+      ctx.fillStyle = '#C9A84C';
+      ctx.font = '600 11px Inter, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('Initializing...', W / 2, py + ph / 2);
+      ctx.restore();
+    }
+  }
 
   // Lost-tracking fallback
   if (!results.multiHandLandmarks || results.multiHandLandmarks.length === 0) {
@@ -3797,11 +3900,11 @@ function _onRingTryonResults(results) {
   const mcp = bestHand[mcpI];
   const pip = bestHand[pipI];
 
-  // Normalized → mirrored canvas pixels (flip x for mirror view)
+  // Normalized → mirrored canvas pixels
   const mcpX = (1 - mcp.x) * W,  mcpY = mcp.y * H;
   const pipX = (1 - pip.x) * W,  pipY = pip.y * H;
 
-  // Ring center: 30% of the way from MCP toward PIP (base of finger)
+  // Ring center: 30% from MCP toward PIP
   const targetX = mcpX + 0.3 * (pipX - mcpX);
   const targetY = mcpY + 0.3 * (pipY - mcpY);
 
@@ -3809,24 +3912,23 @@ function _onRingTryonResults(results) {
   const targetAngle = Math.atan2(dy, dx);
   const targetScale = Math.sqrt(dx * dx + dy * dy) * 1.4;
 
-  // Snap on very first detection (avoids slide-in from origin)
+  // Snap on first detection
   if (_ringSmooth.scale < 1) {
     _ringSmooth.x = targetX; _ringSmooth.y = targetY;
     _ringSmooth.angle = targetAngle; _ringSmooth.scale = targetScale;
   }
 
-  // LERP smoothing — 0.18 is the sweet spot (premium feel, no jitter)
+  // LERP smoothing
   const LERP = 0.18;
   _ringSmooth.x     += (targetX     - _ringSmooth.x)     * LERP;
   _ringSmooth.y     += (targetY     - _ringSmooth.y)      * LERP;
   _ringSmooth.scale += (targetScale - _ringSmooth.scale)   * LERP;
-  // Angle lerp with wrap correction (prevents 360° spin at ±π boundary)
   let dAngle = targetAngle - _ringSmooth.angle;
   while (dAngle >  Math.PI) dAngle -= 2 * Math.PI;
   while (dAngle < -Math.PI) dAngle += 2 * Math.PI;
   _ringSmooth.angle += dAngle * LERP;
 
-  // Draw ring overlay with drop shadow
+  // --- Layer 2: Draw ring with drop shadow onto visible canvas ---
   if (_ringTryonImg && _ringTryonImg.complete && _ringSmooth.scale > 4) {
     const s = _ringSmooth.scale;
     ctx.save();
@@ -3839,6 +3941,58 @@ function _onRingTryonResults(results) {
     ctx.shadowColor = 'transparent';
     ctx.restore();
   }
+
+  // --- Layers 3–7: Finger occlusion composite ---
+  if (latestSegMask && _maskOffscreen) {
+    const tipI      = RING_FINGER_TIPS[_ringSelectedFinger] || 16;
+    const [wa, wb]  = RING_FINGER_WIDTH_LM[_ringSelectedFinger] || [13, 17];
+
+    const tip  = bestHand[tipI];
+    const tipX = (1 - tip.x) * W,  tipY = tip.y * H;
+
+    // Finger width from adjacent MCP landmarks
+    const waLm = bestHand[wa];
+    const wbLm = bestHand[wb];
+    const waX  = (1 - waLm.x) * W, waY = waLm.y * H;
+    const wbX  = (1 - wbLm.x) * W, wbY = wbLm.y * H;
+    let rawWidth = Math.sqrt((wbX - waX) ** 2 + (wbY - waY) ** 2);
+    if (_ringSelectedFinger === 'pinky') rawWidth /= 4;
+    const fingerWidth = rawWidth * 1.1;
+
+    // Clip: rotated rect from MCP to fingertip (+ 15% extension past tip)
+    const fdx = tipX - mcpX, fdy = tipY - mcpY;
+    const fingerLen   = Math.sqrt(fdx * fdx + fdy * fdy) * 1.15;
+    const fingerAngle = Math.atan2(fdy, fdx);
+    const clipCx = mcpX + fdx / 2;
+    const clipCy = mcpY + fdy / 2;
+
+    // Build maskCanvas: segmentation mask gated by video pixels → person skin only
+    const mCtx = _maskOffscreen.getContext('2d');
+    mCtx.clearRect(0, 0, W, H);
+    mCtx.drawImage(latestSegMask, 0, 0, W, H);
+    mCtx.globalCompositeOperation = 'source-in';
+    mCtx.drawImage(_videoOffscreen, 0, 0);
+    mCtx.globalCompositeOperation = 'source-over';
+
+    // Composite maskCanvas onto visible canvas inside the finger clip region
+    ctx.save();
+    ctx.translate(clipCx, clipCy);
+    ctx.rotate(fingerAngle);
+    ctx.beginPath();
+    ctx.rect(-fingerLen / 2, -fingerWidth / 2, fingerLen, fingerWidth);
+    ctx.clip();
+    // Reset transform to screen space so drawImage aligns with actual pixel positions
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    // Soft feather on the mask edge for a natural transition
+    ctx.filter = 'blur(1.5px)';
+    ctx.drawImage(_maskOffscreen, 0, 0);
+    ctx.filter = 'none';
+    ctx.restore();
+  }
+}
+
+function _onSegmentationResults(results) {
+  latestSegMask = results.segmentationMask;
 }
 
 function setRingFinger(finger) {
