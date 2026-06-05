@@ -1,7 +1,23 @@
 {
   "permissions": {
     "allow": [
-      "Bash(git *)"
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "Bash(git add *)",
+      "Bash(git pull *)",
+      "Bash(git fetch *)",
+      "Bash(Get-Item \"howitworks.png\")",
+      "Bash(Select-Object Name, LastWriteTime, Length)",
+      "WebFetch(domain:cdn.jsdelivr.net)",
+      "Bash(git checkout *)",
+      "WebFetch(domain:commons.wikimedia.org)",
+      "Bash(dir test-pendant*)",
+      "Bash(git merge *)",
+      "Bash(git rm *)",
+      "Bash(git commit *)",
+      "Bash(magick --version)",
+      "Bash(convert --version)",
+      "Bash(git stash *)"
     ]
   }
 }

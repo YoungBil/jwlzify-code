@@ -1379,7 +1379,7 @@ async function generateWithGemini(prompt) {
   return URL.createObjectURL(blob);
 }
 
-async function _generateImage(prompt) {
+async function _generateImage(prompt, negativePrompt) {
   try {
     return await generateWithGemini(prompt);
   } catch(e) {
@@ -1392,7 +1392,7 @@ async function _generateImage(prompt) {
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ inputs: prompt })
+        body: JSON.stringify({ inputs: prompt, parameters: { negative_prompt: negativePrompt || '' } })
       }
     );
 
@@ -1421,7 +1421,7 @@ async function _generateImage(prompt) {
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ inputs: prompt })
+            body: JSON.stringify({ inputs: prompt, parameters: { negative_prompt: negativePrompt || '' } })
           }
         );
         if (!retryRes.ok) throw new Error('HF retry failed');
@@ -1690,7 +1690,8 @@ function buildPrompt(type, material, gem, style, desc) {
   const isPendantType = (type === 'pendant');
   const mDisp = matLabel(material);
   const gDisp = gemLabel(gem);
-  const base  = desc.trim() ? desc.trim() + ', ' : '';
+  // User description moved to a suffix detail clause — type keyword leads every prompt
+  const descPart = desc.trim() ? ', ' + desc.trim() : '';
 
   // Pull specs for stone count/sizes and weight
   const specs       = window.jwlSpecifications || {};
@@ -1709,9 +1710,8 @@ function buildPrompt(type, material, gem, style, desc) {
   const wPart = weightDesc[weightLabel] || '';
 
   if (isPendantType) {
-    // BiRefNet post-processes chain removal universally — prompt only needs the
-    // pendant to be the unambiguous main subject (macro, centered, clean bg).
-    return `${base}luxury ${style} ${wPart}pendant charm, bail connector at top, ${mDisp}, ${gemPart}, close-up macro product photograph, pendant centered filling the frame, high contrast separation between pendant and background, soft even studio lighting with no shadows on background, pure white seamless background, ultra sharp focus, hyper realistic, 8K ultra high definition, precious metal gleam, gemstone sparkle and brilliance`;
+    // Type keyword leads; user description follows as detail context
+    return `luxury ${style} ${wPart}pendant charm${descPart}, bail connector at top, ${mDisp}, ${gemPart}, close-up macro product photograph, pendant centered filling the frame, high contrast separation between pendant and background, soft even studio lighting with no shadows on background, pure white seamless background, ultra sharp focus, hyper realistic, 8K ultra high definition, precious metal gleam, gemstone sparkle and brilliance`;
   }
 
   if (type === 'necklace') {
@@ -1721,9 +1721,11 @@ function buildPrompt(type, material, gem, style, desc) {
       ? ['absolutely no pendant', 'no hanging charm', 'chain only full length visible', 'flat lay showing complete chain']
       : [];
     return [
-      base + chainSpecific,
-      ...noPendantParts,
+      // Type keyword is always the first term; user description follows
       `luxury ${style} ${wPart}necklace`,
+      desc.trim() || '',
+      chainSpecific,
+      ...noPendantParts,
       mDisp, gemPart,
       'professional jewelry photography',
       'pure white seamless background', 'no shadows',
@@ -1744,7 +1746,8 @@ function buildPrompt(type, material, gem, style, desc) {
       'isolated single piece',
       'white background'
     ].join(', ');
-    return `${base}${earringAdditions}, luxury ${style} ${wPart}earring, ${mDisp}, ${gemPart}, professional jewelry product photography, pure white seamless background, no shadows, hyper realistic, 8K ultra high definition, macro lens, sharp focus, highly detailed, photorealistic, precious metal gleam, gemstone sparkle and brilliance`;
+    // Type keyword leads; earring constraints and user description follow
+    return `luxury ${style} ${wPart}earring${descPart}, ${earringAdditions}, ${mDisp}, ${gemPart}, professional jewelry product photography, pure white seamless background, no shadows, hyper realistic, 8K ultra high definition, macro lens, sharp focus, highly detailed, photorealistic, precious metal gleam, gemstone sparkle and brilliance`;
   }
 
   const typeMap = {
@@ -1752,7 +1755,8 @@ function buildPrompt(type, material, gem, style, desc) {
     bracelet: 'cuff bracelet jewelry'
   };
   const piece = typeMap[type] || type;
-  return `${base}luxury ${style} ${wPart}${piece}, ${mDisp}, ${gemPart}, isolated fine jewelry product photograph, pure white seamless background, no shadows, no reflections on background, professional diffuse studio lighting, hyper realistic, 8K ultra high definition, macro lens, sharp focus, precious metal gleam, gemstone sparkle and brilliance, luxury brand catalog`;
+  // Type keyword leads the prompt; user description follows as detail context
+  return `luxury ${style} ${wPart}${piece}${descPart}, ${mDisp}, ${gemPart}, isolated fine jewelry product photograph, pure white seamless background, no shadows, no reflections on background, professional diffuse studio lighting, hyper realistic, 8K ultra high definition, macro lens, sharp focus, precious metal gleam, gemstone sparkle and brilliance, luxury brand catalog`;
 }
 
 /* ── Alpha post-processing helpers ────────────── */
@@ -1974,6 +1978,20 @@ async function startGeneration(isTweak) {
   LAB.gem      = document.getElementById('gemSelect').value;
   const basePrompt = document.getElementById('promptArea').value.trim();
 
+  // Sanitize and validate the selected jewelry type before any prompt work
+  const rawType = (LAB.type || '').toLowerCase().trim();
+  if (!rawType) {
+    _cancelGen();
+    const s1Err = document.getElementById('s1GenError');
+    if (s1Err) {
+      s1Err.textContent = 'Please select a jewelry type before generating.';
+      s1Err.style.display = 'block';
+      setTimeout(() => { s1Err.style.display = 'none'; }, 5000);
+    }
+    return;
+  }
+  LAB.type = rawType; // write normalized value back
+
   if (!basePrompt && !isTweak) {
     _cancelGen();
     document.getElementById('promptArea').focus();
@@ -1989,9 +2007,34 @@ async function startGeneration(isTweak) {
   }
   LAB.prompt = desc;
 
-  const fullPrompt = buildPrompt(LAB.type, LAB.material, LAB.gem, LAB.style, desc);
-  const isPendantGen = (LAB.type === 'pendant' || LAB.type === 'necklace');
-  console.log('[JWLZIFY] generating with prompt:', fullPrompt);
+  // Build a negative prompt that excludes all other jewelry types
+  const _TYPE_SYNONYMS = {
+    ring:     ['ring'],
+    necklace: ['necklace', 'chain necklace'],
+    pendant:  ['pendant', 'charm'],
+    earrings: ['earrings', 'earring', 'stud', 'hoop earring', 'drop earring'],
+    bracelet: ['bracelet', 'bangle', 'cuff'],
+  };
+  const negJewelryTerms = Object.entries(_TYPE_SYNONYMS)
+    .filter(([t]) => t !== rawType)
+    .flatMap(([, syns]) => syns)
+    .join(', ');
+  const negativePrompt = `${negJewelryTerms}, brooch, anklet, person, human, model, body, face, hands, text, watermark, logo, blurry, low quality, distorted`;
+
+  const fullPrompt = buildPrompt(rawType, LAB.material, LAB.gem, LAB.style, desc);
+  const isPendantGen = (rawType === 'pendant' || rawType === 'necklace');
+
+  // Assert the type keyword is present in the prompt — surfaces regressions immediately
+  const _typeKeyword = rawType === 'earrings' ? 'earring' : rawType;
+  console.assert(
+    fullPrompt.toLowerCase().includes(_typeKeyword),
+    '[JWLZIFY] ASSERT FAILED: prompt missing type keyword "' + _typeKeyword + '"',
+    fullPrompt
+  );
+  console.log('[JWLZIFY] === GENERATION ===');
+  console.log('[JWLZIFY] type:', rawType);
+  console.log('[JWLZIFY] full prompt:', fullPrompt);
+  console.log('[JWLZIFY] negative prompt:', negativePrompt);
   console.log('[JWLZIFY] metal:', LAB.material, '| stone:', LAB.gem);
   console.log('[JWLZIFY] specs:', JSON.stringify(window.jwlSpecifications));
 
@@ -2002,7 +2045,7 @@ async function startGeneration(isTweak) {
   }
 
   // Queue the fetch — Gemini primary, HuggingFace fallback, queue respects GEN_MAX_CONCURRENT
-  _enqueueGen(() => _generateImage(fullPrompt)).then((blobUrl) => {
+  _enqueueGen(() => _generateImage(fullPrompt, negativePrompt)).then((blobUrl) => {
     console.log('[JWLZIFY] setting image src to:', blobUrl?.slice(0, 50));
     if (!blobUrl) { console.error('[JWLZIFY] imageUrl is null/undefined'); return; }
     if (thisGen !== generationId) { URL.revokeObjectURL(blobUrl); return; }
