@@ -1265,6 +1265,8 @@ window.addEventListener('DOMContentLoaded', () => {
 /* ── Claude API key (fill in to enable AI spec cards) ── */
 const CLAUDE_API_KEY = '';
 
+const REMOVE_BG_API_KEY = 'SaaY6FrGJRJs7tj5zh7Jvs29';
+
 /* ── Gemini image generation ── */
 
 /* ── Chain style selection for necklace type ── */
@@ -2987,7 +2989,8 @@ function teardownTryOn() {
   const hintEl = document.getElementById('tryon-hint-text');
   if (hintEl) hintEl.textContent = 'DRAG JEWELRY TO POSITION · DRAG THE GREY DOT TO RESIZE';
 
-  if (_ringAnimFrame) { cancelAnimationFrame(_ringAnimFrame); _ringAnimFrame = null; }
+  if (_ringAnimFrame)     { cancelAnimationFrame(_ringAnimFrame); _ringAnimFrame = null; }
+  if (_bgRemovalInterval) { clearInterval(_bgRemovalInterval);   _bgRemovalInterval = null; }
   if (_mpHands) { try { _mpHands.close(); } catch(e) {} _mpHands = null; }
   if (_mpSeg)   { try { _mpSeg.close();   } catch(e) {} _mpSeg   = null; }
   const ringCanvas = document.getElementById('ring-tryon-canvas');
@@ -3001,7 +3004,7 @@ function teardownTryOn() {
   _ringSmooth       = { x:0, y:0, angle:0, scale:0 };
   _ringLostFrames   = 0;
   _ringTryonImg     = null;
-  latestSegMask     = null;
+  latestCutoutImage = null;
   _segInitDismissed = false;
   _videoOffscreen   = null;
   _maskOffscreen    = null;
@@ -3676,7 +3679,8 @@ const _RING_FALLBACK_URL = 'data:image/svg+xml,' + encodeURIComponent(_RING_FALL
 
 let _mpHands           = null;
 let _mpSeg             = null;
-let latestSegMask      = null;
+let latestCutoutImage  = null;
+let _bgRemovalInterval = null;
 let _segFrameSkip      = 0;
 let _segInitTime       = 0;
 let _segInitDismissed  = false;
@@ -3760,25 +3764,39 @@ async function loadRingForTryOn(imageUrl) {
     console.log('MediaPipe Hands initialized — target 30fps');
   }
 
-  // Init MediaPipe Selfie Segmentation once per session
-  if (!_mpSeg) {
-    if (typeof SelfieSegmentation === 'undefined') {
-      console.warn('[JWLZIFY] SelfieSegmentation CDN not loaded — occlusion disabled');
-    } else {
-      _mpSeg = new SelfieSegmentation({
-        locateFile: (f) => `https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${f}`
-      });
-      _mpSeg.setOptions({ modelSelection: 1 });
-      _mpSeg.onResults(_onSegmentationResults);
-      await _mpSeg.initialize();
-      console.log('[JWLZIFY] MediaPipe SelfieSegmentation initialized');
-    }
-  }
+  // Background removal via remove.bg on 800ms interval
+  if (_bgRemovalInterval) clearInterval(_bgRemovalInterval);
+  _bgRemovalInterval = setInterval(async () => {
+    const video = document.getElementById('tryon-video');
+    if (!video || video.readyState < 2) return;
+    const captureCanvas = document.createElement('canvas');
+    captureCanvas.width  = ringCanvas.width;
+    captureCanvas.height = ringCanvas.height;
+    const captureCtx = captureCanvas.getContext('2d');
+    captureCtx.save();
+    captureCtx.scale(-1, 1);
+    captureCtx.drawImage(video, -captureCanvas.width, 0, captureCanvas.width, captureCanvas.height);
+    captureCtx.restore();
+    const blob = await new Promise(resolve => captureCanvas.toBlob(resolve, 'image/png'));
+    const formData = new FormData();
+    formData.append('image_file', blob, 'frame.png');
+    formData.append('size', 'auto');
+    const res = await fetch('https://api.remove.bg/v1.0/removebg', {
+      method: 'POST',
+      headers: { 'X-Api-Key': REMOVE_BG_API_KEY },
+      body: formData
+    });
+    if (!res.ok) return;
+    const url = URL.createObjectURL(await res.blob());
+    const img = new Image();
+    img.onload = () => { latestCutoutImage = img; URL.revokeObjectURL(url); };
+    img.src = url;
+  }, 800);
 
   // Reset all state
   _ringSmooth       = { x: 0, y: 0, angle: 0, scale: 0 };
   _ringLostFrames   = 0;
-  latestSegMask     = null;
+  latestCutoutImage = null;
   _segFrameSkip     = 0;
   _segInitTime      = Date.now();
   _segInitDismissed = false;
@@ -3793,10 +3811,6 @@ async function loadRingForTryOn(imageUrl) {
     if (video && video.readyState >= 2) {
       if (_mpHands) {
         try { await _mpHands.send({ image: video }); } catch(_) {}
-      }
-      _segFrameSkip++;
-      if (_mpSeg && _segFrameSkip % 2 === 0) {
-        try { await _mpSeg.send({ image: video }); } catch(_) {}
       }
     }
     _ringAnimFrame = requestAnimationFrame(_ringLoop);
@@ -3844,7 +3858,7 @@ function _onRingTryonResults(results) {
 
   // "Initializing..." pill — shown until first segmentation mask arrives (max 2s)
   if (!_segInitDismissed) {
-    if (latestSegMask !== null) {
+    if (latestCutoutImage !== null) {
       _segInitDismissed = true;
     } else if (Date.now() - _segInitTime < 2000) {
       const pw = 180, ph = 34;
@@ -3943,7 +3957,7 @@ function _onRingTryonResults(results) {
   }
 
   // --- Layers 3–7: Finger occlusion composite ---
-  if (latestSegMask && _maskOffscreen) {
+  if (latestCutoutImage && _maskOffscreen) {
     const tipI      = RING_FINGER_TIPS[_ringSelectedFinger] || 16;
     const [wa, wb]  = RING_FINGER_WIDTH_LM[_ringSelectedFinger] || [13, 17];
 
@@ -3966,13 +3980,10 @@ function _onRingTryonResults(results) {
     const clipCx = mcpX + fdx / 2;
     const clipCy = mcpY + fdy / 2;
 
-    // Build maskCanvas: segmentation mask gated by video pixels → person skin only
+    // Build maskCanvas: draw transparent remove.bg cutout directly
     const mCtx = _maskOffscreen.getContext('2d');
     mCtx.clearRect(0, 0, W, H);
-    mCtx.drawImage(latestSegMask, 0, 0, W, H);
-    mCtx.globalCompositeOperation = 'source-in';
-    mCtx.drawImage(_videoOffscreen, 0, 0);
-    mCtx.globalCompositeOperation = 'source-over';
+    mCtx.drawImage(latestCutoutImage, 0, 0, W, H);
 
     // Composite maskCanvas onto visible canvas inside the finger clip region
     ctx.save();
@@ -3989,10 +4000,6 @@ function _onRingTryonResults(results) {
     ctx.filter = 'none';
     ctx.restore();
   }
-}
-
-function _onSegmentationResults(results) {
-  latestSegMask = results.segmentationMask;
 }
 
 function setRingFinger(finger) {
