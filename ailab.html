@@ -1914,6 +1914,41 @@ function validateCutout(px, W, H) {
   return { ok: true, opaqueRatio: (opaque / N).toFixed(3) };
 }
 
+/* ── Jewelry type resolver ───────────────────── */
+function resolveJewelryType(dropdownValue, descriptionText) {
+  // Longer / more-specific phrases listed first so they match before their substrings
+  const JEWELRY_KEYWORDS = {
+    ring:     ['engagement ring', 'wedding ring', 'signet ring', 'solitaire', 'ring'],
+    necklace: ['pendant necklace', 'chain necklace', 'necklace', 'chain', 'choker'],
+    bracelet: ['tennis bracelet', 'charm bracelet', 'bracelet', 'bangle', 'cuff'],
+    earrings: ['drop earring', 'drop earrings', 'hoop earring', 'hoop earrings',
+               'ear stud', 'earrings', 'earring', 'hoop'],
+    pendant:  ['pendant', 'charm'],
+  };
+
+  const lower = (descriptionText || '').toLowerCase();
+  const matches = [];
+
+  for (const [type, keywords] of Object.entries(JEWELRY_KEYWORDS)) {
+    for (const kw of keywords) {
+      if (lower.includes(kw)) {
+        matches.push(type);
+        break; // one hit per type is sufficient
+      }
+    }
+  }
+
+  const unique = [...new Set(matches)];
+
+  if (unique.length === 1 && unique[0] !== dropdownValue) {
+    // Unambiguous single match that differs from the dropdown — description wins
+    return unique[0];
+  }
+
+  // Ambiguous (multiple matches) or no keyword match → respect the dropdown
+  return dropdownValue;
+}
+
 /* ── Image generation ────────────────────────── */
 async function startGeneration(isTweak) {
   // Queue guard — prevent firing while a generation is already running
@@ -1962,7 +1997,15 @@ async function startGeneration(isTweak) {
   }
   LAB.prompt = desc;
 
-  // Build a negative prompt that excludes all other jewelry types
+  // Resolve final type — description text overrides dropdown when unambiguous
+  const resolvedType = resolveJewelryType(rawType, desc);
+  if (resolvedType !== rawType) {
+    console.log('[JWLZIFY] Resolved type:', resolvedType, '(overrode dropdown:', rawType + ')');
+  } else {
+    console.log('[JWLZIFY] Resolved type:', resolvedType, '(matches dropdown)');
+  }
+
+  // Build a negative prompt that excludes all other jewelry types (uses resolved type)
   const _TYPE_SYNONYMS = {
     ring:     ['ring'],
     necklace: ['necklace', 'chain necklace'],
@@ -1971,23 +2014,23 @@ async function startGeneration(isTweak) {
     bracelet: ['bracelet', 'bangle', 'cuff'],
   };
   const negJewelryTerms = Object.entries(_TYPE_SYNONYMS)
-    .filter(([t]) => t !== rawType)
+    .filter(([t]) => t !== resolvedType)
     .flatMap(([, syns]) => syns)
     .join(', ');
   const negativePrompt = `${negJewelryTerms}, brooch, anklet, person, human, model, body, face, hands, text, watermark, logo, blurry, low quality, distorted`;
 
-  const fullPrompt = buildPrompt(rawType, LAB.material, LAB.gem, LAB.style, desc);
-  const isPendantGen = (rawType === 'pendant' || rawType === 'necklace');
+  const fullPrompt = buildPrompt(resolvedType, LAB.material, LAB.gem, LAB.style, desc);
+  const isPendantGen = (resolvedType === 'pendant' || resolvedType === 'necklace');
 
   // Assert the type keyword is present in the prompt — surfaces regressions immediately
-  const _typeKeyword = rawType === 'earrings' ? 'earring' : rawType;
+  const _typeKeyword = resolvedType === 'earrings' ? 'earring' : resolvedType;
   console.assert(
     fullPrompt.toLowerCase().includes(_typeKeyword),
     '[JWLZIFY] ASSERT FAILED: prompt missing type keyword "' + _typeKeyword + '"',
     fullPrompt
   );
   console.log('[JWLZIFY] === GENERATION ===');
-  console.log('[JWLZIFY] type:', rawType);
+  console.log('[JWLZIFY] type (resolved):', resolvedType, '| dropdown was:', rawType);
   console.log('[JWLZIFY] full prompt:', fullPrompt);
   console.log('[JWLZIFY] negative prompt:', negativePrompt);
   console.log('[JWLZIFY] metal:', LAB.material, '| stone:', LAB.gem);
