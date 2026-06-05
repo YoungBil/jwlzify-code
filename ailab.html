@@ -227,6 +227,27 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
 /* ── AR loading overlay pulse ── */
 @keyframes arPulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
 #arLoading p { animation: arPulse 2.4s ease-in-out infinite; }
+
+/* ── Ring try-on (MediaPipe) ── */
+#ring-tryon-canvas {
+  position:absolute; top:0; left:0;
+  width:100%; height:100%;
+  z-index:5; display:none; border-radius:12px;
+}
+#ring-finger-selector {
+  display:none; gap:8px; align-items:center;
+  justify-content:center; flex-wrap:wrap; padding:6px 0 2px;
+}
+.ring-finger-pill {
+  padding:7px 18px; border-radius:100px;
+  border:1.5px solid rgba(201,168,76,0.3);
+  background:rgba(11,15,26,0.72);
+  font-family:Inter,sans-serif; font-size:11px; font-weight:600;
+  letter-spacing:0.1em; color:rgba(201,168,76,0.6);
+  cursor:pointer; transition:all 0.2s ease; text-transform:uppercase;
+}
+.ring-finger-pill:hover { border-color:rgba(201,168,76,0.6); color:rgba(201,168,76,0.9); }
+.ring-finger-pill.active { background:rgba(201,168,76,0.15); border-color:#C9A84C; color:#C9A84C; }
 </style>
 
 <!-- importmap (must precede all module scripts) -->
@@ -239,6 +260,7 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
 }
 </script>
 <style>#tryon-necklace { background: transparent !important; }</style>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
 </head>
 <body class="bg-[#fbf9f9] text-[#1b1c1c]">
 
@@ -782,12 +804,23 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
                     box-shadow:0 1px 4px rgba(0,0,0,0.4);">
         </div>
 
+        <!-- Ring try-on: MediaPipe Hands canvas -->
+        <canvas id="ring-tryon-canvas"></canvas>
+
       </div>
 
       <p id="tryon-hint-text" style="font-family:Inter,sans-serif;text-align:center;font-size:11px;
                 opacity:0.4;margin-top:2px;letter-spacing:0.05em;">
         DRAG TO POSITION &nbsp;·&nbsp; DRAG CORNER TO RESIZE
       </p>
+
+      <!-- Finger selector — shown only during ring try-on -->
+      <div id="ring-finger-selector">
+        <button class="ring-finger-pill" data-finger="index"  onclick="setRingFinger('index')">Index</button>
+        <button class="ring-finger-pill active" data-finger="ring" onclick="setRingFinger('ring')">Ring</button>
+        <button class="ring-finger-pill" data-finger="middle" onclick="setRingFinger('middle')">Middle</button>
+        <button class="ring-finger-pill" data-finger="pinky"  onclick="setRingFinger('pinky')">Pinky</button>
+      </div>
 
       <!-- ── Next / Back ── -->
       <div class="flex gap-3 justify-center flex-wrap" style="width:100%;max-width:720px;">
@@ -2947,6 +2980,20 @@ function teardownTryOn() {
   });
   const hintEl = document.getElementById('tryon-hint-text');
   if (hintEl) hintEl.textContent = 'DRAG TO POSITION · DRAG CORNER TO RESIZE';
+
+  if (_ringAnimFrame) { cancelAnimationFrame(_ringAnimFrame); _ringAnimFrame = null; }
+  if (_mpHands) { try { _mpHands.close(); } catch(e) {} _mpHands = null; }
+  const ringCanvas = document.getElementById('ring-tryon-canvas');
+  if (ringCanvas) {
+    const rCtx = ringCanvas.getContext('2d');
+    if (rCtx) rCtx.clearRect(0, 0, ringCanvas.width, ringCanvas.height);
+    ringCanvas.style.display = 'none';
+  }
+  const fingerSel = document.getElementById('ring-finger-selector');
+  if (fingerSel) fingerSel.style.display = 'none';
+  _ringSmooth = { x:0, y:0, angle:0, scale:0 };
+  _ringLostFrames = 0;
+  _ringTryonImg = null;
 }
 
 
@@ -3604,80 +3651,198 @@ async function loadPendantForTryOn(imageUrl) {
 
 window._loadPendantForTryOn = loadPendantForTryOn;
 
-/* ── Ring try-on ────────────────────────────── */
+/* ── Ring try-on (MediaPipe Hands) ──────────────────────────── */
+
+const RING_FINGER_MAP = {
+  index:  [5,  6],
+  middle: [9,  10],
+  ring:   [13, 14],
+  pinky:  [17, 18],
+};
+
+const _RING_FALLBACK_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="38" fill="none" stroke="#C9A84C" stroke-width="18" stroke-linecap="round"/></svg>`;
+const _RING_FALLBACK_URL = 'data:image/svg+xml,' + encodeURIComponent(_RING_FALLBACK_SVG);
+
+let _mpHands           = null;
+let _ringAnimFrame     = null;
+let _ringTryonImg      = null;
+let _ringSelectedFinger = 'ring';
+let _ringSmooth        = { x: 0, y: 0, angle: 0, scale: 0 };
+let _ringLostFrames    = 0;
 
 async function loadRingForTryOn(imageUrl) {
-  console.log('[JWLZIFY] loading ring try-on');
+  console.log('[JWLZIFY] loading ring try-on (MediaPipe Hands)');
 
+  // Hide all other try-on overlays — do not touch pendant code path
   ['tryon-necklace', 'tryon-pendant', 'tryon-resize',
    'tryon-earring-left', 'tryon-earring-right',
    'tryon-earring-left-handle', 'tryon-earring-right-handle',
    'tryon-necklace-img', 'tryon-necklace-resize',
-   'tryon-chain', 'tryon-chain-handle']
-  .forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.style.display = 'none';
+   'tryon-chain', 'tryon-chain-handle',
+   'tryon-ring-img', 'tryon-ring-resize']
+  .forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
+
+  // Size and show the ring canvas
+  const container  = document.getElementById('tryon-container');
+  const ringCanvas = document.getElementById('ring-tryon-canvas');
+  ringCanvas.width  = container.offsetWidth;
+  ringCanvas.height = container.offsetHeight;
+  ringCanvas.style.display = 'block';
+
+  // Show finger selector, update hint
+  const fingerSel = document.getElementById('ring-finger-selector');
+  if (fingerSel) fingerSel.style.display = 'flex';
+  const hintEl = document.getElementById('tryon-hint-text');
+  if (hintEl) hintEl.textContent = 'Hold your hand up to the camera';
+
+  // Load ring image — reload if URL changed, fall back to gold SVG placeholder
+  if (!_ringTryonImg || _ringTryonImg.dataset.src !== imageUrl) {
+    _ringTryonImg = new Image();
+    _ringTryonImg.crossOrigin = 'anonymous';
+    _ringTryonImg.dataset.src = imageUrl;
+    _ringTryonImg.onerror = () => { _ringTryonImg.src = _RING_FALLBACK_URL; };
+    _ringTryonImg.src = imageUrl || _RING_FALLBACK_URL;
+  }
+
+  // Init MediaPipe Hands once per session
+  if (!_mpHands) {
+    if (typeof Hands === 'undefined') {
+      console.error('[JWLZIFY] MediaPipe Hands CDN not loaded');
+      return;
+    }
+    _mpHands = new Hands({
+      locateFile: (f) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`
+    });
+    _mpHands.setOptions({
+      maxNumHands:            2,
+      modelComplexity:        1,
+      minDetectionConfidence: 0.7,
+      minTrackingConfidence:  0.5,
+    });
+    _mpHands.onResults(_onRingTryonResults);
+    await _mpHands.initialize();
+    console.log('MediaPipe Hands initialized — target 30fps');
+  }
+
+  // Reset smooth state and lost-frame counter
+  _ringSmooth    = { x: 0, y: 0, angle: 0, scale: 0 };
+  _ringLostFrames = 0;
+
+  // Start rAF loop — send video frames to MediaPipe
+  if (_ringAnimFrame) { cancelAnimationFrame(_ringAnimFrame); _ringAnimFrame = null; }
+  async function _ringLoop() {
+    if (!isTryOnActive) return;
+    const video = document.getElementById('tryon-video');
+    if (_mpHands && video && video.readyState >= 2) {
+      try { await _mpHands.send({ image: video }); } catch(_) {}
+    }
+    _ringAnimFrame = requestAnimationFrame(_ringLoop);
+  }
+  _ringAnimFrame = requestAnimationFrame(_ringLoop);
+}
+
+function _onRingTryonResults(results) {
+  if (!isTryOnActive) return;
+  const ringCanvas = document.getElementById('ring-tryon-canvas');
+  if (!ringCanvas || ringCanvas.style.display === 'none') return;
+  const ctx   = ringCanvas.getContext('2d');
+  const W     = ringCanvas.width;
+  const H     = ringCanvas.height;
+  const video = document.getElementById('tryon-video');
+
+  // Draw mirrored video frame onto canvas
+  ctx.save();
+  ctx.scale(-1, 1);
+  ctx.drawImage(video, -W, 0, W, H);
+  ctx.restore();
+
+  // Lost-tracking fallback
+  if (!results.multiHandLandmarks || results.multiHandLandmarks.length === 0) {
+    _ringLostFrames++;
+    if (_ringLostFrames > 12) {
+      const pw = 226, ph = 36;
+      const px = (W - pw) / 2, py = (H - ph) / 2;
+      ctx.save();
+      ctx.fillStyle = 'rgba(11,15,26,0.72)';
+      ctx.beginPath();
+      if (ctx.roundRect) ctx.roundRect(px, py, pw, ph, 18);
+      else               ctx.rect(px, py, pw, ph);
+      ctx.fill();
+      ctx.fillStyle = '#C9A84C';
+      ctx.font = '600 12px Inter, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('Move to better lighting', W / 2, H / 2);
+      ctx.restore();
+    }
+    return;
+  }
+  _ringLostFrames = 0;
+
+  // Multi-hand: use whichever wrist is closest to frame center
+  let bestHand = results.multiHandLandmarks[0];
+  if (results.multiHandLandmarks.length > 1) {
+    const d0 = Math.abs(results.multiHandLandmarks[0][0].x - 0.5);
+    const d1 = Math.abs(results.multiHandLandmarks[1][0].x - 0.5);
+    bestHand = d0 < d1 ? results.multiHandLandmarks[0] : results.multiHandLandmarks[1];
+  }
+
+  // Landmark pair for selected finger
+  const [mcpI, pipI] = RING_FINGER_MAP[_ringSelectedFinger] || RING_FINGER_MAP.ring;
+  const mcp = bestHand[mcpI];
+  const pip = bestHand[pipI];
+
+  // Normalized → mirrored canvas pixels (flip x for mirror view)
+  const mcpX = (1 - mcp.x) * W,  mcpY = mcp.y * H;
+  const pipX = (1 - pip.x) * W,  pipY = pip.y * H;
+
+  // Ring center: 30% of the way from MCP toward PIP (base of finger)
+  const targetX = mcpX + 0.3 * (pipX - mcpX);
+  const targetY = mcpY + 0.3 * (pipY - mcpY);
+
+  const dx = pipX - mcpX, dy = pipY - mcpY;
+  const targetAngle = Math.atan2(dy, dx);
+  const targetScale = Math.sqrt(dx * dx + dy * dy) * 1.4;
+
+  // Snap on very first detection (avoids slide-in from origin)
+  if (_ringSmooth.scale < 1) {
+    _ringSmooth.x = targetX; _ringSmooth.y = targetY;
+    _ringSmooth.angle = targetAngle; _ringSmooth.scale = targetScale;
+  }
+
+  // LERP smoothing — 0.18 is the sweet spot (premium feel, no jitter)
+  const LERP = 0.18;
+  _ringSmooth.x     += (targetX     - _ringSmooth.x)     * LERP;
+  _ringSmooth.y     += (targetY     - _ringSmooth.y)      * LERP;
+  _ringSmooth.scale += (targetScale - _ringSmooth.scale)   * LERP;
+  // Angle lerp with wrap correction (prevents 360° spin at ±π boundary)
+  let dAngle = targetAngle - _ringSmooth.angle;
+  while (dAngle >  Math.PI) dAngle -= 2 * Math.PI;
+  while (dAngle < -Math.PI) dAngle += 2 * Math.PI;
+  _ringSmooth.angle += dAngle * LERP;
+
+  // Draw ring overlay with drop shadow
+  if (_ringTryonImg && _ringTryonImg.complete && _ringSmooth.scale > 4) {
+    const s = _ringSmooth.scale;
+    ctx.save();
+    ctx.shadowColor   = 'rgba(0,0,0,0.45)';
+    ctx.shadowBlur    = 12;
+    ctx.shadowOffsetY = 3;
+    ctx.translate(_ringSmooth.x, _ringSmooth.y);
+    ctx.rotate(_ringSmooth.angle + Math.PI / 2);
+    ctx.drawImage(_ringTryonImg, -s / 2, -s / 2, s, s);
+    ctx.shadowColor = 'transparent';
+    ctx.restore();
+  }
+}
+
+function setRingFinger(finger) {
+  _ringSelectedFinger = finger;
+  // Reset smooth state so ring snaps to new finger immediately
+  _ringSmooth = { x: 0, y: 0, angle: 0, scale: 0 };
+  document.querySelectorAll('.ring-finger-pill').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.finger === finger);
   });
-
-  let ringImg    = document.getElementById('tryon-ring-img');
-  let ringResize = document.getElementById('tryon-ring-resize');
-
-  if (!ringImg) {
-    ringImg = document.createElement('img');
-    ringImg.id = 'tryon-ring-img';
-    ringImg.style.cssText = `
-      position: absolute;
-      cursor: grab;
-      user-select: none;
-      display: none;
-      z-index: 10;
-      pointer-events: auto;
-    `;
-    document.getElementById('tryon-container').appendChild(ringImg);
-  }
-
-  if (!ringResize) {
-    ringResize = document.createElement('div');
-    ringResize.id = 'tryon-ring-resize';
-    ringResize.style.cssText = `
-      position: absolute;
-      width: 14px; height: 14px;
-      background: #C0C0C0;
-      border-radius: 50%;
-      cursor: se-resize;
-      display: none;
-      z-index: 11;
-      border: 1.5px solid rgba(255,255,255,0.7);
-      box-shadow: 0 1px 4px rgba(0,0,0,0.4);
-    `;
-    document.getElementById('tryon-container').appendChild(ringResize);
-  }
-
-  const container = document.getElementById('tryon-container');
-  const W = container.offsetWidth;
-  const H = container.offsetHeight;
-
-  const defaultW    = Math.floor(W * 0.25);
-  const defaultLeft = Math.floor((W - defaultW) / 2);
-  const defaultTop  = Math.floor(H * 0.45);
-
-  ringImg.src          = imageUrl;
-  ringImg.style.width  = defaultW + 'px';
-  ringImg.style.height = 'auto';
-  ringImg.style.left   = defaultLeft + 'px';
-  ringImg.style.top    = defaultTop + 'px';
-  ringImg.style.display = 'block';
-  ringResize.style.display = 'block';
-  updateRingResizeHandle();
-
-  try {
-    const cleanUrl = await removePendantBackgroundCached(imageUrl);
-    ringImg.src = cleanUrl;
-    updateRingResizeHandle();
-    console.log('[JWLZIFY] ring loaded with bg removed');
-  } catch (e) {
-    console.warn('[JWLZIFY] ring bg removal failed:', e);
-  }
 }
 
 function updateRingResizeHandle() {
