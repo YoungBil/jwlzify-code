@@ -1385,23 +1385,66 @@ async function _generateImage(prompt) {
   } catch(e) {
     console.warn('[JWLZIFY] Imagen failed, falling back to HuggingFace:', e.message);
   }
-  const hfRes = await fetch(
-    'https://hf-image.sarkd333.workers.dev/',
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ inputs: prompt })
+  try {
+    console.log('[JWLZIFY] calling HF worker...');
+    const hfRes = await fetch(
+      'https://hf-image.sarkd333.workers.dev/',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ inputs: prompt })
+      }
+    );
+
+    console.log('[JWLZIFY] HF response status:', hfRes.status);
+    console.log('[JWLZIFY] HF content-type:', hfRes.headers.get('content-type'));
+
+    if (!hfRes.ok) {
+      const errText = await hfRes.text();
+      console.error('[JWLZIFY] HF error:', errText);
+      throw new Error('HF failed: ' + hfRes.status);
     }
-  );
-  if (!hfRes.ok) throw new Error('HF ' + hfRes.status);
-  const blob = await hfRes.blob();
-  console.log('[JWLZIFY] HF blob size:', blob.size, 'type:', blob.type);
-  if (blob.size < 1000) throw new Error('HF returned empty/invalid image');
-  const blobUrl = URL.createObjectURL(
-    new Blob([await blob.arrayBuffer()], { type: 'image/png' })
-  );
-  console.log('[JWLZIFY] HuggingFace SUCCESS');
-  return blobUrl;
+
+    const contentType = hfRes.headers.get('content-type') || '';
+
+    // If response is JSON it's an error message not an image
+    if (contentType.includes('application/json')) {
+      const errJson = await hfRes.json();
+      console.error('[JWLZIFY] HF returned JSON error:', errJson);
+
+      // If model is loading wait 20 seconds and retry once
+      if (errJson.error?.includes('loading')) {
+        console.log('[JWLZIFY] model loading, waiting 20s...');
+        await new Promise(r => setTimeout(r, 20000));
+        const retryRes = await fetch(
+          'https://hf-image.sarkd333.workers.dev/',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ inputs: prompt })
+          }
+        );
+        if (!retryRes.ok) throw new Error('HF retry failed');
+        const retryBlob = await retryRes.blob();
+        console.log('[JWLZIFY] HF retry SUCCESS, size:', retryBlob.size);
+        return URL.createObjectURL(retryBlob);
+      }
+      throw new Error('HF error: ' + JSON.stringify(errJson));
+    }
+
+    const blob = await hfRes.blob();
+    console.log('[JWLZIFY] HF blob size:', blob.size);
+
+    if (blob.size < 5000) {
+      throw new Error('HF image too small, likely an error');
+    }
+
+    console.log('[JWLZIFY] HuggingFace SUCCESS');
+    return URL.createObjectURL(blob);
+
+  } catch(e) {
+    console.error('[JWLZIFY] HF failed:', e.message);
+  }
 }
 
 /* ── Rate-limit / queue state ── */
