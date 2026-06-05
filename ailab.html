@@ -749,6 +749,11 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
 
     <div class="flex flex-col items-center gap-5">
 
+      <p id="tryon-hint-text" style="font-family:Inter,sans-serif;text-align:center;font-size:11px;
+                opacity:0.4;margin-bottom:2px;letter-spacing:0.05em;">
+        DRAG JEWELRY TO POSITION &nbsp;·&nbsp; DRAG THE GREY DOT TO RESIZE
+      </p>
+
       <div id="tryon-container"
            style="position:relative;width:100%;max-width:780px;height:520px;
                   background:#000;overflow:hidden;border-radius:12px;">
@@ -809,11 +814,6 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
         <canvas id="ring-tryon-canvas"></canvas>
 
       </div>
-
-      <p id="tryon-hint-text" style="font-family:Inter,sans-serif;text-align:center;font-size:11px;
-                opacity:0.4;margin-top:2px;letter-spacing:0.05em;">
-        DRAG TO POSITION &nbsp;·&nbsp; DRAG CORNER TO RESIZE
-      </p>
 
       <!-- Finger selector — shown only during ring try-on -->
       <div id="ring-finger-selector">
@@ -2918,14 +2918,14 @@ async function setupTryOn() {
   const hintEl = document.getElementById('tryon-hint-text');
 
   if (LAB.type === 'earrings') {
-    if (hintEl) hintEl.textContent = 'DRAG TO POSITION · DRAG CORNER TO RESIZE';
+    if (hintEl) hintEl.textContent = 'DRAG JEWELRY TO POSITION · DRAG THE GREY DOT TO RESIZE';
     const canvas = document.getElementById('tryon-necklace');
     const handle = document.getElementById('tryon-resize');
     if (canvas) canvas.style.display = 'none';
     if (handle) handle.style.display = 'none';
     loadEarringsForTryOn(LAB.imageUrl);
   } else if (LAB.type === 'necklace') {
-    if (hintEl) hintEl.textContent = 'DRAG TO POSITION · DRAG CORNER TO RESIZE';
+    if (hintEl) hintEl.textContent = 'DRAG JEWELRY TO POSITION · DRAG THE GREY DOT TO RESIZE';
     const canvas = document.getElementById('tryon-necklace');
     const handle = document.getElementById('tryon-resize');
     if (canvas) canvas.style.display = 'none';
@@ -2940,7 +2940,7 @@ async function setupTryOn() {
     loadRingForTryOn(LAB.imageUrl);
   } else {
     // Pendant / bracelet flow
-    if (hintEl) hintEl.textContent = 'DRAG TO POSITION · DRAG CORNER TO RESIZE';
+    if (hintEl) hintEl.textContent = 'DRAG JEWELRY TO POSITION · DRAG THE GREY DOT TO RESIZE';
     window._tryonPendantSize = 160;
     window._tryonPendantImg  = null;
 
@@ -2985,7 +2985,7 @@ function teardownTryOn() {
     if (el) el.style.display = 'none';
   });
   const hintEl = document.getElementById('tryon-hint-text');
-  if (hintEl) hintEl.textContent = 'DRAG TO POSITION · DRAG CORNER TO RESIZE';
+  if (hintEl) hintEl.textContent = 'DRAG JEWELRY TO POSITION · DRAG THE GREY DOT TO RESIZE';
 
   if (_ringAnimFrame) { cancelAnimationFrame(_ringAnimFrame); _ringAnimFrame = null; }
   if (_mpHands) { try { _mpHands.close(); } catch(e) {} _mpHands = null; }

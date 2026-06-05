@@ -1,6 +1,7 @@
 {
   "permissions": {
     "allow": [
+<<<<<<< Updated upstream
       "Bash(git commit -m ' *)",
       "Bash(git push *)",
       "Bash(git add *)",
@@ -18,6 +19,11 @@
       "Bash(magick --version)",
       "Bash(convert --version)",
       "Bash(git stash *)"
+=======
+      "Bash(git *)",
+      "Bash(grep -rn \"YOUR_API_KEY\" *.html *.js)",
+      "Bash(echo \"EXIT:$?\")"
+>>>>>>> Stashed changes
     ]
   }
 }
