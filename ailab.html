@@ -1701,23 +1701,21 @@ function buildPrompt(type, material, gem, style, desc) {
   }
 
   if (type === 'necklace') {
-    const isChainOnly = ['cable', 'box', 'rope'].includes(selectedChainStyle);
     const chainSpecific = selectedChainPrompt || 'chain necklace';
-    const noPendantParts = isChainOnly
-      ? ['absolutely no pendant', 'no hanging charm', 'chain only full length visible', 'flat lay showing complete chain']
-      : [];
     return [
-      // Type keyword is always the first term; user description follows
-      `luxury ${style} ${wPart}necklace`,
+      // No-pendant constraints lead — highest prompt weight
+      'no pendant', 'no charm', 'no hanging element', 'no drop piece',
+      'no center stone', 'no focal stone', 'chain only',
+      'absolutely no pendant attached',
+      `luxury ${style} ${wPart}necklace chain`,
       desc.trim() || '',
       chainSpecific,
-      ...noPendantParts,
-      mDisp, gemPart,
+      mDisp,
       'professional jewelry photography',
       'pure white seamless background', 'no shadows',
       'hyper realistic', '8K ultra high definition',
       'macro lens', 'sharp focus', 'highly detailed', 'photorealistic',
-      'precious metal gleam', 'gemstone sparkle and brilliance',
+      'precious metal gleam',
       'A standalone necklace chain with no pendant, no charm, no hanging element, no drop piece. The chain itself is the focal point. Flat lay on white background, studio lighting, luxury product photo. No pendant. No charm. No drop.'
     ].filter(Boolean).join(', ');
   }
@@ -4453,7 +4451,7 @@ async function loadNecklaceForTryOn(imageUrl) {
       </button>
 
       <button class="chain-style-btn" data-style="statement"
-        data-prompt="statement bib necklace, large decorative centerpiece, bold dramatic necklace, drapes across collarbone"
+        data-prompt="statement bib necklace, bold dramatic chain, multi-strand chain, drapes across collarbone, no pendant, no charm"
         data-label="Statement / Bib"
         style="padding:14px 18px;border:1.5px solid #e0e0e0;border-radius:10px;
                background:#fff;cursor:pointer;text-align:left;transition:all 0.15s;">
