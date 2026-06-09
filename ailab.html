@@ -1413,7 +1413,20 @@ async function _generateImage(prompt) {
     const blob = await hfRes.blob();
     if (blob.size < 5000) throw new Error('HF image too small');
     console.log('[JWLZIFY] HuggingFace SUCCESS');
-    return URL.createObjectURL(blob);
+    const _hfRawUrl = URL.createObjectURL(blob);
+    const _hfCropped = await new Promise(resolve => {
+      const _hfImg = new Image();
+      _hfImg.onload = () => {
+        const _hfC = document.createElement('canvas');
+        _hfC.width  = _hfImg.naturalWidth;
+        _hfC.height = Math.max(1, _hfImg.naturalHeight - 40);
+        _hfC.getContext('2d').drawImage(_hfImg, 0, 0);
+        URL.revokeObjectURL(_hfRawUrl);
+        _hfC.toBlob(b => resolve(URL.createObjectURL(b)), 'image/png');
+      };
+      _hfImg.src = _hfRawUrl;
+    });
+    return _hfCropped;
   } catch(e) {
     console.error('[JWLZIFY] all generation failed:', e.message);
     return null;
