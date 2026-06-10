@@ -613,6 +613,33 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
             Regenerate
           </button>
         </div>
+
+        <!-- Necklace-only: Refine This / Start Fresh -->
+        <div id="necklace-refine-btns"
+             style="display:none;margin-top:14px;gap:10px;flex-wrap:wrap;">
+          <button onclick="necklaceRefineThis()"
+                  style="flex:1;min-width:140px;padding:14px 20px;
+                         font-family:Inter,sans-serif;font-size:11px;font-weight:700;
+                         letter-spacing:0.14em;text-transform:uppercase;
+                         background:#C9A84C;color:#1b1c1c;border:none;
+                         border-radius:10px;cursor:pointer;
+                         transition:filter 0.2s ease;"
+                  onmouseover="this.style.filter='brightness(1.1)'"
+                  onmouseout="this.style.filter='brightness(1)'">
+            ✦&nbsp; Refine This
+          </button>
+          <button onclick="necklaceStartFresh()"
+                  style="flex:1;min-width:140px;padding:14px 20px;
+                         font-family:Inter,sans-serif;font-size:11px;font-weight:700;
+                         letter-spacing:0.14em;text-transform:uppercase;
+                         background:transparent;color:#C9A84C;
+                         border:1.5px solid #C9A84C;border-radius:10px;
+                         cursor:pointer;transition:all 0.2s ease;"
+                  onmouseover="this.style.background='rgba(201,168,76,0.08)'"
+                  onmouseout="this.style.background='transparent'">
+            Start Fresh
+          </button>
+        </div>
       </div>
 
       <!-- Right panel — 2 cols -->
@@ -2089,6 +2116,17 @@ async function startGeneration(isTweak) {
     }
     setGenLoading(false);
 
+    // Show Refine This / Start Fresh buttons only for necklace
+    const _nrBtns = document.getElementById('necklace-refine-btns');
+    if (_nrBtns) {
+      if (resolvedType === 'necklace') {
+        window._necklaceLastFullPrompt = fullPrompt;
+        _nrBtns.style.display = 'flex';
+      } else {
+        _nrBtns.style.display = 'none';
+      }
+    }
+
   }).catch(() => {
     if (thisGen !== generationId) return;
     if (isTweak) ri.style.filter = 'none';
@@ -2102,6 +2140,27 @@ async function startGeneration(isTweak) {
   });
 }
 
+
+/* ── Necklace Refine / Fresh ─────────────────── */
+function necklaceRefineThis() {
+  const tweak = document.getElementById('tweakPrompt').value.trim();
+  if (!tweak) { document.getElementById('tweakPrompt').focus(); return; }
+  // Set LAB.prompt to the refinement instruction; clear tweakPrompt so it isn't double-appended
+  LAB.prompt = 'Based on this existing design: ' + (window._necklaceLastFullPrompt || '') + ', make the following change: ' + tweak;
+  document.getElementById('tweakPrompt').value = '';
+  startGeneration(true); // isTweak=true with empty tweakPrompt → desc === LAB.prompt exactly
+}
+
+function necklaceStartFresh() {
+  const newPrompt = document.getElementById('tweakPrompt').value.trim();
+  LAB.prompt = '';
+  window._necklaceLastFullPrompt = null;
+  if (newPrompt) {
+    document.getElementById('promptArea').value = newPrompt;
+    document.getElementById('tweakPrompt').value = '';
+  }
+  startGeneration(false);
+}
 
 /* ── AI suggestions ──────────────────────────── */
 const SDATA = {
