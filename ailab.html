@@ -1702,17 +1702,10 @@ function buildPrompt(type, material, gem, style, desc) {
 
   if (type === 'necklace') {
     const chainSpecific = selectedChainPrompt || '';
-    const base = [
-      `luxury ${style} ${wPart}necklace`,
-      desc.trim() || '',
-      chainSpecific,
-      mDisp,
-      'professional jewelry photography',
-      'pure white seamless background', 'no shadows',
-      'hyper realistic', '8K ultra high definition',
-      'macro lens', 'sharp focus', 'photorealistic', 'precious metal gleam'
-    ].filter(Boolean).join(', ');
-    return base + '. Single chain necklace, bird\'s eye view, flat lay, chain laid out in a U-shape or oval on a clean white surface, photographed directly from above, no angle, no drape, no fabric prop, no pendant, no charm, no drop, no hanging element. The full chain is visible and centered. Ultra-luxury product photo, studio lighting, white background.';
+    const userDesc = desc.trim();
+    return [userDesc, chainSpecific, mDisp].filter(Boolean).join(', ')
+      + (userDesc || chainSpecific || mDisp ? '. ' : '')
+      + "Product photography of a single necklace chain, shot from directly overhead, 90-degree top-down bird's eye view, chain laid flat on a pure white surface forming a complete U-shape or oval loop so the entire chain is visible, both ends meeting at the top. No perspective angle. No 3D depth. No close-up macro shot. No partial chain. No dangling. No draping over fabric or props. No pendant. No charm. No gemstone drop. The chain fills the frame symmetrically. Shot looks exactly like a standard e-commerce jewelry product photo taken from directly above. Ultra-sharp focus across the entire chain. Studio lighting, white background, luxury product photography.";
   }
 
   if (type === 'earrings') {
