@@ -1701,23 +1701,18 @@ function buildPrompt(type, material, gem, style, desc) {
   }
 
   if (type === 'necklace') {
-    const chainSpecific = selectedChainPrompt || 'chain necklace';
-    return [
-      // No-pendant constraints lead — highest prompt weight
-      'no pendant', 'no charm', 'no hanging element', 'no drop piece',
-      'no center stone', 'no focal stone', 'chain only',
-      'absolutely no pendant attached',
-      `luxury ${style} ${wPart}necklace chain`,
+    const chainSpecific = selectedChainPrompt || '';
+    const base = [
+      `luxury ${style} ${wPart}necklace`,
       desc.trim() || '',
       chainSpecific,
       mDisp,
       'professional jewelry photography',
       'pure white seamless background', 'no shadows',
       'hyper realistic', '8K ultra high definition',
-      'macro lens', 'sharp focus', 'highly detailed', 'photorealistic',
-      'precious metal gleam',
-      'A standalone necklace chain with no pendant, no charm, no hanging element, no drop piece. The chain itself is the focal point. Flat lay on white background, studio lighting, luxury product photo. No pendant. No charm. No drop.'
+      'macro lens', 'sharp focus', 'photorealistic', 'precious metal gleam'
     ].filter(Boolean).join(', ');
+    return base + '. Single chain necklace only. Exactly one chain. No pendant. No charm. No drop. No hanging element. No gemstone drop. The chain alone is the complete piece. Flat lay on white background, top-down view, studio lighting, ultra-luxury product photo.';
   }
 
   if (type === 'earrings') {
@@ -4451,7 +4446,7 @@ async function loadNecklaceForTryOn(imageUrl) {
       </button>
 
       <button class="chain-style-btn" data-style="statement"
-        data-prompt="statement bib necklace, bold dramatic chain, multi-strand chain, drapes across collarbone, no pendant, no charm"
+        data-prompt="statement bib necklace, bold dramatic single chain, drapes across collarbone"
         data-label="Statement / Bib"
         style="padding:14px 18px;border:1.5px solid #e0e0e0;border-radius:10px;
                background:#fff;cursor:pointer;text-align:left;transition:all 0.15s;">
