@@ -11,6 +11,9 @@
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;0,700;1,300;1,400;1,600;1,700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/lenis@1.1.14/dist/lenis.min.js"></script>
 <script>
 tailwind.config = {
   darkMode:"class",
@@ -797,6 +800,72 @@ header.nav-visible #navGenerateBtn {
 </script>
 <script type="module" src="firebase-auth.js"></script>
 <script type="module" src="firestore-service.js"></script>
+
+<script>
+(function () {
+  // ── Lenis smooth scroll ──────────────────────────────────
+  const lenis = new Lenis({ lerp: 0.08, duration: 1.4 });
+  gsap.ticker.add((time) => { lenis.raf(time * 1000); });
+  gsap.ticker.lagSmoothing(0);
+  gsap.registerPlugin(ScrollTrigger);
+  lenis.on('scroll', ScrollTrigger.update);
+
+  // ── Hero: entrance on load (already in viewport) ─────────
+  gsap.timeline({ defaults: { ease: 'power3.out', duration: 1.2 } })
+    .from('#hero .hero-h1', { y: 40, opacity: 0 }, 0)
+    .from('#hero .mb-16',   { y: 40, opacity: 0 }, 0.15)
+    .from('#hero a',        { y: 40, opacity: 0 }, 0.30);
+
+  // ── Hero video parallax ──────────────────────────────────
+  gsap.to('#hero video', {
+    y: 80, ease: 'none',
+    scrollTrigger: {
+      trigger: '#hero',
+      start: 'top top',
+      end: 'bottom top',
+      scrub: true
+    }
+  });
+
+  // ── Section headings ─────────────────────────────────────
+  gsap.utils.toArray('.h-section').forEach(function (el) {
+    gsap.from(el, {
+      y: 30, opacity: 0, duration: 1, ease: 'power2.out',
+      scrollTrigger: { trigger: el, start: 'top 85%' }
+    });
+  });
+
+  // ── Feature bento cards ──────────────────────────────────
+  gsap.from('#features .grid > div', {
+    y: 20, opacity: 0, duration: 0.9, ease: 'power2.out', stagger: 0.12,
+    scrollTrigger: { trigger: '#features .grid', start: 'top 85%' }
+  });
+
+  // ── Offer cards ──────────────────────────────────────────
+  gsap.from('.offer-card', {
+    y: 20, opacity: 0, duration: 0.9, ease: 'power2.out', stagger: 0.12,
+    scrollTrigger: { trigger: '#offer', start: 'top 85%' }
+  });
+
+  // ── Gallery cards ────────────────────────────────────────
+  gsap.from('.gal-card', {
+    y: 20, opacity: 0, duration: 0.9, ease: 'power2.out', stagger: 0.12,
+    scrollTrigger: { trigger: '#gallery', start: 'top 85%' }
+  });
+
+  // ── Review cards ─────────────────────────────────────────
+  gsap.from('.review-card', {
+    y: 20, opacity: 0, duration: 0.9, ease: 'power2.out', stagger: 0.12,
+    scrollTrigger: { trigger: '#pricing', start: 'top 85%' }
+  });
+
+  // ── Footer ───────────────────────────────────────────────
+  gsap.from('footer', {
+    opacity: 0, duration: 0.8,
+    scrollTrigger: { trigger: 'footer', start: 'top 85%' }
+  });
+})();
+</script>
 
 </body>
 </html>
