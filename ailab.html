@@ -601,45 +601,49 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
             <span class="label" style="font-size:10px;letter-spacing:0.12em;color:#3c6474;" id="refineBadge">RING · 18K YELLOW GOLD · ART DECO</span>
           </div>
         </div>
-        <!-- Tweak row -->
-        <div class="mt-6 flex gap-3">
-          <textarea id="tweakPrompt" rows="2" class="lab-input flex-1"
-            style="resize:none;line-height:1.6;"
-            placeholder="Describe what to change — e.g. 'Make the band thinner' or 'Add more diamonds'…"></textarea>
-          <button id="regenerateBtn" onclick="startGeneration(true)"
-                  class="btn-primary flex-shrink-0 px-6"
-                  style="align-self:stretch;font-size:11px;letter-spacing:0.14em;gap:6px;">
-            <span class="material-symbols-outlined" style="font-size:18px;">refresh</span>
-            Regenerate
-          </button>
+        <!-- Post-generation: Refine / Start Fresh flow -->
+        <div id="post-gen-ui" style="display:none;margin-top:20px;">
+          <!-- Step 1: mode buttons — always visible once shown -->
+          <div style="display:flex;gap:10px;flex-wrap:wrap;">
+            <button onclick="selectPostGenMode('refine')"
+                    style="flex:1;min-width:140px;padding:14px 20px;
+                           font-family:Inter,sans-serif;font-size:11px;font-weight:700;
+                           letter-spacing:0.14em;text-transform:uppercase;
+                           background:#C9A84C;color:#1b1c1c;border:none;
+                           border-radius:10px;cursor:pointer;transition:filter 0.2s ease;"
+                    onmouseover="this.style.filter='brightness(1.1)'"
+                    onmouseout="this.style.filter='brightness(1)'">
+              ✦&nbsp; Refine This
+            </button>
+            <button onclick="selectPostGenMode('fresh')"
+                    style="flex:1;min-width:140px;padding:14px 20px;
+                           font-family:Inter,sans-serif;font-size:11px;font-weight:700;
+                           letter-spacing:0.14em;text-transform:uppercase;
+                           background:transparent;color:#C9A84C;
+                           border:1.5px solid #C9A84C;border-radius:10px;
+                           cursor:pointer;transition:all 0.2s ease;"
+                    onmouseover="this.style.background='rgba(201,168,76,0.08)'"
+                    onmouseout="this.style.background='transparent'">
+              Start Fresh
+            </button>
+          </div>
+          <!-- Step 2: input + regenerate — revealed on mode select -->
+          <div id="post-gen-input-row"
+               style="display:none;margin-top:12px;gap:10px;align-items:stretch;flex-wrap:wrap;">
+            <input id="postGenInput" type="text" class="lab-input"
+                   style="flex:1;min-width:0;"
+                   placeholder="Describe your changes..."
+                   onkeydown="if(event.key==='Enter')doPostGenRegenerate()">
+            <button id="regenerateBtn" onclick="doPostGenRegenerate()"
+                    class="btn-primary flex-shrink-0"
+                    style="padding:14px 22px;font-size:11px;letter-spacing:0.14em;gap:6px;white-space:nowrap;">
+              <span class="material-symbols-outlined" style="font-size:16px;">refresh</span>
+              Regenerate
+            </button>
+          </div>
         </div>
-
-        <!-- Necklace-only: Refine This / Start Fresh -->
-        <div id="necklace-refine-btns"
-             style="display:none;margin-top:14px;gap:10px;flex-wrap:wrap;">
-          <button onclick="necklaceRefineThis()"
-                  style="flex:1;min-width:140px;padding:14px 20px;
-                         font-family:Inter,sans-serif;font-size:11px;font-weight:700;
-                         letter-spacing:0.14em;text-transform:uppercase;
-                         background:#C9A84C;color:#1b1c1c;border:none;
-                         border-radius:10px;cursor:pointer;
-                         transition:filter 0.2s ease;"
-                  onmouseover="this.style.filter='brightness(1.1)'"
-                  onmouseout="this.style.filter='brightness(1)'">
-            ✦&nbsp; Refine This
-          </button>
-          <button onclick="necklaceStartFresh()"
-                  style="flex:1;min-width:140px;padding:14px 20px;
-                         font-family:Inter,sans-serif;font-size:11px;font-weight:700;
-                         letter-spacing:0.14em;text-transform:uppercase;
-                         background:transparent;color:#C9A84C;
-                         border:1.5px solid #C9A84C;border-radius:10px;
-                         cursor:pointer;transition:all 0.2s ease;"
-                  onmouseover="this.style.background='rgba(201,168,76,0.08)'"
-                  onmouseout="this.style.background='transparent'">
-            Start Fresh
-          </button>
-        </div>
+        <!-- tweakPrompt kept hidden — read by startGeneration(true) -->
+        <textarea id="tweakPrompt" style="display:none;"></textarea>
       </div>
 
       <!-- Right panel — 2 cols -->
@@ -2116,16 +2120,9 @@ async function startGeneration(isTweak) {
     }
     setGenLoading(false);
 
-    // Show Refine This / Start Fresh buttons only for necklace
-    const _nrBtns = document.getElementById('necklace-refine-btns');
-    if (_nrBtns) {
-      if (resolvedType === 'necklace') {
-        window._necklaceLastFullPrompt = fullPrompt;
-        _nrBtns.style.display = 'flex';
-      } else {
-        _nrBtns.style.display = 'none';
-      }
-    }
+    // Show post-gen UI (Refine / Start Fresh) for all jewelry types
+    window._lastFullPrompt = fullPrompt;
+    showPostGenUI();
 
   }).catch(() => {
     if (thisGen !== generationId) return;
@@ -2141,25 +2138,43 @@ async function startGeneration(isTweak) {
 }
 
 
-/* ── Necklace Refine / Fresh ─────────────────── */
-function necklaceRefineThis() {
-  const tweak = document.getElementById('tweakPrompt').value.trim();
-  if (!tweak) { document.getElementById('tweakPrompt').focus(); return; }
-  // Set LAB.prompt to the refinement instruction; clear tweakPrompt so it isn't double-appended
-  LAB.prompt = 'Based on this existing design: ' + (window._necklaceLastFullPrompt || '') + ', make the following change: ' + tweak;
-  document.getElementById('tweakPrompt').value = '';
-  startGeneration(true); // isTweak=true with empty tweakPrompt → desc === LAB.prompt exactly
+/* ── Post-generation Refine / Fresh (all types) ── */
+window._postGenMode    = null;
+window._lastFullPrompt = null;
+
+function showPostGenUI() {
+  const ui = document.getElementById('post-gen-ui');
+  const inputRow = document.getElementById('post-gen-input-row');
+  const inp = document.getElementById('postGenInput');
+  if (ui) ui.style.display = 'block';
+  if (inputRow) inputRow.style.display = 'none';
+  if (inp) inp.value = '';
+  window._postGenMode = null;
 }
 
-function necklaceStartFresh() {
-  const newPrompt = document.getElementById('tweakPrompt').value.trim();
-  LAB.prompt = '';
-  window._necklaceLastFullPrompt = null;
-  if (newPrompt) {
-    document.getElementById('promptArea').value = newPrompt;
-    document.getElementById('tweakPrompt').value = '';
+function selectPostGenMode(mode) {
+  window._postGenMode = mode;
+  const inputRow = document.getElementById('post-gen-input-row');
+  const inp = document.getElementById('postGenInput');
+  if (!inputRow || !inp) return;
+  inp.placeholder = mode === 'refine' ? 'Describe your changes...' : 'Describe your new design...';
+  inputRow.style.display = 'flex';
+  inp.focus();
+}
+
+function doPostGenRegenerate() {
+  const input = document.getElementById('postGenInput').value.trim();
+  if (!input) { document.getElementById('postGenInput').focus(); return; }
+  document.getElementById('tweakPrompt').value = '';
+  if (window._postGenMode === 'refine') {
+    LAB.prompt = 'Based on this existing design: ' + (window._lastFullPrompt || '') + ', make the following change: ' + input;
+    startGeneration(true); // isTweak=true, empty tweakPrompt → desc === LAB.prompt exactly
+  } else {
+    LAB.prompt = '';
+    window._lastFullPrompt = null;
+    document.getElementById('promptArea').value = input;
+    startGeneration(false);
   }
-  startGeneration(false);
 }
 
 /* ── AI suggestions ──────────────────────────── */
@@ -2283,9 +2298,9 @@ function showRefineStep() {
 
 function applySuggestion(el) {
   const text = el.dataset.text;
-  const ta = document.getElementById('tweakPrompt');
-  ta.value = text;
-  ta.focus();
+  selectPostGenMode('refine');
+  const inp = document.getElementById('postGenInput');
+  if (inp) { inp.value = text; inp.focus(); }
 }
 
 /* ── Live spot prices ── */
