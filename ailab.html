@@ -7,7 +7,7 @@
 <meta content="width=device-width, initial-scale=1.0" name="viewport">
 <title>Jwlzify</title>
 <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
-<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400;1,600&family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
 <script>
@@ -235,6 +235,44 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
   z-index:5; display:none; border-radius:12px;
   cursor:grab;
 }
+
+/* ── Ring 3D Try-On modal ── */
+@keyframes ring3dPulse {
+  0%, 100% { opacity: 0.4; transform: scale(0.95); }
+  50%       { opacity: 1;   transform: scale(1.05); }
+}
+.ring3d-pulse {
+  width: 80px; height: 80px; border-radius: 50%;
+  border: 3px solid #C9A84C;
+  animation: ring3dPulse 1.8s ease-in-out infinite;
+  flex-shrink: 0;
+}
+#ringTryOnModal {
+  position: fixed; inset: 0; z-index: 9999;
+  background: rgba(11,15,26,0.92);
+  display: none; align-items: center; justify-content: center;
+  padding: 16px;
+}
+#ringTryOnModal.open { display: flex; }
+#ringTryOnContainer {
+  position: relative; width: 100%; max-width: 640px;
+  background: #0B0F1A;
+  border: 1px solid rgba(201,168,76,0.2);
+  border-radius: 12px; overflow: hidden;
+}
+#ringTryOnCanvas {
+  display: block !important; margin: 0 auto;
+  width: 100% !important; max-width: 600px;
+  aspect-ratio: 1; height: auto !important;
+}
+#ringCanvasHint {
+  position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%);
+  font-family: 'Inter', sans-serif; font-size: 12px;
+  color: rgba(201,168,76,0.6);
+  pointer-events: none; white-space: nowrap;
+  opacity: 1; transition: opacity 1s ease;
+}
+#ringCanvasHint.fade-out { opacity: 0; }
 </style>
 
 <!-- importmap (must precede all module scripts) -->
@@ -1291,6 +1329,24 @@ window.addEventListener('DOMContentLoaded', () => {
 /* ── Claude API key (fill in to enable AI spec cards) ── */
 const CLAUDE_API_KEY = '';
 
+/* ── Ring 3D Try-On configuration ── */
+const RING_3D_CONFIG = {
+  FAL_KEY: 'YOUR_FAL_KEY_HERE',
+  HUNYUAN_ENDPOINT: 'https://fal-ring-3d.sarkd333.workers.dev/fal-ai/hunyuan3d-v2',
+  POLL_INTERVAL_MS: 3000,
+  MAX_POLL_ATTEMPTS: 40,
+  CANVAS_WIDTH: 600,
+  CANVAS_HEIGHT: 600,
+  ENV_MAP_INTENSITY: 1.6,
+  SHADOW_MAP_SIZE: 2048,
+  INITIAL_CAMERA_Z: 2.4,
+  MIN_CAMERA_Z: 1.2,
+  MAX_CAMERA_Z: 5.0,
+  LERP_ALPHA: 0.08,
+  METALNESS: 0.95,
+  ROUGHNESS: 0.12,
+};
+
 const REMOVE_BG_API_KEY = 'SaaY6FrGJRJs7tj5zh7Jvs29';
 
 /* ── Gemini image generation ── */
@@ -1616,6 +1672,11 @@ function updateProgress(n) {
 
 /* ── Step navigation ─────────────────────────── */
 async function goStep(n) {
+  // Ring 3D try-on intercept — opens 3D modal instead of camera view
+  if (n === 4 && LAB.type === 'ring' && typeof ring3DFallbackMode !== 'undefined' && !ring3DFallbackMode) {
+    startRing3DTryOn();
+    return;
+  }
   // Reset chain style on new design / start over
   if (n === 1) {
     selectedChainStyle = null; selectedChainPrompt = ''; selectedChainLabel = '';
@@ -4603,6 +4664,366 @@ async function loadNecklaceForTryOn(imageUrl) {
 
   </div>
 </div>
+
+<!-- ════════════════════════════
+     RING 3D TRY-ON MODAL
+════════════════════════════ -->
+<div id="ringTryOnModal">
+  <div id="ringTryOnContainer">
+
+    <!-- Header -->
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:18px 24px;border-bottom:1px solid rgba(201,168,76,0.15);">
+      <h3 style="font-family:'Cormorant Garamond','Playfair Display',serif;font-size:22px;font-weight:600;color:#C9A84C;margin:0;letter-spacing:0.02em;">Try On — Ring</h3>
+      <button id="ringModalClose" aria-label="Close" style="background:none;border:none;color:#C9A84C;font-size:24px;line-height:1;padding:4px 8px;cursor:pointer;opacity:0.85;transition:opacity 0.2s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.85'">&#215;</button>
+    </div>
+
+    <!-- Loading state -->
+    <div id="ring3DLoading" style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:80px 24px;gap:28px;min-height:300px;">
+      <div class="ring3d-pulse"></div>
+      <p id="ring3DLoadingText" style="font-family:'Playfair Display',serif;font-size:18px;font-style:italic;color:#C9A84C;text-align:center;margin:0;">Sculpting your ring...</p>
+    </div>
+
+    <!-- Canvas wrapper -->
+    <div id="ring3DCanvasWrap" style="display:none;position:relative;">
+      <canvas id="ringTryOnCanvas"></canvas>
+      <div id="ringCanvasHint">Drag to rotate &nbsp;·&nbsp; Scroll to zoom</div>
+    </div>
+
+    <!-- Footer -->
+    <div id="ring3DFooter" style="display:none;padding:14px 20px;border-top:1px solid rgba(201,168,76,0.1);justify-content:flex-end;">
+      <button style="background:#C9A84C;color:#0B0F1A;border:none;border-radius:8px;height:40px;padding:0 24px;font-family:'Inter',sans-serif;font-size:14px;font-weight:600;cursor:pointer;letter-spacing:0.04em;">Add to Cart</button>
+    </div>
+
+  </div>
+</div>
+
+<!-- ════════════════════════════
+     RING 3D SCRIPT
+════════════════════════════ -->
+<script>
+'use strict';
+
+/* ── Fallback flag — set true to let goStep bypass the 3D intercept ── */
+let ring3DFallbackMode = false;
+
+/* ── Three.js library loading gate ── */
+let ring3DLibsReady = false;
+
+/* ── loadScript utility ── */
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    if (document.querySelector('script[src="' + src + '"]')) { resolve(); return; }
+    const s = document.createElement('script');
+    s.src = src;
+    s.onload = resolve;
+    s.onerror = () => reject(new Error('Failed to load: ' + src));
+    document.head.appendChild(s);
+  });
+}
+
+async function loadRing3DLibs() {
+  if (ring3DLibsReady) return true;
+  try {
+    await loadScript('https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js');
+    await loadScript('https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.min.js');
+    await loadScript('https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.min.js');
+    await loadScript('https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/RGBELoader.min.js');
+    ring3DLibsReady = true;
+    return true;
+  } catch (e) {
+    console.error('[Ring3D] Lib load failed:', e);
+    return false;
+  }
+}
+
+/* ── Runtime state ── */
+const ring3DState = { renderer: null, controls: null, scene: null, rafId: null };
+
+/* ── Modal helpers ── */
+function openRing3DModal() {
+  document.getElementById('ringTryOnModal').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeRing3DModal() {
+  stopRing3DTextCycle();
+  disposeRing3D();
+  document.getElementById('ring3DLoading').style.display = 'flex';
+  document.getElementById('ring3DCanvasWrap').style.display = 'none';
+  document.getElementById('ring3DFooter').style.display = 'none';
+  const hint = document.getElementById('ringCanvasHint');
+  if (hint) hint.classList.remove('fade-out');
+  setRing3DLoadingText('Sculpting your ring...');
+  document.getElementById('ringTryOnModal').classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+/* ── Loading text cycle ── */
+const RING3D_TEXTS = ['Sculpting your ring...','Mapping geometry...','Applying materials...','Finalizing your piece...'];
+let ring3DTextTimer = null;
+let ring3DTextIdx = 0;
+
+function startRing3DTextCycle() {
+  ring3DTextIdx = 0;
+  setRing3DLoadingText(RING3D_TEXTS[0]);
+  ring3DTextTimer = setInterval(() => {
+    ring3DTextIdx = (ring3DTextIdx + 1) % RING3D_TEXTS.length;
+    setRing3DLoadingText(RING3D_TEXTS[ring3DTextIdx]);
+  }, 3000);
+}
+
+function stopRing3DTextCycle() {
+  clearInterval(ring3DTextTimer);
+  ring3DTextTimer = null;
+}
+
+function setRing3DLoadingText(txt) {
+  const el = document.getElementById('ring3DLoadingText');
+  if (el) el.textContent = txt;
+}
+
+/* ── Image → base64 data URL ── */
+async function getImageBase64(url) {
+  try {
+    const res = await fetch(url, { mode: 'cors' });
+    const blob = await res.blob();
+    return await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  } catch (_) {
+    const img = document.querySelector('img[alt="Your AI jewelry design"]');
+    const c = document.createElement('canvas');
+    c.width = (img && img.naturalWidth) || 800;
+    c.height = (img && img.naturalHeight) || 800;
+    c.getContext('2d').drawImage(img, 0, 0);
+    return c.toDataURL('image/png');
+  }
+}
+
+/* ── fal.ai submission ── */
+async function submitHunyuan(base64DataURL) {
+  const res = await fetch(RING_3D_CONFIG.HUNYUAN_ENDPOINT, {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Key ' + RING_3D_CONFIG.FAL_KEY,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ image_url: base64DataURL, num_inference_steps: 30, guidance_scale: 7.5, output_format: 'glb' }),
+  });
+  if (!res.ok) throw new Error('Submission failed: ' + res.status);
+  const data = await res.json();
+  return data.request_id;
+}
+
+/* ── Polling loop ── */
+async function pollHunyuan(requestId) {
+  const base = RING_3D_CONFIG.HUNYUAN_ENDPOINT;
+  for (let i = 0; i < RING_3D_CONFIG.MAX_POLL_ATTEMPTS; i++) {
+    await new Promise(r => setTimeout(r, RING_3D_CONFIG.POLL_INTERVAL_MS));
+    try {
+      const sr = await fetch(base + '/requests/' + requestId + '/status', {
+        headers: { 'Authorization': 'Key ' + RING_3D_CONFIG.FAL_KEY },
+      });
+      if (!sr.ok) continue;
+      const sd = await sr.json();
+      if (sd.status === 'COMPLETED') {
+        const rr = await fetch(base + '/requests/' + requestId, {
+          headers: { 'Authorization': 'Key ' + RING_3D_CONFIG.FAL_KEY },
+        });
+        if (!rr.ok) throw new Error('Result fetch failed');
+        return rr.json();
+      }
+      if (sd.status === 'FAILED') throw new Error('Generation failed on server');
+    } catch (e) {
+      if (e.message === 'Generation failed on server' || e.message === 'Result fetch failed') throw e;
+    }
+  }
+  throw new Error('Model generation timed out. Please try again.');
+}
+
+/* ── Extract GLB URL from fal.ai result (handles multiple response shapes) ── */
+function extractGlbUrl(result) {
+  if (result && result.model_mesh && result.model_mesh.url) return result.model_mesh.url;
+  if (result && result.model && result.model.url) return result.model.url;
+  if (result && result.glb_url) return result.glb_url;
+  if (result && result.output && result.output.model && result.output.model.url) return result.output.model.url;
+  const m = JSON.stringify(result).match(/"(https?:[^"]+\.glb[^"]*)"/);
+  return m ? m[1] : null;
+}
+
+/* ── Three.js scene initialisation ── */
+async function initRing3DScene(glbUrl) {
+  const T = window.THREE;
+  const canvasEl = document.getElementById('ringTryOnCanvas');
+
+  const renderer = new T.WebGLRenderer({ canvas: canvasEl, antialias: true, alpha: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(RING_3D_CONFIG.CANVAS_WIDTH, RING_3D_CONFIG.CANVAS_HEIGHT);
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = T.PCFSoftShadowMap;
+  renderer.outputEncoding = T.sRGBEncoding;
+  renderer.toneMapping = T.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.2;
+  ring3DState.renderer = renderer;
+
+  const scene = new T.Scene();
+  ring3DState.scene = scene;
+
+  const camera = new T.PerspectiveCamera(45, 1, 0.01, 100);
+  camera.position.set(0, 0, RING_3D_CONFIG.INITIAL_CAMERA_Z);
+
+  scene.add(new T.AmbientLight(0xffffff, 0.4));
+
+  const dirLight = new T.DirectionalLight(0xffffff, 1.2);
+  dirLight.position.set(3, 5, 3);
+  dirLight.castShadow = true;
+  dirLight.shadow.mapSize.width = RING_3D_CONFIG.SHADOW_MAP_SIZE;
+  dirLight.shadow.mapSize.height = RING_3D_CONFIG.SHADOW_MAP_SIZE;
+  scene.add(dirLight);
+
+  const ptLight = new T.PointLight(0xfff8e7, 0.6);
+  ptLight.position.set(-2, 2, -2);
+  scene.add(ptLight);
+
+  // HDR environment map
+  const pmrem = new T.PMREMGenerator(renderer);
+  pmrem.compileEquirectangularShader();
+  await new Promise(resolve => {
+    new T.RGBELoader().load(
+      'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/royal_esplanade_1k.hdr',
+      tex => { scene.environment = pmrem.fromEquirectangular(tex).texture; tex.dispose(); pmrem.dispose(); resolve(); },
+      undefined,
+      () => { pmrem.dispose(); resolve(); }
+    );
+  });
+
+  // GLB model
+  await new Promise((resolve, reject) => {
+    new T.GLTFLoader().load(glbUrl, gltf => {
+      const model = gltf.scene;
+      model.traverse(child => {
+        if (!child.isMesh) return;
+        const mats = Array.isArray(child.material) ? child.material : [child.material];
+        mats.forEach(m => {
+          if (m && m.isMeshStandardMaterial) {
+            m.metalness = RING_3D_CONFIG.METALNESS;
+            m.roughness = RING_3D_CONFIG.ROUGHNESS;
+            m.envMapIntensity = RING_3D_CONFIG.ENV_MAP_INTENSITY;
+            m.needsUpdate = true;
+          }
+        });
+        child.castShadow = true;
+        child.receiveShadow = true;
+      });
+
+      const box = new T.Box3().setFromObject(model);
+      model.position.sub(box.getCenter(new T.Vector3()));
+      const sphere = box.getBoundingSphere(new T.Sphere());
+      model.scale.setScalar(0.8 / sphere.radius);
+      scene.add(model);
+
+      const box2 = new T.Box3().setFromObject(model);
+      const shadowPlane = new T.Mesh(
+        new T.PlaneGeometry(4, 4),
+        new T.MeshStandardMaterial({ transparent: true, opacity: 0 })
+      );
+      shadowPlane.rotation.x = -Math.PI / 2;
+      shadowPlane.position.y = box2.min.y - 0.01;
+      shadowPlane.receiveShadow = true;
+      scene.add(shadowPlane);
+      resolve();
+    }, undefined, reject);
+  });
+
+  // OrbitControls
+  const controls = new T.OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.dampingFactor = RING_3D_CONFIG.LERP_ALPHA;
+  controls.enablePan = false;
+  controls.minDistance = RING_3D_CONFIG.MIN_CAMERA_Z;
+  controls.maxDistance = RING_3D_CONFIG.MAX_CAMERA_Z;
+  controls.autoRotate = true;
+  controls.autoRotateSpeed = 1.2;
+  ring3DState.controls = controls;
+
+  let autoTimer;
+  controls.addEventListener('start', () => {
+    controls.autoRotate = false;
+    clearTimeout(autoTimer);
+    autoTimer = setTimeout(() => { controls.autoRotate = true; }, 4000);
+  });
+
+  function animate() {
+    ring3DState.rafId = requestAnimationFrame(animate);
+    controls.update();
+    renderer.render(scene, camera);
+  }
+  animate();
+}
+
+/* ── Dispose all Three.js resources ── */
+function disposeRing3D() {
+  cancelAnimationFrame(ring3DState.rafId);
+  ring3DState.rafId = null;
+  if (ring3DState.controls) { ring3DState.controls.dispose(); ring3DState.controls = null; }
+  if (ring3DState.scene) {
+    ring3DState.scene.traverse(obj => {
+      if (!obj.isMesh) return;
+      if (obj.geometry) obj.geometry.dispose();
+      const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+      mats.forEach(m => { if (m && m.dispose) m.dispose(); });
+    });
+    ring3DState.scene = null;
+  }
+  if (ring3DState.renderer) { ring3DState.renderer.dispose(); ring3DState.renderer = null; }
+}
+
+/* ── Main entry point (called by goStep intercept) ── */
+async function startRing3DTryOn() {
+  openRing3DModal();
+  startRing3DTextCycle();
+
+  try {
+    if (!await loadRing3DLibs()) throw new Error('3D libraries unavailable');
+
+    const imgEl = document.querySelector('img[alt="Your AI jewelry design"]');
+    if (!imgEl || !imgEl.src) throw new Error('No source image found');
+
+    const base64 = await getImageBase64(LAB.imageUrl || imgEl.src);
+    const requestId = await submitHunyuan(base64);
+    const result = await pollHunyuan(requestId);
+    const glbUrl = extractGlbUrl(result);
+    if (!glbUrl) throw new Error('No GLB URL in API response');
+
+    stopRing3DTextCycle();
+    await initRing3DScene(glbUrl);
+
+    document.getElementById('ring3DLoading').style.display = 'none';
+    document.getElementById('ring3DCanvasWrap').style.display = 'block';
+    document.getElementById('ring3DFooter').style.display = 'flex';
+
+    setTimeout(() => {
+      const h = document.getElementById('ringCanvasHint');
+      if (h) h.classList.add('fade-out');
+    }, 5000);
+
+  } catch (e) {
+    console.error('[Ring3D]', e.message || e);
+    stopRing3DTextCycle();
+    closeRing3DModal();
+    // Silent fallback: open the existing 2D camera try-on
+    ring3DFallbackMode = true;
+    goStep(4);
+    ring3DFallbackMode = false;
+  }
+}
+
+/* ── Wire close button ── */
+document.getElementById('ringModalClose').addEventListener('click', closeRing3DModal);
+</script>
 
 </body>
 </html>
