@@ -1728,7 +1728,7 @@ function buildPrompt(type, material, gem, style, desc) {
 
   if (isPendantType) {
     // Type keyword leads; user description follows as detail context
-    return `luxury ${style} ${wPart}pendant charm${descPart}, bail connector at top, ${mDisp}, ${gemPart}, close-up macro product photograph, pendant centered filling the frame, high contrast separation between pendant and background, soft even studio lighting with no shadows on background, pure white seamless background, ultra sharp focus, hyper realistic, 8K ultra high definition, precious metal gleam, gemstone sparkle and brilliance`;
+    return `luxury ${style} ${wPart}pendant charm${descPart}, bail connector at top, ${mDisp}, ${gemPart}, close-up macro product photograph, pendant centered filling the frame, high contrast separation between pendant and background, soft even studio lighting with no shadows on background, pure white seamless background, ultra sharp focus, hyper realistic, 8K ultra high definition, precious metal gleam, gemstone sparkle and brilliance. No humans. No person. No body parts. No neck. No chest. No hands. No fingers. No ears. No skin. No model. Product-only photography. The jewelry piece is the sole subject of the image.`;
   }
 
   if (type === 'necklace') {
@@ -1736,7 +1736,7 @@ function buildPrompt(type, material, gem, style, desc) {
     const userDesc = desc.trim();
     return [userDesc, chainSpecific, mDisp].filter(Boolean).join(', ')
       + (userDesc || chainSpecific || mDisp ? '. ' : '')
-      + "Product photography of a single necklace chain. Knolling style. Overhead flat lay. Shot from directly above at exactly 90 degrees. Chain laid flat on a pure white surface, arranged in a complete U-shape or oval loop, both ends meeting symmetrically at the top. No perspective angle. No 3D depth. No close-up macro shot. No partial chain. No dangling. No fabric props. No pendant. No charm. No gemstone drop. The full chain is visible and centered. Ultra-sharp focus across the entire chain. Studio lighting, white background, luxury e-commerce product photography.";
+      + "Product photography of a single necklace chain. Knolling style. Overhead flat lay. Shot from directly above at exactly 90 degrees. Chain laid flat on a pure white surface, arranged in a complete U-shape or oval loop, both ends meeting symmetrically at the top. No perspective angle. No 3D depth. No close-up macro shot. No partial chain. No dangling. No fabric props. No pendant. No charm. No gemstone drop. The full chain is visible and centered. Ultra-sharp focus across the entire chain. Studio lighting, white background, luxury e-commerce product photography. No humans. No person. No body parts. No neck. No chest. No hands. No fingers. No ears. No skin. No model. Product-only photography. The jewelry piece is the sole subject of the image.";
   }
 
   if (type === 'earrings') {
@@ -1751,18 +1751,18 @@ function buildPrompt(type, material, gem, style, desc) {
       'white background'
     ].join(', ');
     // Type keyword leads; earring constraints and user description follow
-    return `luxury ${style} ${wPart}earring${descPart}, ${earringAdditions}, ${mDisp}, ${gemPart}, professional jewelry product photography, pure white seamless background, no shadows, hyper realistic, 8K ultra high definition, macro lens, sharp focus, highly detailed, photorealistic, precious metal gleam, gemstone sparkle and brilliance`;
+    return `luxury ${style} ${wPart}earring${descPart}, ${earringAdditions}, ${mDisp}, ${gemPart}, professional jewelry product photography, pure white seamless background, no shadows, hyper realistic, 8K ultra high definition, macro lens, sharp focus, highly detailed, photorealistic, precious metal gleam, gemstone sparkle and brilliance. No humans. No person. No body parts. No neck. No chest. No hands. No fingers. No ears. No skin. No model. Product-only photography. The jewelry piece is the sole subject of the image.`;
   }
 
   if (type === 'bracelet') {
-    return `luxury ${style} ${wPart}cuff bracelet jewelry${descPart}, ${mDisp}, ${gemPart}, isolated fine jewelry product photograph, pure white seamless background, no shadows, no reflections on background, professional diffuse studio lighting, hyper realistic, 8K ultra high definition, macro lens, sharp focus, precious metal gleam, gemstone sparkle and brilliance, luxury brand catalog. Flat lay product photo, bracelet lying horizontally on a clean white surface, top-down view, no hands, no wrist, no chain, no necklace, no V-shape, centered, studio lighting, white background.`;
+    return `luxury ${style} ${wPart}cuff bracelet jewelry${descPart}, ${mDisp}, ${gemPart}, isolated fine jewelry product photograph, pure white seamless background, no shadows, no reflections on background, professional diffuse studio lighting, hyper realistic, 8K ultra high definition, macro lens, sharp focus, precious metal gleam, gemstone sparkle and brilliance, luxury brand catalog. Flat lay product photo, bracelet lying horizontally on a clean white surface, top-down view, no hands, no wrist, no chain, no necklace, no V-shape, centered, studio lighting, white background. No humans. No person. No body parts. No neck. No chest. No hands. No fingers. No ears. No skin. No model. Product-only photography. The jewelry piece is the sole subject of the image.`;
   }
 
   if (type === 'ring') {
     const userDesc = desc.trim();
     return [userDesc, mDisp, gemPart].filter(Boolean).join(', ')
       + (userDesc || mDisp || gemPart ? '. ' : '')
-      + "Front view ring photography. The camera is positioned at exactly the same height as the center of the ring, pointing straight at the face of the ring. The ring is standing upright. The circular band is a perfect symmetrical oval at the bottom of the frame. The gemstone is dead center, pointing straight at the lens. This is NOT a hero shot. NOT a 3/4 angle. NOT shot from above or below. NOT tilted. The view is identical to looking directly through a telescope or tunnel straight at the ring face. Flat background. No hands. No fingers. No props. No fabric. Perfectly sharp focus on the stone and prongs. Soft even studio lighting. White or very light grey background. Luxury jewelry product photography, e-commerce style.";
+      + "Front view ring photography. The camera is positioned at exactly the same height as the center of the ring, pointing straight at the face of the ring. The ring is standing upright. The circular band is a perfect symmetrical oval at the bottom of the frame. The gemstone is dead center, pointing straight at the lens. This is NOT a hero shot. NOT a 3/4 angle. NOT shot from above or below. NOT tilted. The view is identical to looking directly through a telescope or tunnel straight at the ring face. Flat background. No hands. No fingers. No props. No fabric. Perfectly sharp focus on the stone and prongs. Soft even studio lighting. White or very light grey background. Luxury jewelry product photography, e-commerce style. No humans. No person. No body parts. No neck. No chest. No hands. No fingers. No ears. No skin. No model. Product-only photography. The jewelry piece is the sole subject of the image.";
   }
 
   const typeMap = {};
