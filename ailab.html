@@ -4822,14 +4822,11 @@ async function getImageBase64(url) {
   }
 }
 
-/* ── fal.ai submission ── */
+/* ── fal.ai submission (auth handled by Cloudflare Worker) ── */
 async function submitHunyuan(base64DataURL) {
   const res = await fetch(RING_3D_CONFIG.HUNYUAN_ENDPOINT, {
     method: 'POST',
-    headers: {
-      'Authorization': 'Key ' + RING_3D_CONFIG.FAL_KEY,
-      'Content-Type': 'application/json',
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ image_url: base64DataURL, num_inference_steps: 30, guidance_scale: 7.5, output_format: 'glb' }),
   });
   if (!res.ok) throw new Error('Submission failed: ' + res.status);
@@ -4843,15 +4840,11 @@ async function pollHunyuan(requestId) {
   for (let i = 0; i < RING_3D_CONFIG.MAX_POLL_ATTEMPTS; i++) {
     await new Promise(r => setTimeout(r, RING_3D_CONFIG.POLL_INTERVAL_MS));
     try {
-      const sr = await fetch(base + '/requests/' + requestId + '/status', {
-        headers: { 'Authorization': 'Key ' + RING_3D_CONFIG.FAL_KEY },
-      });
+      const sr = await fetch(base + '/requests/' + requestId + '/status');
       if (!sr.ok) continue;
       const sd = await sr.json();
       if (sd.status === 'COMPLETED') {
-        const rr = await fetch(base + '/requests/' + requestId, {
-          headers: { 'Authorization': 'Key ' + RING_3D_CONFIG.FAL_KEY },
-        });
+        const rr = await fetch(base + '/requests/' + requestId);
         if (!rr.ok) throw new Error('Result fetch failed');
         return rr.json();
       }
@@ -4915,7 +4908,21 @@ async function initRing3DScene(glbUrl) {
       'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/royal_esplanade_1k.hdr',
       tex => { scene.environment = pmrem.fromEquirectangular(tex).texture; tex.dispose(); pmrem.dispose(); resolve(); },
       undefined,
-      () => { pmrem.dispose(); resolve(); }
+      () => {
+        // CORS/load failure — synthesise a neutral grey equirectangular env map
+        try {
+          const size = 64;
+          const data = new Uint8Array(size * size * 4);
+          for (let i = 0; i < data.length; i += 4) { data[i] = 140; data[i+1] = 140; data[i+2] = 140; data[i+3] = 255; }
+          const grey = new T.DataTexture(data, size, size, T.RGBAFormat);
+          grey.mapping = T.EquirectangularReflectionMapping;
+          grey.needsUpdate = true;
+          scene.environment = pmrem.fromEquirectangular(grey).texture;
+          grey.dispose();
+        } catch (_) {}
+        pmrem.dispose();
+        resolve();
+      }
     );
   });
 
