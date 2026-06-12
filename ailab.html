@@ -487,7 +487,7 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
 
       <!-- LEFT: Ring Weight -->
       <div>
-        <h3 style="font-family:'Playfair Display',serif;font-size:20px;font-weight:600;color:#1b1c1c;margin-bottom:20px;">Ring Weight</h3>
+        <h3 id="specWeightHeading" style="font-family:'Playfair Display',serif;font-size:20px;font-weight:600;color:#1b1c1c;margin-bottom:20px;">Ring Weight</h3>
         <div class="grid grid-cols-3 gap-3 mb-6">
           <div class="spec-card-btn spec-weight-btn" data-preset="light" onclick="setSpecWeight('light',2.5)">
             <span class="material-symbols-outlined" style="font-size:22px;color:#b0bec5;">radio_button_unchecked</span>
@@ -510,6 +510,24 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
           style="width:100%;font-family:Inter,sans-serif;font-size:14px;padding:10px 14px;border:1.5px solid rgba(193,199,203,0.5);border-radius:10px;outline:none;color:#1b1c1c;box-sizing:border-box;transition:border-color 0.2s;"
           oninput="setSpecWeightExact(this.value)"
           onfocus="this.style.borderColor='#3c6474'" onblur="this.style.borderColor='rgba(193,199,203,0.5)'">
+
+        <!-- Chain Length — necklace only, shown for cable/box/rope styles -->
+        <div id="specChainLengthWrap" style="display:none;margin-top:28px;">
+          <h3 style="font-family:'Playfair Display',serif;font-size:20px;font-weight:600;color:#1b1c1c;margin-bottom:20px;">Chain Length</h3>
+          <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;">
+            <button class="spec-toggle spec-chainlen-btn" data-len="16" onclick="setChainLength(this)">16" <span style="font-size:10px;font-weight:400;color:#9ca3af;margin-left:2px;">Choker</span></button>
+            <button class="spec-toggle spec-chainlen-btn active" data-len="18" onclick="setChainLength(this)">18" <span style="font-size:10px;font-weight:400;color:#9ca3af;margin-left:2px;">Standard</span></button>
+            <button class="spec-toggle spec-chainlen-btn" data-len="20" onclick="setChainLength(this)">20" <span style="font-size:10px;font-weight:400;color:#9ca3af;margin-left:2px;">Classic</span></button>
+            <button class="spec-toggle spec-chainlen-btn" data-len="22" onclick="setChainLength(this)">22" <span style="font-size:10px;font-weight:400;color:#9ca3af;margin-left:2px;">Long</span></button>
+            <button class="spec-toggle spec-chainlen-btn" data-len="custom" onclick="setChainLength(this)">Custom</button>
+          </div>
+          <div id="specChainLengthCustomWrap" style="display:none;">
+            <input id="specChainLengthCustomInput" type="number" min="10" max="36" step="1" placeholder="e.g. 24 (inches)"
+              style="width:100%;font-family:Inter,sans-serif;font-size:14px;padding:10px 14px;border:1.5px solid rgba(193,199,203,0.5);border-radius:10px;outline:none;color:#1b1c1c;box-sizing:border-box;transition:border-color 0.2s;"
+              oninput="selectedChainLength = this.value ? this.value + ' inches (custom)' : null"
+              onfocus="this.style.borderColor='#3c6474'" onblur="this.style.borderColor='rgba(193,199,203,0.5)'">
+          </div>
+        </div>
       </div>
 
       <!-- RIGHT: Stones -->
@@ -1281,6 +1299,7 @@ const REMOVE_BG_API_KEY = 'SaaY6FrGJRJs7tj5zh7Jvs29';
 let selectedChainStyle  = null;
 let selectedChainPrompt = '';
 let selectedChainLabel  = '';
+let selectedChainLength = '18 inches (standard)';
 
 /* ── BG removal cache — avoids repeat API calls per session ── */
 const bgRemovalCache = new Map();
@@ -1600,6 +1619,7 @@ async function goStep(n) {
   // Reset chain style on new design / start over
   if (n === 1) {
     selectedChainStyle = null; selectedChainPrompt = ''; selectedChainLabel = '';
+    selectedChainLength = '18 inches (standard)';
   }
   // Kill camera when leaving step 4 (Try On)
   if (LAB.step === 4 && n !== 4) {
@@ -1613,7 +1633,7 @@ async function goStep(n) {
   LAB.step = n;
   updateProgress(n);
   window.scrollTo({ top: 0, behavior: 'smooth' });
-  if (n === 2) { _renderStoneRows(); updateSpecCostEstimate(); }
+  if (n === 2) { _renderStoneRows(); updateSpecCostEstimate(); updateWeightHeading(); updateChainLengthVisibility(); }
   if (n === 4) setupTryOn();
   if (n === 5) {
     await fetchSpotPrices(); // always fetch live price at quote time
@@ -1621,6 +1641,35 @@ async function goStep(n) {
     saveCurrentDesign();
   }
   if (n === 6) populateOrderSummary();
+}
+
+/* ── Weight heading + chain length helpers ───── */
+function updateWeightHeading() {
+  const el = document.getElementById('specWeightHeading');
+  if (!el) return;
+  const labels = {ring:'Ring',bracelet:'Bracelet',necklace:'Necklace',earrings:'Earring',pendant:'Pendant'};
+  el.textContent = (labels[LAB.type] || 'Jewelry') + ' Weight';
+}
+
+function updateChainLengthVisibility() {
+  const wrap = document.getElementById('specChainLengthWrap');
+  if (!wrap) return;
+  const show = LAB.type === 'necklace' && ['cable','box','rope'].includes(selectedChainStyle);
+  wrap.style.display = show ? 'block' : 'none';
+}
+
+const _chainLenMap = {'16':'16 inches (choker)','18':'18 inches (standard)','20':'20 inches (classic)','22':'22 inches (long)'};
+function setChainLength(btn) {
+  document.querySelectorAll('.spec-chainlen-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  const key = btn.dataset.len;
+  if (key === 'custom') {
+    selectedChainLength = null;
+    document.getElementById('specChainLengthCustomWrap').style.display = 'block';
+  } else {
+    selectedChainLength = _chainLenMap[key] || (key + ' inches');
+    document.getElementById('specChainLengthCustomWrap').style.display = 'none';
+  }
 }
 
 /* ── Chain style modal ───────────────────────── */
@@ -1664,6 +1713,7 @@ document.addEventListener('DOMContentLoaded', () => {
       selectedChainPrompt = btn.dataset.prompt;
       selectedChainLabel  = btn.dataset.label;
       console.log('[JWLZIFY] chain style selected:', selectedChainLabel);
+      updateChainLengthVisibility();
       setTimeout(() => hideChainStyleModal(), 200);
     });
   });
@@ -1686,6 +1736,7 @@ function setType(btn, type) {
     window.teardownARPipeline?.();
   }
   LAB.type = type;
+  updateWeightHeading();
   if (type === 'necklace') showChainStyleModal();
 }
 
@@ -1734,8 +1785,13 @@ function buildPrompt(type, material, gem, style, desc) {
   if (type === 'necklace') {
     const chainSpecific = selectedChainPrompt || '';
     const userDesc = desc.trim();
+    const chainStyleStr = selectedChainLabel ? `Chain style: ${selectedChainLabel}.` : '';
+    const chainLenVisible = ['cable','box','rope'].includes(selectedChainStyle);
+    const chainLenStr = (chainLenVisible && selectedChainLength) ? `Chain length: ${selectedChainLength}.` : '';
+    const specStr = [chainStyleStr, chainLenStr].filter(Boolean).join(' ');
     return [userDesc, chainSpecific, mDisp].filter(Boolean).join(', ')
       + (userDesc || chainSpecific || mDisp ? '. ' : '')
+      + (specStr ? specStr + ' ' : '')
       + "Product photography of a single necklace chain. Knolling style. Overhead flat lay. Shot from directly above at exactly 90 degrees. Chain laid flat on a pure white surface, arranged in a complete U-shape or oval loop, both ends meeting symmetrically at the top. No perspective angle. No 3D depth. No close-up macro shot. No partial chain. No dangling. No fabric props. No pendant. No charm. No gemstone drop. The full chain is visible and centered. Ultra-sharp focus across the entire chain. Studio lighting, white background, luxury e-commerce product photography. No humans. No person. No body parts. No neck. No chest. No hands. No fingers. No ears. No skin. No model. Product-only photography. The jewelry piece is the sole subject of the image.";
   }
 
