@@ -1478,32 +1478,41 @@ async function _generateImage(prompt) {
     );
 
     if (res.status === 429) {
-      console.warn('[JWLZIFY] Gemini rate limited, using fallback');
+      const errBody = await res.text().catch(() => '(unreadable)');
+      console.error('[JWLZIFY] Gemini rate limited (HTTP 429) | body:', errBody);
       throw new Error('rate_limited');
     }
-    if (!res.ok) throw new Error('Gemini worker ' + res.status);
+    if (!res.ok) {
+      const errBody = await res.text().catch(() => '(unreadable)');
+      console.error('[JWLZIFY] Gemini worker HTTP error | status=' + res.status + ' | body:', errBody);
+      throw new Error('Gemini worker ' + res.status);
+    }
 
     const data = await res.json();
 
-    if (data.error === 'rate_limited') throw new Error('rate_limited');
+    if (data.error === 'rate_limited') {
+      console.error('[JWLZIFY] Gemini rate_limited in JSON | full response:', JSON.stringify(data));
+      throw new Error('rate_limited');
+    }
     if (data.error) {
-      console.warn('[JWLZIFY] Gemini error:', data.error);
+      console.error('[JWLZIFY] Gemini error in JSON | full response:', JSON.stringify(data));
       throw new Error(data.error);
     }
 
-    if (!data.imageData) throw new Error('No image data');
+    if (!data.imageData) {
+      console.error('[JWLZIFY] Gemini no imageData in response | keys:', Object.keys(data).join(', '));
+      throw new Error('No image data');
+    }
 
     const bytes = atob(data.imageData);
     const arr = new Uint8Array(bytes.length);
-    for (let i = 0; i < bytes.length; i++) {
-      arr[i] = bytes.charCodeAt(i);
-    }
+    for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
     const blob = new Blob([arr], { type: data.mimeType || 'image/png' });
-    console.log('[JWLZIFY] Gemini SUCCESS');
+    console.log('[JWLZIFY] Gemini SUCCESS | method=gemini | blob size=' + blob.size + ' bytes | mimeType=' + (data.mimeType || 'image/png'));
     return URL.createObjectURL(blob);
 
   } catch(e) {
-    console.warn('[JWLZIFY] Gemini failed, trying fallback:', e.message);
+    console.warn('[JWLZIFY] Gemini failed, trying HF fallback:', e.message);
   }
 
   // FALLBACK: HuggingFace via Cloudflare Worker
@@ -1517,10 +1526,16 @@ async function _generateImage(prompt) {
         body: JSON.stringify({ inputs: prompt })
       }
     );
-    if (!hfRes.ok) throw new Error('HF ' + hfRes.status);
+    console.log('[JWLZIFY] HF worker response | method=huggingface | status=' + hfRes.status);
+    if (!hfRes.ok) throw new Error('HF HTTP ' + hfRes.status);
     const blob = await hfRes.blob();
-    if (blob.size === 0) throw new Error('HF returned empty response');
-    console.log('[JWLZIFY] HuggingFace SUCCESS');
+    console.log('[JWLZIFY] HF blob received | size=' + blob.size + ' bytes | type=' + blob.type);
+    if (blob.size === 0) throw new Error('HF returned 0 bytes');
+    if (blob.size < 5000) {
+      console.error('[JWLZIFY] HF blob too small (corrupt/blank) | size=' + blob.size + ' bytes — treating as failed');
+      return null;
+    }
+    console.log('[JWLZIFY] HuggingFace SUCCESS | method=huggingface | blob size=' + blob.size + ' bytes');
     const _hfRawUrl = URL.createObjectURL(blob);
     const _hfCropped = await new Promise(resolve => {
       const _hfImg = new Image();
@@ -1530,13 +1545,21 @@ async function _generateImage(prompt) {
         _hfC.height = Math.max(1, _hfImg.naturalHeight - 40);
         _hfC.getContext('2d').drawImage(_hfImg, 0, 0);
         URL.revokeObjectURL(_hfRawUrl);
-        _hfC.toBlob(b => resolve(URL.createObjectURL(b)), 'image/png');
+        _hfC.toBlob(b => {
+          console.log('[JWLZIFY] HF cropped blob | size=' + b.size + ' bytes');
+          resolve(URL.createObjectURL(b));
+        }, 'image/png');
+      };
+      _hfImg.onerror = () => {
+        console.error('[JWLZIFY] HF image failed to decode | blob was ' + blob.size + ' bytes');
+        URL.revokeObjectURL(_hfRawUrl);
+        resolve(null);
       };
       _hfImg.src = _hfRawUrl;
     });
     return _hfCropped;
   } catch(e) {
-    console.error('[JWLZIFY] all generation failed:', e.message);
+    console.error('[JWLZIFY] HF fallback failed | method=huggingface |', e.message);
     return null;
   }
 }
@@ -2228,7 +2251,7 @@ async function startGeneration(isTweak) {
       const errOverlay = document.getElementById('genErrorOverlay');
       if (errOverlay) {
         const errMsg = errOverlay.querySelector('p');
-        if (errMsg) errMsg.innerHTML = 'Generation temporarily unavailable &mdash;<br>please try again in a moment.';
+        if (errMsg) errMsg.innerHTML = 'Image generation temporarily unavailable &mdash; please try again.';
         errOverlay.style.display = 'flex';
       }
       if (!isTweak) {
@@ -4726,6 +4749,9 @@ let ring3DFallbackMode = false;
 /* ── Three.js library loading gate ── */
 let ring3DLibsReady = false;
 
+/* ── Log endpoint on init so we can verify the value in console ── */
+console.log('[Ring3D] HUNYUAN_ENDPOINT:', RING_3D_CONFIG.HUNYUAN_ENDPOINT);
+
 /* ── loadScript utility ── */
 function loadScript(src) {
   return new Promise((resolve, reject) => {
@@ -4822,33 +4848,50 @@ async function getImageBase64(url) {
 
 /* ── fal.ai submission (auth handled by Cloudflare Worker) ── */
 async function submitHunyuan(base64DataURL) {
+  console.log('[Ring3D] submitting image to Hunyuan endpoint:', RING_3D_CONFIG.HUNYUAN_ENDPOINT);
   const res = await fetch(RING_3D_CONFIG.HUNYUAN_ENDPOINT, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ image_url: base64DataURL, num_inference_steps: 30, guidance_scale: 6.0, output_format: 'glb', remove_background: true }),
   });
-  if (!res.ok) throw new Error('Submission failed: ' + res.status);
+  console.log('[Ring3D] submission response status:', res.status);
+  if (!res.ok) {
+    const body = await res.text().catch(() => '(unreadable)');
+    console.error('[Ring3D] submission failed | status=' + res.status + ' | body:', body);
+    throw new Error('Submission failed: ' + res.status);
+  }
   const data = await res.json();
+  console.log('[Ring3D] submission success | request_id:', data.request_id, '| full response:', JSON.stringify(data));
   return data.request_id;
 }
 
 /* ── Polling loop ── */
 async function pollHunyuan(requestId) {
   const base = RING_3D_CONFIG.HUNYUAN_ENDPOINT;
+  const statusUrl = base + '/requests/' + requestId + '/status';
+  const resultUrl = base + '/requests/' + requestId;
+  console.log('[Ring3D] polling status URL:', statusUrl);
   for (let i = 0; i < RING_3D_CONFIG.MAX_POLL_ATTEMPTS; i++) {
     await new Promise(r => setTimeout(r, RING_3D_CONFIG.POLL_INTERVAL_MS));
     try {
-      const sr = await fetch(base + '/requests/' + requestId + '/status');
-      if (!sr.ok) continue;
+      const sr = await fetch(statusUrl);
+      console.log('[Ring3D] poll attempt ' + (i + 1) + ' | HTTP ' + sr.status);
+      if (!sr.ok) { console.warn('[Ring3D] poll non-OK, will retry'); continue; }
       const sd = await sr.json();
+      console.log('[Ring3D] poll attempt ' + (i + 1) + ' | status=' + sd.status, JSON.stringify(sd).slice(0, 200));
       if (sd.status === 'COMPLETED') {
-        const rr = await fetch(base + '/requests/' + requestId);
-        if (!rr.ok) throw new Error('Result fetch failed');
-        return rr.json();
+        console.log('[Ring3D] COMPLETED — fetching result from:', resultUrl);
+        const rr = await fetch(resultUrl);
+        console.log('[Ring3D] result fetch HTTP', rr.status);
+        if (!rr.ok) throw new Error('Result fetch failed: ' + rr.status);
+        const result = await rr.json();
+        console.log('[Ring3D] result JSON:', JSON.stringify(result).slice(0, 500));
+        return result;
       }
       if (sd.status === 'FAILED') throw new Error('Generation failed on server');
     } catch (e) {
-      if (e.message === 'Generation failed on server' || e.message === 'Result fetch failed') throw e;
+      if (e.message.startsWith('Generation failed') || e.message.startsWith('Result fetch failed')) throw e;
+      console.warn('[Ring3D] poll attempt ' + (i + 1) + ' error (will retry):', e.message);
     }
   }
   throw new Error('Model generation timed out. Please try again.');
@@ -4925,8 +4968,10 @@ async function initRing3DScene(glbUrl) {
   });
 
   // GLB model
+  console.log('[Ring3D] GLTFLoader starting | glbUrl:', glbUrl);
   await new Promise((resolve, reject) => {
     new T.GLTFLoader().load(glbUrl, gltf => {
+      console.log('[Ring3D] GLTFLoader success | scene children:', gltf.scene.children.length);
       const model = gltf.scene;
       model.traverse(child => {
         if (!child.isMesh) return;
@@ -4959,7 +5004,10 @@ async function initRing3DScene(glbUrl) {
       shadowPlane.receiveShadow = true;
       scene.add(shadowPlane);
       resolve();
-    }, undefined, reject);
+    }, undefined, (err) => {
+      console.error('[Ring3D] GLTFLoader error:', err);
+      reject(err);
+    });
   });
 
   // OrbitControls
@@ -5017,9 +5065,11 @@ async function startRing3DTryOn() {
     if (!imgEl || !imgEl.src) throw new Error('No source image found');
 
     const base64 = await getImageBase64(LAB.imageUrl || imgEl.src);
+    console.log('[Ring3D] image converted to base64 | length:', base64.length);
     const requestId = await submitHunyuan(base64);
     const result = await pollHunyuan(requestId);
     const glbUrl = extractGlbUrl(result);
+    console.log('[Ring3D] GLB URL extracted:', glbUrl);
     if (!glbUrl) throw new Error('No GLB URL in API response');
 
     stopRing3DTextCycle();
