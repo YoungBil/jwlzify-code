@@ -1995,12 +1995,23 @@ function buildPrompt(type, material, gem, style, desc) {
       ? (specs.metalGrams || 4.5) + 'g exact'
       : (WEIGHT_LABELS[weightLabel] || 'Medium (4-6g)');
     const stoneSizes = stones.map(s => s + 'ct');
-    const stonePart = stoneCount === 1
-      ? stoneSizes[0] + ' ' + gDisp + ' center stone'
-      : stoneCount + ' stones, sizes: ' + stoneSizes.join(', ') + '. Center stone: ' + gDisp;
+    let stonePart;
+    if (stoneCount === 1) {
+      stonePart = `with a single ${stoneSizes[0]} ${gDisp} center stone`;
+    } else if (stoneCount === 2) {
+      stonePart = `with 2 stones set into the band of a single ring — one ${stoneSizes[0]} ${gDisp} center stone and one ${stoneSizes[1] || stoneSizes[0]} ${gDisp} side stone`;
+    } else if (stoneCount === 3) {
+      stonePart = `with 3 stones set into the band of a single ring — one ${stoneSizes[0]} ${gDisp} center stone flanked by two ${stoneSizes[1] || stoneSizes[0]} ${gDisp} side stones`;
+    } else if (stoneCount === 4) {
+      stonePart = `with 4 stones set into the band of a single ring — one ${stoneSizes[0]} ${gDisp} center stone and three ${stoneSizes[1] || stoneSizes[0]} ${gDisp} accent stones`;
+    } else {
+      stonePart = `with ${stoneCount} stones set into the band of a single ring`;
+    }
+    const stoneClarity = 'All stones are set into ONE single ring. This is one ring with multiple stones, not multiple rings. Do not generate more than one ring.';
     return 'A single custom jewelry ring. '
       + [userDesc, mDisp + ' ring weighing ' + ringWeight, stonePart].filter(Boolean).join('. ')
-      + '. Front view ring photography. The camera is positioned at exactly the same height as the center of the ring, pointing straight at the face of the ring. The ring is standing upright. The circular band is a perfect symmetrical oval at the bottom of the frame. The gemstone is dead center, pointing straight at the lens. This is NOT a hero shot. NOT a 3/4 angle. NOT shot from above or below. NOT tilted. The view is identical to looking directly through a telescope or tunnel straight at the ring face. Flat background. No hands. No fingers. No props. No fabric. Perfectly sharp focus on the stone and prongs. Soft even studio lighting. White or very light grey background. Luxury jewelry product photography, e-commerce style. No humans. No person. No body parts. No neck. No chest. No hands. No fingers. No ears. No skin. No model. Product-only photography. The jewelry piece is the sole subject of the image.'
+      + '. ' + stoneClarity
+      + ' Front view ring photography. The camera is positioned at exactly the same height as the center of the ring, pointing straight at the face of the ring. The ring is standing upright. The circular band is a perfect symmetrical oval at the bottom of the frame. The gemstone is dead center, pointing straight at the lens. This is NOT a hero shot. NOT a 3/4 angle. NOT shot from above or below. NOT tilted. The view is identical to looking directly through a telescope or tunnel straight at the ring face. Flat background. No hands. No fingers. No props. No fabric. Perfectly sharp focus on the stone and prongs. Soft even studio lighting. White or very light grey background. Luxury jewelry product photography, e-commerce style. No humans. No person. No body parts. No neck. No chest. No hands. No fingers. No ears. No skin. No model. Product-only photography. The jewelry piece is the sole subject of the image.'
       + ' Single ring only. One ring centered on a white background. No multiple rings. No ring groupings. No lifestyle props. No pedestals or displays. Isolated product shot.';
   }
 
@@ -2520,8 +2531,30 @@ async function confirmAndGenerate() {
     const shapePart = userSelections.gemShape ? userSelections.gemShape + ' ' : '';
     parts.push((shapePart + gemLabel(userSelections.gem)).trim());
   }
-  if (userSelections.stoneCount) parts.push(userSelections.stoneCount + ' stone' + (userSelections.stoneCount > 1 ? 's' : ''));
-  if (userSelections.stones && userSelections.stones.length > 0) parts.push('sizes: ' + userSelections.stones.map(s => s + 'ct').join(', '));
+  if (userSelections.stoneCount && LAB.type === 'ring') {
+    const _sc  = userSelections.stoneCount;
+    const _gem = userSelections.gem ? gemLabel(userSelections.gem) : 'stone';
+    const _szs = (userSelections.stones && userSelections.stones.length > 0)
+      ? userSelections.stones.map(s => s + 'ct')
+      : [(_sc > 0 ? '1.0' : '1.0') + 'ct'];
+    let _stonePart;
+    if (_sc === 1) {
+      _stonePart = `with a single ${_szs[0]} ${_gem} center stone`;
+    } else if (_sc === 2) {
+      _stonePart = `with 2 stones set into the band of a single ring — one ${_szs[0]} ${_gem} center stone and one ${_szs[1] || _szs[0]} ${_gem} side stone`;
+    } else if (_sc === 3) {
+      _stonePart = `with 3 stones set into the band of a single ring — one ${_szs[0]} ${_gem} center stone flanked by two ${_szs[1] || _szs[0]} ${_gem} side stones`;
+    } else if (_sc === 4) {
+      _stonePart = `with 4 stones set into the band of a single ring — one ${_szs[0]} ${_gem} center stone and three ${_szs[1] || _szs[0]} ${_gem} accent stones`;
+    } else {
+      _stonePart = `with ${_sc} stones set into the band of a single ring`;
+    }
+    parts.push(_stonePart);
+    parts.push('All stones are set into ONE single ring. This is one ring with multiple stones, not multiple rings. Do not generate more than one ring.');
+  } else if (userSelections.stoneCount) {
+    parts.push(userSelections.stoneCount + ' stone' + (userSelections.stoneCount > 1 ? 's' : ''));
+    if (userSelections.stones && userSelections.stones.length > 0) parts.push('sizes: ' + userSelections.stones.map(s => s + 'ct').join(', '));
+  }
   if (userSelections.style) parts.push(userSelections.style + ' style');
   if (userSelections.weightLabel) parts.push(userSelections.weightLabel + ' weight');
 
