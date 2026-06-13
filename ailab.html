@@ -405,53 +405,12 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
           <p id="pendantIPDisclaimer" class="mt-2 body-copy" style="display:none;font-size:12px;color:#a0a6a9;">Copyrighted logos, brand marks, and character designs (e.g. Superman, Louis Vuitton, Nike) cannot be used for commercial orders. For best results, describe your custom design in your own words.</p>
         </div>
 
-        <!-- Material -->
-        <div class="grid grid-cols-2 gap-4 mb-6">
-          <div>
-            <label class="label block mb-2" style="font-size:10px;letter-spacing:0.18em;color:#3c6474;">Metal</label>
-            <select id="materialSelect" class="lab-input" style="cursor:pointer;" onchange="updateGemOptions()">
-              <option value="925silver">925 Silver</option>
-              <option value="10ctgold">10ct Gold</option>
-              <option value="14ctgold">14ct Gold</option>
-            </select>
-          </div>
-          <div>
-            <label class="label block mb-2" style="font-size:10px;letter-spacing:0.18em;color:#3c6474;">Primary Stone</label>
-            <select id="gemSelect" class="lab-input" style="cursor:pointer;">
-              <option value="moissanite_vvsd">Moissanite VVSD</option>
-              <option value="lab_diamond_vvs">Lab Diamond VVS</option>
-            </select>
-          </div>
-        </div>
-
-        <!-- Style Chips -->
-        <div class="mb-8">
-          <label class="label block mb-3" style="font-size:10px;letter-spacing:0.18em;color:#3c6474;">Design Aesthetic</label>
-          <div class="flex flex-wrap gap-2" id="styleChips">
-            <button class="lab-chip active" data-style="Art Deco" onclick="setStyle(this)">Art Deco</button>
-            <button class="lab-chip" data-style="Minimalist"  onclick="setStyle(this)">Minimalist</button>
-            <button class="lab-chip" data-style="Vintage"     onclick="setStyle(this)">Vintage</button>
-            <button class="lab-chip" data-style="Modern"      onclick="setStyle(this)">Modern</button>
-            <button class="lab-chip" data-style="Maximalist"  onclick="setStyle(this)">Maximalist</button>
-            <button class="lab-chip" data-style="Organic"     onclick="setStyle(this)">Organic</button>
-          </div>
-        </div>
-
-        <!-- Generate Button -->
-        <button id="generateBtn" onclick="startGeneration(false)"
-                class="w-full btn-primary btn-glow"
+        <!-- Next step button -->
+        <button onclick="goStep(2)" class="w-full btn-primary btn-glow"
                 style="padding:20px;font-size:13px;letter-spacing:0.22em;justify-content:center;gap:10px;">
-          <span class="material-symbols-outlined gen-icon" id="genIcon" style="font-size:20px;">auto_awesome</span>
-          <span id="genText">Generate Masterpiece</span>
+          <span>Next: Specifications</span>
+          <span class="material-symbols-outlined" style="font-size:20px;">arrow_forward</span>
         </button>
-        <p id="genBusyHint" style="display:none;font-family:Inter,sans-serif;font-size:12px;color:#9ca3af;text-align:center;margin-top:10px;">Creating your piece… please wait</p>
-        <div id="s1GenError" style="display:none;margin-top:12px;padding:12px 16px;background:#fef2f2;border:1px solid #fecaca;border-radius:10px;font-family:Inter,sans-serif;font-size:13px;color:#dc2626;text-align:center;">
-          Generation temporarily unavailable — please try again in a moment.
-          <button onclick="document.getElementById('s1GenError').style.display='none';startGeneration(false);"
-            style="display:block;margin:8px auto 0;font-family:Inter,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.08em;background:#dc2626;color:white;border:none;border-radius:8px;padding:7px 18px;cursor:pointer;">
-            Retry
-          </button>
-        </div>
       </div>
 
       <!-- RIGHT: Preview Placeholder / Loading -->
@@ -526,6 +485,48 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
       </h2>
     </div>
 
+    <!-- Metal selection -->
+    <div class="mb-8">
+      <label class="label block mb-3" style="font-size:10px;letter-spacing:0.18em;color:#3c6474;">Metal</label>
+      <div class="flex flex-wrap gap-2" id="s2MaterialBtns">
+        <button class="spec-toggle spec-material-btn" data-material="925silver" onclick="setUserMaterial(this,'925silver')">925 Silver</button>
+        <button class="spec-toggle spec-material-btn" data-material="10ctgold"  onclick="setUserMaterial(this,'10ctgold')">10ct Gold</button>
+        <button class="spec-toggle spec-material-btn" data-material="14ctgold"  onclick="setUserMaterial(this,'14ctgold')">14ct Gold</button>
+      </div>
+    </div>
+
+    <!-- Primary Stone (revealed after metal is chosen) -->
+    <div class="mb-8" id="s2GemWrap" style="display:none;">
+      <label class="label block mb-3" style="font-size:10px;letter-spacing:0.18em;color:#3c6474;">Primary Stone</label>
+      <div class="flex flex-wrap gap-2" id="s2GemBtns"></div>
+    </div>
+
+    <!-- Stone Shape -->
+    <div class="mb-8">
+      <label class="label block mb-3" style="font-size:10px;letter-spacing:0.18em;color:#3c6474;">Stone Shape</label>
+      <div class="flex flex-wrap gap-2">
+        <button class="spec-toggle spec-gemshape-btn" data-shape="Round"    onclick="setUserGemShape(this,'Round')">Round</button>
+        <button class="spec-toggle spec-gemshape-btn" data-shape="Oval"     onclick="setUserGemShape(this,'Oval')">Oval</button>
+        <button class="spec-toggle spec-gemshape-btn" data-shape="Cushion"  onclick="setUserGemShape(this,'Cushion')">Cushion</button>
+        <button class="spec-toggle spec-gemshape-btn" data-shape="Princess" onclick="setUserGemShape(this,'Princess')">Princess</button>
+        <button class="spec-toggle spec-gemshape-btn" data-shape="Emerald"  onclick="setUserGemShape(this,'Emerald')">Emerald</button>
+        <button class="spec-toggle spec-gemshape-btn" data-shape="Pear"     onclick="setUserGemShape(this,'Pear')">Pear</button>
+      </div>
+    </div>
+
+    <!-- Design Aesthetic -->
+    <div class="mb-8">
+      <label class="label block mb-3" style="font-size:10px;letter-spacing:0.18em;color:#3c6474;">Design Aesthetic</label>
+      <div class="flex flex-wrap gap-2" id="styleChips">
+        <button class="lab-chip" data-style="Art Deco"    onclick="setStyle(this)">Art Deco</button>
+        <button class="lab-chip" data-style="Minimalist"  onclick="setStyle(this)">Minimalist</button>
+        <button class="lab-chip" data-style="Vintage"     onclick="setStyle(this)">Vintage</button>
+        <button class="lab-chip" data-style="Modern"      onclick="setStyle(this)">Modern</button>
+        <button class="lab-chip" data-style="Maximalist"  onclick="setStyle(this)">Maximalist</button>
+        <button class="lab-chip" data-style="Organic"     onclick="setStyle(this)">Organic</button>
+      </div>
+    </div>
+
     <div class="grid lg:grid-cols-2 gap-12">
 
       <!-- LEFT: Ring Weight -->
@@ -537,7 +538,7 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
             <p style="font-family:Inter,sans-serif;font-size:13px;font-weight:600;color:#1b1c1c;margin:4px 0 0;">Light</p>
             <p style="font-family:Inter,sans-serif;font-size:11px;color:#9ca3af;margin:0;">2–3g</p>
           </div>
-          <div class="spec-card-btn spec-weight-btn active" data-preset="medium" onclick="setSpecWeight('medium',4.5)">
+          <div class="spec-card-btn spec-weight-btn" data-preset="medium" onclick="setSpecWeight('medium',4.5)">
             <span class="material-symbols-outlined" style="font-size:22px;color:#3c6474;">diamond</span>
             <p style="font-family:Inter,sans-serif;font-size:13px;font-weight:600;color:#1b1c1c;margin:4px 0 0;">Medium</p>
             <p style="font-family:Inter,sans-serif;font-size:11px;color:#9ca3af;margin:0;">4–6g</p>
@@ -579,7 +580,7 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
 
         <label style="font-family:Inter,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.1em;color:#71787c;text-transform:uppercase;display:block;margin-bottom:10px;">Number of Stones</label>
         <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;">
-          <button class="spec-toggle spec-count-btn active" data-count="1" onclick="setSpecCount(1)">1</button>
+          <button class="spec-toggle spec-count-btn" data-count="1" onclick="setSpecCount(1)">1</button>
           <button class="spec-toggle spec-count-btn" data-count="2" onclick="setSpecCount(2)">2</button>
           <button class="spec-toggle spec-count-btn" data-count="3" onclick="setSpecCount(3)">3</button>
           <button class="spec-toggle spec-count-btn" data-count="4" onclick="setSpecCount(4)">4</button>
@@ -599,12 +600,15 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
     </div>
 
     <!-- Bottom bar -->
-    <div class="mt-10 flex justify-end">
-      <button onclick="goStep(3)" class="btn-primary btn-glow"
-        style="font-size:12px;letter-spacing:0.16em;padding:16px 32px;gap:8px;">
-        Continue to Refine
-        <span class="material-symbols-outlined" style="font-size:18px;">arrow_forward</span>
+    <div class="mt-10">
+      <button id="generateBtn" onclick="confirmAndGenerate()" class="w-full btn-primary btn-glow"
+        style="font-size:13px;letter-spacing:0.22em;padding:20px;justify-content:center;gap:10px;">
+        <span class="material-symbols-outlined gen-icon" id="genIcon" style="font-size:20px;">auto_awesome</span>
+        <span id="genText">Confirm &amp; Generate</span>
       </button>
+      <div id="s2GenError" style="display:none;margin-top:12px;padding:12px 16px;background:#fef2f2;border:1px solid #fecaca;border-radius:10px;font-family:Inter,sans-serif;font-size:13px;color:#dc2626;text-align:center;">
+        Please select at least a material and gem type to continue.
+      </div>
     </div>
 
   </div>
@@ -1394,12 +1398,47 @@ const GEM_OPTIONS = {
   '14ctgold':   [['lab_diamond','Lab Diamond'],['real_diamond_vsvvs','Real Diamond VS/VVS']],
 };
 function updateGemOptions() {
-  const mat = document.getElementById('materialSelect').value;
-  const sel = document.getElementById('gemSelect');
+  const matEl = document.getElementById('materialSelect');
+  const sel   = document.getElementById('gemSelect');
+  if (!matEl || !sel) return;
+  const mat  = matEl.value;
   const opts = GEM_OPTIONS[mat] || GEM_OPTIONS['925silver'];
   sel.innerHTML = opts.map(([v,l]) => `<option value="${v}">${l}</option>`).join('');
   LAB.material = mat;
   LAB.gem = sel.value;
+}
+
+function setUserMaterial(btn, val) {
+  document.querySelectorAll('.spec-material-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  userSelections.material = val;
+  LAB.material = val;
+  delete userSelections.gem;
+  updateS2GemBtns(val);
+}
+
+function updateS2GemBtns(material) {
+  const wrap      = document.getElementById('s2GemWrap');
+  const container = document.getElementById('s2GemBtns');
+  if (!wrap || !container) return;
+  const opts = GEM_OPTIONS[material] || GEM_OPTIONS['925silver'];
+  container.innerHTML = opts.map(([v, l]) =>
+    `<button class="spec-toggle spec-gem-btn" data-gem="${v}" onclick="setUserGem(this,'${v}')">${l}</button>`
+  ).join('');
+  wrap.style.display = '';
+}
+
+function setUserGem(btn, val) {
+  document.querySelectorAll('.spec-gem-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  userSelections.gem = val;
+  LAB.gem = val;
+}
+
+function setUserGemShape(btn, val) {
+  document.querySelectorAll('.spec-gemshape-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  userSelections.gemShape = val;
 }
 
 const LAB = {
@@ -1414,6 +1453,9 @@ const LAB = {
   spec: null,
   cameraStream: null,
 };
+
+/* ── Explicit user selections (only set on actual click, never defaulted) ── */
+const userSelections = {};
 
 let generationId    = 0;
 let isTryOnActive   = false;
@@ -1832,6 +1874,7 @@ function setStyle(btn) {
   document.querySelectorAll('.lab-chip').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   LAB.style = btn.dataset.style;
+  userSelections.style = btn.dataset.style;
 }
 
 /* ── Inspiration prompts ─────────────────────── */
@@ -2232,8 +2275,10 @@ async function startGeneration(isTweak) {
   const thisGen = generationId;
   setGenLoading(true);
 
-  LAB.material = document.getElementById('materialSelect').value;
-  LAB.gem      = document.getElementById('gemSelect').value;
+  const matEl = document.getElementById('materialSelect');
+  if (matEl) LAB.material = matEl.value;
+  const gemEl = document.getElementById('gemSelect');
+  if (gemEl) LAB.gem = gemEl.value;
   const basePrompt = document.getElementById('promptArea').value.trim();
 
   // Sanitize and validate the selected jewelry type before any prompt work
@@ -2389,6 +2434,98 @@ async function startGeneration(isTweak) {
 }
 
 
+/* ── Confirm & Generate (specs-before-generation flow) ── */
+async function confirmAndGenerate() {
+  if (!userSelections.material || !userSelections.gem) {
+    const err = document.getElementById('s2GenError');
+    if (err) { err.style.display = 'block'; setTimeout(() => { err.style.display = 'none'; }, 5000); }
+    return;
+  }
+  if (isGenerating) return;
+
+  LAB.material = userSelections.material;
+  LAB.gem      = userSelections.gem;
+  LAB.style    = userSelections.style || 'Modern';
+
+  const ws = window.jwlSpecifications;
+  if (userSelections.metalGrams)  ws.metalGrams  = userSelections.metalGrams;
+  if (userSelections.weightLabel) ws.weightLabel = userSelections.weightLabel;
+  if (userSelections.stoneCount)  ws.stoneCount  = userSelections.stoneCount;
+  if (userSelections.stones && userSelections.stones.length > 0) {
+    ws.stones      = userSelections.stones.slice();
+    ws.totalCarats = +userSelections.stones.reduce((a, b) => a + b, 0).toFixed(2);
+  }
+
+  console.log('[JWLZIFY] confirmed user selections:', userSelections);
+
+  const userIdea = (document.getElementById('promptArea')?.value || '').trim();
+  const parts = [];
+  if (userSelections.material) parts.push(matLabel(userSelections.material));
+  if (userSelections.gem) {
+    const shapePart = userSelections.gemShape ? userSelections.gemShape + ' ' : '';
+    parts.push((shapePart + gemLabel(userSelections.gem)).trim());
+  }
+  if (userSelections.stoneCount) parts.push(userSelections.stoneCount + ' stone' + (userSelections.stoneCount > 1 ? 's' : ''));
+  if (userSelections.stones && userSelections.stones.length > 0) parts.push('sizes: ' + userSelections.stones.map(s => s + 'ct').join(', '));
+  if (userSelections.style) parts.push(userSelections.style + ' style');
+  if (userSelections.weightLabel) parts.push(userSelections.weightLabel + ' weight');
+
+  const fullPrompt = 'Professional jewelry product photography. '
+    + (userIdea ? userIdea + '. ' : '')
+    + parts.join(', ')
+    + '. White background, studio lighting, ultra sharp, photorealistic, luxury, 8K.';
+
+  console.log('[JWLZIFY] final prompt:', fullPrompt);
+
+  LAB.prompt = userIdea;
+  window._lastIsTweak = false;
+  isGenerating = true;
+  generationId++;
+  const thisGen = generationId;
+  setGenLoading(true);
+
+  const _TYPE_SYNONYMS = {
+    ring:     ['ring'],
+    necklace: ['necklace', 'chain necklace'],
+    pendant:  ['pendant', 'charm'],
+    earrings: ['earrings', 'earring', 'stud', 'hoop earring', 'drop earring'],
+    bracelet: ['bracelet', 'bangle', 'cuff'],
+  };
+  const negJewelryTerms = Object.entries(_TYPE_SYNONYMS)
+    .filter(([t]) => t !== LAB.type)
+    .flatMap(([, syns]) => syns).join(', ');
+  const negativePrompt = negJewelryTerms + ', brooch, anklet, person, human, model, body, face, hands, text, watermark, logo, blurry, low quality, distorted';
+
+  console.log('[JWLZIFY] generation prompt:', fullPrompt);
+  _enqueueGen(() => _generateImage(fullPrompt, negativePrompt)).then(blobUrl => {
+    if (!blobUrl) {
+      if (thisGen !== generationId) return;
+      setGenLoading(false);
+      const errOverlay = document.getElementById('genErrorOverlay');
+      if (errOverlay) errOverlay.style.display = 'flex';
+      const errEl = document.getElementById('s2GenError');
+      if (errEl) { errEl.textContent = 'Generation temporarily unavailable — please try again.'; errEl.style.display = 'block'; setTimeout(() => errEl.style.display = 'none', 8000); }
+      return;
+    }
+    if (thisGen !== generationId) { URL.revokeObjectURL(blobUrl); return; }
+    LAB.imageUrl = blobUrl;
+    bgRemovalCache.clear();
+    document.getElementById('refineImg').src = blobUrl;
+    document.getElementById('quoteImg').src  = blobUrl;
+    const ot = document.getElementById('orderThumb');
+    if (ot) ot.src = blobUrl;
+    showRefineStep();
+    setGenLoading(false);
+    window._lastFullPrompt = fullPrompt;
+    showPostGenUI();
+  }).catch(() => {
+    if (thisGen !== generationId) return;
+    setGenLoading(false);
+    const errOverlay = document.getElementById('genErrorOverlay');
+    if (errOverlay) errOverlay.style.display = 'flex';
+  });
+}
+
 /* ── Post-generation Refine / Fresh (all types) ── */
 window._postGenMode    = null;
 window._lastFullPrompt = null;
@@ -2543,7 +2680,7 @@ function showRefineStep() {
     </div>
   `).join('');
 
-  goStep(2);
+  goStep(3);
   fetchSpecCard();
 }
 
@@ -2670,8 +2807,10 @@ window.jwlSpecifications = {
 const _SPEC_SIZES = [0.5, 1, 1.5, 2];
 
 function setSpecWeight(preset, grams) {
-  window.jwlSpecifications.metalGrams = grams;
+  window.jwlSpecifications.metalGrams  = grams;
   window.jwlSpecifications.weightLabel = preset;
+  userSelections.weightLabel = preset;
+  userSelections.metalGrams  = grams;
   document.getElementById('specWeightInput').value = '';
   document.querySelectorAll('.spec-weight-btn').forEach(b =>
     b.classList.toggle('active', b.dataset.preset === preset));
@@ -2682,6 +2821,8 @@ function setSpecWeightExact(val) {
   const g = parseFloat(val);
   if (g > 0) {
     window.jwlSpecifications.metalGrams = g;
+    userSelections.metalGrams  = g;
+    userSelections.weightLabel = 'custom';
     document.querySelectorAll('.spec-weight-btn').forEach(b => b.classList.remove('active'));
     updateSpecCostEstimate();
   }
@@ -2707,6 +2848,8 @@ function _applySpecCount(n) {
   while (s.stones.length < n) s.stones.push(1.0);
   s.stones = s.stones.slice(0, n);
   s.stoneCount = n;
+  userSelections.stoneCount = n;
+  userSelections.stones     = s.stones.slice();
   _recalcTotalCarats();
   _renderStoneRows();
   updateSpecCostEstimate();
@@ -2714,6 +2857,8 @@ function _applySpecCount(n) {
 
 function setStoneSize(idx, ct) {
   window.jwlSpecifications.stones[idx] = ct;
+  if (!userSelections.stones) userSelections.stones = window.jwlSpecifications.stones.slice();
+  userSelections.stones[idx] = ct;
   const customInput = document.getElementById('specStoneCustom' + idx);
   if (customInput) { customInput.style.display = 'none'; customInput.value = ''; }
   document.querySelectorAll('.spec-stone-size-btn[data-idx="' + idx + '"]').forEach(b =>
@@ -2738,6 +2883,8 @@ function setStoneCustom(idx, val) {
   const ct = parseFloat(val);
   if (ct > 0 && ct <= 20) {
     window.jwlSpecifications.stones[idx] = +ct.toFixed(2);
+    if (!userSelections.stones) userSelections.stones = window.jwlSpecifications.stones.slice();
+    userSelections.stones[idx] = +ct.toFixed(2);
     _recalcTotalCarats();
     updateSpecCostEstimate();
   }
