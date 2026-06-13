@@ -5108,52 +5108,86 @@ async function getImageBase64(url) {
   }
 }
 
-/* ── TripoSR submission (synchronous — no polling needed) ── */
+/* ── TripoSR: join queue then poll status from frontend ── */
 async function submitTripoSR(base64DataURL) {
-  console.log('[Ring3D] submitting image to TripoSR endpoint:', RING_3D_CONFIG.TRIPOSR_ENDPOINT);
-  const res = await fetch(RING_3D_CONFIG.TRIPOSR_ENDPOINT, {
+  const BASE = RING_3D_CONFIG.TRIPOSR_ENDPOINT;
+
+  // STEP 1: join queue
+  console.log('[Ring3D] joining TripoSR queue:', BASE + '/join');
+  const joinRes = await fetch(BASE + '/join', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ image_url: base64DataURL }),
   });
-  console.log('[Ring3D] TripoSR response status:', res.status);
-  if (!res.ok) {
-    const body = await res.text().catch(() => '(unreadable)');
-    console.error('[Ring3D] TripoSR failed | status=' + res.status + ' | body:', body);
-    throw new Error('TripoSR failed: ' + res.status);
+  if (!joinRes.ok) {
+    const body = await joinRes.text().catch(() => '(unreadable)');
+    console.error('[Ring3D] /join failed | status=' + joinRes.status + ' | body:', body);
+    throw new Error('TripoSR /join failed: ' + joinRes.status);
   }
-  const response = await res.json();
-  console.log('[Ring3D] TripoSR raw response:', response);
+  const joinData = await joinRes.json();
+  const session_hash = joinData.session_hash;
+  console.log('[Ring3D] TripoSR queue joined, session:', session_hash);
+  if (!session_hash) throw new Error('No session_hash in /join response');
 
-  // Try known response shapes in priority order; GLB may be a URL or base64 data URI
-  const candidates = [
-    response.data && response.data[1],
-    response.data && response.data[0],
-    response.glb_url,
-    response.model_mesh && response.model_mesh.url,
-    response.model && response.model.url,
-  ].filter(Boolean);
+  // STEP 2: poll status
+  const MAX_ATTEMPTS = 60;
+  const POLL_MS      = 4000;
+  const statusUrl    = BASE + '/status?session_hash=' + encodeURIComponent(session_hash);
 
-  for (const candidate of candidates) {
-    if (typeof candidate !== 'string') continue;
-    if (candidate.startsWith('http')) {
-      console.log('[Ring3D] GLB URL from response:', candidate);
-      return candidate;
+  for (let i = 0; i < MAX_ATTEMPTS; i++) {
+    await new Promise(r => setTimeout(r, POLL_MS));
+    const statusRes = await fetch(statusUrl).catch(e => {
+      console.warn('[Ring3D] poll fetch error (attempt ' + (i + 1) + '):', e.message);
+      return null;
+    });
+    if (!statusRes || !statusRes.ok) { console.warn('[Ring3D] poll non-OK (attempt ' + (i + 1) + ')'); continue; }
+
+    const text  = await statusRes.text();
+    const lines = text.split('\n').filter(l => l.startsWith('data:'));
+
+    for (const line of lines) {
+      let data;
+      try { data = JSON.parse(line.replace('data:', '').trim()); } catch (_) { continue; }
+      console.log('[Ring3D] TripoSR status:', data.msg);
+
+      if (data.msg === 'queue_full' || data.msg === 'error') {
+        throw new Error('TripoSR status: ' + data.msg);
+      }
+
+      if (data.msg === 'process_completed') {
+        const glbData = data.output && data.output.data;
+        console.log('[Ring3D] TripoSR output data:', glbData);
+        if (!glbData) throw new Error('process_completed but no output.data');
+
+        // Extract GLB from output array — try each index
+        for (const item of (Array.isArray(glbData) ? glbData : [glbData])) {
+          if (typeof item !== 'string') continue;
+          if (item.startsWith('http')) {
+            console.log('[Ring3D] GLB URL from output:', item);
+            return item;
+          }
+          // base64 string — decode to blob URL
+          try {
+            const byteChars = atob(item);
+            const byteArr   = new Uint8Array(byteChars.length);
+            for (let j = 0; j < byteChars.length; j++) byteArr[j] = byteChars.charCodeAt(j);
+            const blob   = new Blob([byteArr], { type: 'model/gltf-binary' });
+            const glbUrl = URL.createObjectURL(blob);
+            console.log('[Ring3D] GLB decoded from base64 to blob URL');
+            return glbUrl;
+          } catch (_) {}
+        }
+
+        // Last resort: scan serialised JSON for any .glb URL
+        const m = JSON.stringify(glbData).match(/"(https?:[^"]+\.glb[^"]*)"/);
+        if (m) { console.log('[Ring3D] GLB URL found via JSON scan:', m[1]); return m[1]; }
+
+        throw new Error('process_completed but no GLB found in output.data');
+      }
     }
-    // Treat non-http string as base64 data — fetch it as a blob URL
-    try {
-      const blob = await fetch(candidate).then(r => r.blob());
-      const url = URL.createObjectURL(blob);
-      console.log('[Ring3D] GLB converted from base64 to blob URL');
-      return url;
-    } catch (_) {}
   }
 
-  // Last resort: scan serialised JSON for any .glb URL
-  const m = JSON.stringify(response).match(/"(https?:[^"]+\.glb[^"]*)"/);
-  if (m) { console.log('[Ring3D] GLB URL found via JSON scan:', m[1]); return m[1]; }
-
-  throw new Error('No GLB URL found in TripoSR response');
+  throw new Error('TripoSR polling timed out after ' + MAX_ATTEMPTS + ' attempts');
 }
 
 /* ── Three.js scene initialisation ── */
