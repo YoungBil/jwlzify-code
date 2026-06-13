@@ -1902,9 +1902,16 @@ function buildPrompt(type, material, gem, style, desc) {
 
   if (type === 'ring') {
     const userDesc = desc.trim();
-    return [userDesc, mDisp, gemPart].filter(Boolean).join(', ')
-      + (userDesc || mDisp || gemPart ? '. ' : '')
-      + "Front view ring photography. The camera is positioned at exactly the same height as the center of the ring, pointing straight at the face of the ring. The ring is standing upright. The circular band is a perfect symmetrical oval at the bottom of the frame. The gemstone is dead center, pointing straight at the lens. This is NOT a hero shot. NOT a 3/4 angle. NOT shot from above or below. NOT tilted. The view is identical to looking directly through a telescope or tunnel straight at the ring face. Flat background. No hands. No fingers. No props. No fabric. Perfectly sharp focus on the stone and prongs. Soft even studio lighting. White or very light grey background. Luxury jewelry product photography, e-commerce style. No humans. No person. No body parts. No neck. No chest. No hands. No fingers. No ears. No skin. No model. Product-only photography. The jewelry piece is the sole subject of the image.";
+    const WEIGHT_LABELS = { light: 'Light (2-3g)', medium: 'Medium (4-6g)', heavy: 'Heavy (7-10g)' };
+    const ringWeight = weightLabel === 'custom'
+      ? (specs.metalGrams || 4.5) + 'g exact'
+      : (WEIGHT_LABELS[weightLabel] || 'Medium (4-6g)');
+    const stoneSizes = stones.map(s => s + 'ct');
+    const stonePart = stoneCount === 1
+      ? stoneSizes[0] + ' ' + gDisp + ' center stone'
+      : stoneCount + ' stones, sizes: ' + stoneSizes.join(', ') + '. Center stone: ' + gDisp;
+    return [userDesc, mDisp + ' ring weighing ' + ringWeight, stonePart].filter(Boolean).join('. ')
+      + '. Front view ring photography. The camera is positioned at exactly the same height as the center of the ring, pointing straight at the face of the ring. The ring is standing upright. The circular band is a perfect symmetrical oval at the bottom of the frame. The gemstone is dead center, pointing straight at the lens. This is NOT a hero shot. NOT a 3/4 angle. NOT shot from above or below. NOT tilted. The view is identical to looking directly through a telescope or tunnel straight at the ring face. Flat background. No hands. No fingers. No props. No fabric. Perfectly sharp focus on the stone and prongs. Soft even studio lighting. White or very light grey background. Luxury jewelry product photography, e-commerce style. No humans. No person. No body parts. No neck. No chest. No hands. No fingers. No ears. No skin. No model. Product-only photography. The jewelry piece is the sole subject of the image.';
   }
 
   const typeMap = {};
@@ -2293,6 +2300,16 @@ async function startGeneration(isTweak) {
   window.jwlSpecifications.stoneCount  = _domSpecs.stoneCount;
   window.jwlSpecifications.stones      = _domSpecs.stones;
   window.jwlSpecifications.totalCarats = _domSpecs.totalCarats;
+  console.log('[JWLZIFY] specs collected:', {
+    material:   LAB.material,
+    gem:        LAB.gem,
+    style:      LAB.style,
+    weightLabel: _domSpecs.weightLabel,
+    metalGrams:  _domSpecs.metalGrams,
+    stoneCount:  _domSpecs.stoneCount,
+    stoneSizes:  _domSpecs.stones.map(s => s + 'ct'),
+    totalCarats: _domSpecs.totalCarats,
+  });
 
   const fullPrompt = buildPrompt(resolvedType, LAB.material, LAB.gem, LAB.style, desc);
   const isPendantGen = (resolvedType === 'pendant' || resolvedType === 'necklace');
@@ -2317,6 +2334,7 @@ async function startGeneration(isTweak) {
   }
 
   // Queue the fetch — Gemini primary, HuggingFace fallback, queue respects GEN_MAX_CONCURRENT
+  console.log('[JWLZIFY] generation prompt:', fullPrompt);
   _enqueueGen(() => _generateImage(fullPrompt, negativePrompt)).then((blobUrl) => {
     console.log('[JWLZIFY] setting image src to:', blobUrl?.slice(0, 50));
     if (!blobUrl) {
