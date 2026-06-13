@@ -1335,7 +1335,7 @@ const CLAUDE_API_KEY = '';
 
 /* ── Ring 3D Try-On configuration ── */
 const RING_3D_CONFIG = {
-  HUNYUAN_ENDPOINT: 'https://fal-ring-3d.sarkd333.workers.dev/fal-ai/hunyuan3d-v3',
+  HUNYUAN_ENDPOINT: 'https://fal-ring-3d.sarkd333.workers.dev/fal-ai/hunyuan3d-v3/image-to-3d',
   POLL_INTERVAL_MS: 3000,
   MAX_POLL_ATTEMPTS: 40,
   CANVAS_WIDTH: 600,
@@ -4927,7 +4927,7 @@ async function submitHunyuan(base64DataURL) {
   const res = await fetch(RING_3D_CONFIG.HUNYUAN_ENDPOINT, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ image_url: base64DataURL, num_inference_steps: 30, guidance_scale: 6.0, output_format: 'glb', remove_background: true }),
+    body: JSON.stringify({ input_image_url: base64DataURL, num_inference_steps: 30, guidance_scale: 6.0, enable_pbr: true }),
   });
   console.log('[Ring3D] submission response status:', res.status);
   if (!res.ok) {
