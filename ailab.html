@@ -1462,7 +1462,7 @@ async function _fetchWithRetry(makeUrl) {
   throw lastErr;
 }
 
-async function _generateImage(prompt) {
+async function _generateImage(prompt, negativePrompt) {
   // PRIMARY: Gemini via Cloudflare Worker
   try {
     console.log('[JWLZIFY] calling Gemini worker...');
@@ -1471,7 +1471,7 @@ async function _generateImage(prompt) {
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: prompt })
+        body: JSON.stringify({ prompt: prompt + (negativePrompt ? ' Avoid: ' + negativePrompt : ''), negativePrompt: negativePrompt || '' })
       }
     );
 
@@ -1521,7 +1521,7 @@ async function _generateImage(prompt) {
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ inputs: prompt })
+        body: JSON.stringify({ inputs: prompt, negative_prompt: negativePrompt || '' })
       }
     );
     console.log('[JWLZIFY] HF worker response | method=huggingface | status=' + hfRes.status);
@@ -1873,8 +1873,8 @@ function buildPrompt(type, material, gem, style, desc) {
     const chainLenVisible = ['cable','box','rope','figaro'].includes(selectedChainStyle);
     const chainLenStr = (chainLenVisible && selectedChainLength) ? `Chain length: ${selectedChainLength}.` : '';
     const specStr = [chainStyleStr, chainLenStr].filter(Boolean).join(' ');
-    return [userDesc, chainSpecific, mDisp].filter(Boolean).join(', ')
-      + (userDesc || chainSpecific || mDisp ? '. ' : '')
+    return [userDesc, chainSpecific, wPart.trim(), mDisp, gemPart].filter(Boolean).join(', ')
+      + (userDesc || chainSpecific || wPart.trim() || mDisp || gemPart ? '. ' : '')
       + (specStr ? specStr + ' ' : '')
       + "Product photography of a single necklace chain. Knolling style. Overhead flat lay. Shot from directly above at exactly 90 degrees. Chain laid flat on a pure white surface, arranged in a complete U-shape or oval loop, both ends meeting symmetrically at the top. No perspective angle. No 3D depth. No close-up macro shot. No partial chain. No dangling. No fabric props. No pendant. No charm. No gemstone drop. The full chain is visible and centered. Ultra-sharp focus across the entire chain. Studio lighting, white background, luxury e-commerce product photography. No humans. No person. No body parts. No neck. No chest. No hands. No fingers. No ears. No skin. No model. Product-only photography. The jewelry piece is the sole subject of the image.";
   }
