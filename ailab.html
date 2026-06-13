@@ -1740,7 +1740,7 @@ function updateWeightHeading() {
 function updateChainLengthVisibility() {
   const wrap = document.getElementById('specChainLengthWrap');
   if (!wrap) return;
-  const show = LAB.type === 'necklace' && ['cable','box','rope'].includes(selectedChainStyle);
+  const show = LAB.type === 'necklace' && ['cable','box','rope','figaro'].includes(selectedChainStyle);
   wrap.style.display = show ? 'block' : 'none';
 }
 
@@ -1872,7 +1872,7 @@ function buildPrompt(type, material, gem, style, desc) {
     const chainSpecific = selectedChainPrompt || '';
     const userDesc = desc.trim();
     const chainStyleStr = selectedChainLabel ? `Chain style: ${selectedChainLabel}.` : '';
-    const chainLenVisible = ['cable','box','rope'].includes(selectedChainStyle);
+    const chainLenVisible = ['cable','box','rope','figaro'].includes(selectedChainStyle);
     const chainLenStr = (chainLenVisible && selectedChainLength) ? `Chain length: ${selectedChainLength}.` : '';
     const specStr = [chainStyleStr, chainLenStr].filter(Boolean).join(' ');
     return [userDesc, chainSpecific, mDisp].filter(Boolean).join(', ')
@@ -4765,6 +4765,15 @@ async function loadNecklaceForTryOn(imageUrl) {
                background:#fff;cursor:pointer;text-align:left;transition:all 0.15s;">
         <div style="font-size:14px;font-weight:500;color:#1a1a1a;">Rope Chain</div>
         <div style="font-size:12px;color:#888;margin-top:2px;">Twisted spiral links</div>
+      </button>
+
+      <button class="chain-style-btn" data-style="figaro"
+        data-prompt="figaro chain necklace, alternating short and long links, classic Italian chain, no pendant"
+        data-label="Figaro Chain"
+        style="padding:14px 18px;border:1.5px solid #e0e0e0;border-radius:10px;
+               background:#fff;cursor:pointer;text-align:left;transition:all 0.15s;">
+        <div style="font-size:14px;font-weight:500;color:#1a1a1a;">Figaro Chain</div>
+        <div style="font-size:12px;color:#888;margin-top:2px;">Alternating short and long links</div>
       </button>
 
       <button class="chain-style-btn" data-style="statement"
