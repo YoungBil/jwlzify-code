@@ -1382,7 +1382,6 @@ const CLAUDE_API_KEY = '';
 
 /* ── Ring 3D Try-On configuration ── */
 const RING_3D_CONFIG = {
-  TRIPOSR_ENDPOINT: 'https://triposr-ring-3d.sarkd333.workers.dev',
   CANVAS_WIDTH: 600,
   CANVAS_HEIGHT: 600,
   ENV_MAP_INTENSITY: 1.6,
@@ -1780,11 +1779,7 @@ function updateProgress(n) {
 
 /* ── Step navigation ─────────────────────────── */
 async function goStep(n) {
-  // Ring 3D try-on intercept — opens 3D modal instead of camera view
-  if (n === 4 && LAB.type === 'ring' && typeof ring3DFallbackMode !== 'undefined' && !ring3DFallbackMode) {
-    startRing3DTryOn();
-    return;
-  }
+
   // Reset chain style on new design / start over
   if (n === 1) {
     selectedChainStyle = null; selectedChainPrompt = ''; selectedChainLabel = '';
@@ -5136,14 +5131,8 @@ async function loadNecklaceForTryOn(imageUrl) {
 <script>
 'use strict';
 
-/* ── Fallback flag — set true to let goStep bypass the 3D intercept ── */
-let ring3DFallbackMode = false;
-
 /* ── Three.js library loading gate ── */
 let ring3DLibsReady = false;
-
-/* ── Log endpoint on init so we can verify the value in console ── */
-console.log('[Ring3D] TRIPOSR_ENDPOINT:', RING_3D_CONFIG.TRIPOSR_ENDPOINT);
 
 /* ── loadScript utility ── */
 function loadScript(src) {
@@ -5237,88 +5226,6 @@ async function getImageBase64(url) {
     c.getContext('2d').drawImage(img, 0, 0);
     return c.toDataURL('image/png');
   }
-}
-
-/* ── TripoSR: join queue then poll status from frontend ── */
-async function submitTripoSR(base64DataURL) {
-  const BASE = RING_3D_CONFIG.TRIPOSR_ENDPOINT;
-
-  // STEP 1: join queue
-  console.log('[Ring3D] joining TripoSR queue:', BASE + '/join');
-  const joinRes = await fetch(BASE + '/join', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ image_url: base64DataURL }),
-  });
-  if (!joinRes.ok) {
-    const body = await joinRes.text().catch(() => '(unreadable)');
-    console.error('[Ring3D] /join failed | status=' + joinRes.status + ' | body:', body);
-    throw new Error('TripoSR /join failed: ' + joinRes.status);
-  }
-  const joinData = await joinRes.json();
-  const session_hash = joinData.session_hash;
-  console.log('[Ring3D] TripoSR queue joined, session:', session_hash);
-  if (!session_hash) throw new Error('No session_hash in /join response');
-
-  // STEP 2: poll status
-  const MAX_ATTEMPTS = 60;
-  const POLL_MS      = 4000;
-  const statusUrl    = BASE + '/status?session_hash=' + encodeURIComponent(session_hash);
-
-  for (let i = 0; i < MAX_ATTEMPTS; i++) {
-    await new Promise(r => setTimeout(r, POLL_MS));
-    const statusRes = await fetch(statusUrl).catch(e => {
-      console.warn('[Ring3D] poll fetch error (attempt ' + (i + 1) + '):', e.message);
-      return null;
-    });
-    if (!statusRes || !statusRes.ok) { console.warn('[Ring3D] poll non-OK (attempt ' + (i + 1) + ')'); continue; }
-
-    const text  = await statusRes.text();
-    const lines = text.split('\n').filter(l => l.startsWith('data:'));
-
-    for (const line of lines) {
-      let data;
-      try { data = JSON.parse(line.replace('data:', '').trim()); } catch (_) { continue; }
-      console.log('[Ring3D] TripoSR status:', data.msg);
-
-      if (data.msg === 'queue_full' || data.msg === 'error') {
-        throw new Error('TripoSR status: ' + data.msg);
-      }
-
-      if (data.msg === 'process_completed') {
-        const glbData = data.output && data.output.data;
-        console.log('[Ring3D] TripoSR output data:', glbData);
-        if (!glbData) throw new Error('process_completed but no output.data');
-
-        // Extract GLB from output array — try each index
-        for (const item of (Array.isArray(glbData) ? glbData : [glbData])) {
-          if (typeof item !== 'string') continue;
-          if (item.startsWith('http')) {
-            console.log('[Ring3D] GLB URL from output:', item);
-            return item;
-          }
-          // base64 string — decode to blob URL
-          try {
-            const byteChars = atob(item);
-            const byteArr   = new Uint8Array(byteChars.length);
-            for (let j = 0; j < byteChars.length; j++) byteArr[j] = byteChars.charCodeAt(j);
-            const blob   = new Blob([byteArr], { type: 'model/gltf-binary' });
-            const glbUrl = URL.createObjectURL(blob);
-            console.log('[Ring3D] GLB decoded from base64 to blob URL');
-            return glbUrl;
-          } catch (_) {}
-        }
-
-        // Last resort: scan serialised JSON for any .glb URL
-        const m = JSON.stringify(glbData).match(/"(https?:[^"]+\.glb[^"]*)"/);
-        if (m) { console.log('[Ring3D] GLB URL found via JSON scan:', m[1]); return m[1]; }
-
-        throw new Error('process_completed but no GLB found in output.data');
-      }
-    }
-  }
-
-  throw new Error('TripoSR polling timed out after ' + MAX_ATTEMPTS + ' attempts');
 }
 
 /* ── Three.js scene initialisation ── */
@@ -5475,35 +5382,13 @@ async function startRing3DTryOn() {
   try {
     if (!await loadRing3DLibs()) throw new Error('3D libraries unavailable');
 
-    const imgEl = document.querySelector('img[alt="Your AI jewelry design"]');
-    if (!imgEl || !imgEl.src) throw new Error('No source image found');
-
-    const base64 = await getImageBase64(LAB.imageUrl || imgEl.src);
-    console.log('[Ring3D] image converted to base64 | length:', base64.length);
-    const glbUrl = await submitTripoSR(base64);
-    console.log('[Ring3D] GLB URL:', glbUrl);
-    if (!glbUrl) throw new Error('No GLB URL from TripoSR');
-
-    stopRing3DTextCycle();
-    await initRing3DScene(glbUrl);
-
-    document.getElementById('ring3DLoading').style.display = 'none';
-    document.getElementById('ring3DCanvasWrap').style.display = 'block';
-    document.getElementById('ring3DFooter').style.display = 'flex';
-
-    setTimeout(() => {
-      const h = document.getElementById('ringCanvasHint');
-      if (h) h.classList.add('fade-out');
-    }, 5000);
+    throw new Error('3D pipeline disabled');
 
   } catch (e) {
     console.error('[Ring3D]', e.message || e);
     stopRing3DTextCycle();
     closeRing3DModal();
-    // Silent fallback: open the existing 2D camera try-on
-    ring3DFallbackMode = true;
     goStep(4);
-    ring3DFallbackMode = false;
   }
 }
 
