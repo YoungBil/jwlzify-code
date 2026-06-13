@@ -2782,6 +2782,14 @@ function showRefineStep() {
 
   goStep(3);
   fetchSpecCard();
+
+  // Preload remove.bg for ring try-on while user reads refine step
+  if (LAB.type === 'ring' && LAB.imageUrl && !bgRemovalCache.has(LAB.imageUrl)) {
+    removeBgWithApi(LAB.imageUrl).then(cleanUrl => {
+      bgRemovalCache.set(LAB.imageUrl, cleanUrl);
+      console.log('[Ring] preloaded remove.bg result at refine step');
+    }).catch(() => {});
+  }
 }
 
 function applySuggestion(el) {
@@ -3606,6 +3614,7 @@ function teardownTryOn() {
   _ringTryonImg      = null;
   _ringImgIsOriginal = false;
   _ringFirstDraw     = false;
+  _ringWebcamDrawn   = false;
   latestCutoutImage  = null;
   _ringIsDragging    = false;
   ringRotation       = 0;
@@ -4271,16 +4280,17 @@ window._loadPendantForTryOn = loadPendantForTryOn;
 const _RING_FALLBACK_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="38" fill="none" stroke="#C9A84C" stroke-width="18" stroke-linecap="round"/></svg>`;
 const _RING_FALLBACK_URL = 'data:image/svg+xml,' + encodeURIComponent(_RING_FALLBACK_SVG);
 
-let _ringRafId         = null;
-let _bgRemovalInterval = null;
-let latestCutoutImage  = null;
-let _ringTryonImg      = null;
-let _ringImgIsOriginal = false;
-let _ringFirstDraw     = false;
+let _ringRafId          = null;
+let _bgRemovalInterval  = null;
+let latestCutoutImage   = null;
+let _ringTryonImg       = null;
+let _ringImgIsOriginal  = false;
+let _ringFirstDraw      = false;
+let _ringWebcamDrawn    = false;
 let ringX = 0, ringY = 0, ringSize = 120, ringRotation = 0;
-let _ringIsDragging    = false;
-let _ringDragOffX      = 0;
-let _ringDragOffY      = 0;
+let _ringIsDragging     = false;
+let _ringDragOffX       = 0;
+let _ringDragOffY       = 0;
 
 function _ringImgH() {
   if (!_ringTryonImg || !_ringTryonImg.naturalWidth) return ringSize;
@@ -4327,6 +4337,7 @@ function _ringRenderLoop() {
 
   // Layer 1: mirrored video
   if (video && video.readyState >= 2) {
+    if (!_ringWebcamDrawn) { console.timeEnd('[Ring] webcam ready'); _ringWebcamDrawn = true; }
     ctx.save();
     ctx.translate(W, 0);
     ctx.scale(-1, 1);
@@ -4339,6 +4350,7 @@ function _ringRenderLoop() {
     const rH = _ringImgH();
     if (!_ringFirstDraw) {
       console.log('[Ring] drawing ring on canvas at:', ringX + ',' + ringY, 'size:', ringSize + 'px', 'dimensions:', _ringTryonImg.naturalWidth + 'x' + _ringTryonImg.naturalHeight);
+      console.timeEnd('[Ring] ring drawn');
       _ringFirstDraw = true;
     }
     ctx.save();
@@ -4410,8 +4422,10 @@ function _ringDragEnd() {
 }
 
 
-async function loadRingForTryOn(imageUrl) {
+function loadRingForTryOn(imageUrl) {
   console.log('[Ring] try-on started, image source:', imageUrl);
+  console.time('[Ring] webcam ready');
+  console.time('[Ring] ring drawn');
 
   // Hide other try-on overlays
   ['tryon-necklace', 'tryon-pendant', 'tryon-resize',
@@ -4449,18 +4463,19 @@ async function loadRingForTryOn(imageUrl) {
     setTimeout(() => { if (hintEl) hintEl.style.opacity = '0'; }, 5000);
   }
 
-  // Initial ring state — center, 120px, reset flags
-  ringX             = W / 2;
-  ringY             = H * 0.67;
-  ringSize          = 120;
-  ringRotation      = 0;
-  _ringIsDragging   = false;
-  _ringFirstDraw    = false;
-  latestCutoutImage = null;
+  // Reset all state
+  ringX              = W / 2;
+  ringY              = H * 0.67;
+  ringSize           = 120;
+  ringRotation       = 0;
+  _ringIsDragging    = false;
+  _ringFirstDraw     = false;
+  _ringWebcamDrawn   = false;
+  latestCutoutImage  = null;
   _ringTryonImg      = null;
   _ringImgIsOriginal = false;
 
-  // Attach events (drag only — size via +/− buttons)
+  // Attach events
   ringCanvas.addEventListener('mousedown',  _ringDragStart);
   ringCanvas.addEventListener('touchstart', _ringDragStart, { passive: false });
   window.addEventListener('mousemove',  _ringDragMove);
@@ -4468,70 +4483,68 @@ async function loadRingForTryOn(imageUrl) {
   window.addEventListener('mouseup',    _ringDragEnd);
   window.addEventListener('touchend',   _ringDragEnd);
 
-  // Start render loop immediately — webcam feed shows before ring loads
+  // Start render loop immediately — webcam feed shows with no blocking
   if (_ringRafId) cancelAnimationFrame(_ringRafId);
   _ringRafId = requestAnimationFrame(_ringRenderLoop);
 
-  // Start webcam hand cutout interval
+  // Start webcam hand-cutout interval (hide loading overlay first)
   const loadingEl = document.getElementById('ring-tryon-loading');
-  if (loadingEl) loadingEl.style.display = 'flex';
+  if (loadingEl) loadingEl.style.display = 'none';
   if (_bgRemovalInterval) clearInterval(_bgRemovalInterval);
-  setTimeout(() => {
-    if (loadingEl) loadingEl.style.display = 'none';
-    captureAndRemoveBg();
-    _bgRemovalInterval = setInterval(captureAndRemoveBg, 2000);
-  }, 1200);
+  captureAndRemoveBg();
+  _bgRemovalInterval = setInterval(captureAndRemoveBg, 2000);
 
-  // ── Load ring image (always draws — remove.bg optional) ──────────
+  // ── Ring image loading: original first, transparent swap when ready ──
   const _srcToUse = imageUrl || _RING_FALLBACK_URL;
-  let finalSrc   = _srcToUse;
-  let isOriginal = true;
 
-  try {
-    const cleanUrl = await removeBgWithApi(_srcToUse);
-    console.log('[Ring] remove.bg call status: 200 OK');
-    finalSrc   = cleanUrl;
-    isOriginal = false;
-  } catch (e) {
-    console.log('[Ring] remove.bg call status: failed —', e.message, '— using original at 0.85 opacity');
-    finalSrc   = _srcToUse;
-    isOriginal = true;
+  // Helper: create an Image from a src, no crossOrigin for blob URLs
+  function _makeImg(src) {
+    const img = new Image();
+    if (!src.startsWith('blob:') && !src.startsWith('data:')) img.crossOrigin = 'anonymous';
+    img.src = src;
+    return img;
   }
 
-  // Guard: user may have navigated away while we awaited
-  if (!isTryOnActive) return;
-
-  try {
-    const ringImg = new Image();
-    // Only set crossOrigin for non-blob URLs (blob URLs are always same-origin)
-    if (!finalSrc.startsWith('blob:')) ringImg.crossOrigin = 'anonymous';
-    ringImg.src = finalSrc;
-    await new Promise((res, rej) => { ringImg.onload = res; ringImg.onerror = rej; });
-    console.log('[Ring] ring image loaded, dimensions:', ringImg.naturalWidth + 'x' + ringImg.naturalHeight);
-    ringImg.dataset.src    = imageUrl;
-    _ringImgIsOriginal     = isOriginal;
-    _ringTryonImg          = ringImg;
-  } catch (loadErr) {
-    console.warn('[Ring] ring image load failed, loading original as last resort');
-    try {
-      const fallImg = new Image();
-      // Don't set crossOrigin for blob: URLs
-      if (!_srcToUse.startsWith('blob:')) fallImg.crossOrigin = 'anonymous';
-      fallImg.src = _srcToUse;
-      await new Promise((res, rej) => { fallImg.onload = res; fallImg.onerror = rej; });
-      console.log('[Ring] ring image loaded (last-resort original), dimensions:', fallImg.naturalWidth + 'x' + fallImg.naturalHeight);
-      fallImg.dataset.src = imageUrl;
-      _ringImgIsOriginal  = true;
-      _ringTryonImg       = fallImg;
-    } catch (finalErr) {
-      console.warn('[Ring] all image loads failed, using SVG placeholder');
-      const svg = new Image();
-      svg.src = _RING_FALLBACK_URL;
-      await new Promise(r => { svg.onload = r; svg.onerror = r; });
-      svg.dataset.src    = imageUrl;
-      _ringImgIsOriginal = false;
-      _ringTryonImg      = svg;
+  // PHASE 1: load original immediately so ring draws without waiting for remove.bg
+  const origImg = _makeImg(_srcToUse);
+  origImg.dataset.src = imageUrl;
+  origImg.onload = () => {
+    // Only assign if we haven't already got a transparent version
+    if (_ringImgIsOriginal !== false || _ringTryonImg === null) {
+      _ringTryonImg      = origImg;
+      _ringImgIsOriginal = true;
+      console.log('[Ring] ring image loaded (original), dimensions:', origImg.naturalWidth + 'x' + origImg.naturalHeight);
     }
+  };
+  origImg.onerror = () => console.warn('[Ring] original image failed to load');
+
+  // PHASE 2: get transparent version (cache → API → keep original)
+  const cachedUrl = bgRemovalCache.get(_srcToUse);
+  if (cachedUrl) {
+    console.log('[Ring] remove.bg result loaded from cache');
+    const cleanImg = _makeImg(cachedUrl);
+    cleanImg.dataset.src = imageUrl;
+    cleanImg.onload = () => {
+      _ringTryonImg      = cleanImg;
+      _ringImgIsOriginal = false;
+      console.log('[Ring] transparent ring swapped in (from cache)');
+    };
+  } else {
+    removeBgWithApi(_srcToUse).then(cleanUrl => {
+      bgRemovalCache.set(_srcToUse, cleanUrl);
+      console.log('[Ring] remove.bg call status: 200 OK');
+      if (!isTryOnActive) return;
+      const cleanImg = _makeImg(cleanUrl);
+      cleanImg.dataset.src = imageUrl;
+      cleanImg.onload = () => {
+        if (!isTryOnActive) return;
+        _ringTryonImg      = cleanImg;
+        _ringImgIsOriginal = false;
+        console.log('[Ring] transparent ring swapped in');
+      };
+    }).catch(e => {
+      console.log('[Ring] remove.bg call status: failed —', e.message, '— keeping original at 0.85');
+    });
   }
 }
 
