@@ -2148,6 +2148,67 @@ function resolveJewelryType(dropdownValue, descriptionText) {
   return dropdownValue;
 }
 
+/* ── Read all spec values fresh from the DOM at generate-click time ── */
+function _readSpecsFromDOM() {
+  const PRESET_GRAMS = { light: 2.5, medium: 4.5, heavy: 8.5 };
+
+  // Metal weight — active preset button or custom input field
+  const weightInput    = document.getElementById('specWeightInput');
+  const weightCustom   = weightInput ? parseFloat(weightInput.value) : NaN;
+  const weightBtn      = document.querySelector('.spec-weight-btn.active');
+  let metalGrams, weightLabel, weightUserSet;
+  if (!isNaN(weightCustom) && weightCustom > 0) {
+    metalGrams    = weightCustom;
+    weightLabel   = 'custom';
+    weightUserSet = true;
+  } else if (weightBtn) {
+    const preset  = weightBtn.dataset.preset || 'medium';
+    metalGrams    = PRESET_GRAMS[preset] || 4.5;
+    weightLabel   = preset;
+    weightUserSet = preset !== 'medium'; // 'medium' is the untouched page-load default
+  } else {
+    metalGrams    = 4.5;
+    weightLabel   = 'medium';
+    weightUserSet = false;
+  }
+
+  // Stone count — active count button or custom count input
+  const countBtn         = document.querySelector('.spec-count-btn.active');
+  const countCustomInput = document.getElementById('specCountCustomInput');
+  let stoneCount, countUserSet;
+  if (countBtn && countBtn.dataset.count === 'custom') {
+    stoneCount    = Math.max(1, Math.min(20, parseInt(countCustomInput?.value) || 1));
+    countUserSet  = true;
+  } else if (countBtn) {
+    stoneCount    = parseInt(countBtn.dataset.count) || 1;
+    countUserSet  = countBtn.dataset.count !== '1'; // '1' is the untouched page-load default
+  } else {
+    stoneCount    = 1;
+    countUserSet  = false;
+  }
+
+  // Stone sizes — per-stone from active size button or visible custom input
+  const stones = [];
+  for (let i = 0; i < stoneCount; i++) {
+    const customEl      = document.getElementById('specStoneCustom' + i);
+    const customVisible = customEl && customEl.style.display !== 'none' && customEl.value;
+    const customCt      = customVisible ? parseFloat(customEl.value) : NaN;
+    const sizeBtn       = document.querySelector(
+      `.spec-stone-size-btn[data-idx="${i}"].active:not([data-ct="custom"])`
+    );
+    if (!isNaN(customCt) && customCt > 0) {
+      stones.push(+customCt.toFixed(2));
+    } else if (sizeBtn) {
+      stones.push(parseFloat(sizeBtn.dataset.ct) || 1.0);
+    } else {
+      stones.push(1.0); // page-load default — not explicitly set
+    }
+  }
+  const totalCarats = +stones.reduce((a, b) => a + b, 0).toFixed(2);
+
+  return { metalGrams, weightLabel, weightUserSet, stoneCount, countUserSet, stones, totalCarats };
+}
+
 /* ── Image generation ────────────────────────── */
 async function startGeneration(isTweak) {
   // Queue guard — prevent firing while a generation is already running
@@ -2218,6 +2279,21 @@ async function startGeneration(isTweak) {
     .join(', ');
   const negativePrompt = `${negJewelryTerms}, brooch, anklet, person, human, model, body, face, hands, text, watermark, logo, blurry, low quality, distorted`;
 
+  // Read all spec values fresh from the DOM at this exact click moment
+  const _domSpecs = _readSpecsFromDOM();
+  console.log('[JWLZIFY] === SPEC VALUES AT GENERATE CLICK ===');
+  console.log('[JWLZIFY] material (DOM):', LAB.material, '| gem (DOM):', LAB.gem, '| style:', LAB.style, '| type:', resolvedType);
+  console.log('[JWLZIFY] metalGrams:', _domSpecs.metalGrams, _domSpecs.weightUserSet ? '(user-set)' : '(default — not touched by user)');
+  console.log('[JWLZIFY] stoneCount:', _domSpecs.stoneCount, _domSpecs.countUserSet ? '(user-set)' : '(default — not touched by user)');
+  console.log('[JWLZIFY] stones:', JSON.stringify(_domSpecs.stones), '| totalCarats:', _domSpecs.totalCarats);
+  console.log('[JWLZIFY] weightLabel:', _domSpecs.weightLabel);
+  // Sync fresh DOM values into jwlSpecifications so buildPrompt reads exactly what is on screen
+  window.jwlSpecifications.metalGrams  = _domSpecs.metalGrams;
+  window.jwlSpecifications.weightLabel = _domSpecs.weightLabel;
+  window.jwlSpecifications.stoneCount  = _domSpecs.stoneCount;
+  window.jwlSpecifications.stones      = _domSpecs.stones;
+  window.jwlSpecifications.totalCarats = _domSpecs.totalCarats;
+
   const fullPrompt = buildPrompt(resolvedType, LAB.material, LAB.gem, LAB.style, desc);
   const isPendantGen = (resolvedType === 'pendant' || resolvedType === 'necklace');
 
@@ -2233,7 +2309,6 @@ async function startGeneration(isTweak) {
   console.log('[JWLZIFY] full prompt:', fullPrompt);
   console.log('[JWLZIFY] negative prompt:', negativePrompt);
   console.log('[JWLZIFY] metal:', LAB.material, '| stone:', LAB.gem);
-  console.log('[JWLZIFY] specs:', JSON.stringify(window.jwlSpecifications));
 
   const ri = document.getElementById('refineImg');
   if (isTweak) {
