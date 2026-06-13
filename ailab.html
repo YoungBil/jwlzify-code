@@ -150,6 +150,25 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
 #camWrap { position:relative; overflow:hidden; background:#000; }
 #camWrap video { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; transform:scaleX(-1); }
 
+/* ── Ring try-on ── */
+@keyframes tryonCamPulse {
+  0%,100% { box-shadow:0 0 0 2px rgba(201,168,76,0.4); }
+  50%     { box-shadow:0 0 0 2px #C9A84C; }
+}
+.ring-rotate-slider {
+  -webkit-appearance:none; appearance:none;
+  width:200px; height:3px;
+  background:rgba(201,168,76,0.2); border-radius:2px; outline:none; cursor:pointer;
+}
+.ring-rotate-slider::-webkit-slider-thumb {
+  -webkit-appearance:none; width:16px; height:16px;
+  background:#C9A84C; border-radius:50%; cursor:pointer;
+}
+.ring-rotate-slider::-moz-range-thumb {
+  width:16px; height:16px; background:#C9A84C;
+  border-radius:50%; cursor:pointer; border:none;
+}
+
 /* ── Jewelry overlays ── */
 #jewelryUnit {
   position:absolute; display:none; flex-direction:column; align-items:center;
@@ -894,6 +913,29 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
         <!-- Ring try-on canvas -->
         <canvas id="ring-tryon-canvas"></canvas>
 
+        <!-- Ring loading overlay -->
+        <div id="ring-tryon-loading" style="display:none;position:absolute;inset:0;z-index:15;
+             background:rgba(11,15,26,0.7);align-items:center;justify-content:center;flex-direction:column;gap:12px;">
+          <div style="width:36px;height:36px;border-radius:50%;border:2px solid rgba(201,168,76,0.3);
+               border-top-color:#C9A84C;animation:dSpin 0.9s linear infinite;"></div>
+          <p style="font-family:Inter,sans-serif;font-size:12px;color:#C9A84C;letter-spacing:0.08em;">Removing background…</p>
+        </div>
+
+      </div>
+
+      <!-- Ring try-on controls -->
+      <div id="ring-tryon-controls" style="display:none;flex-direction:column;align-items:center;gap:10px;width:100%;max-width:780px;">
+        <div style="display:flex;align-items:center;gap:12px;">
+          <label for="ringRotateSlider" style="font-family:Inter,sans-serif;font-size:12px;color:rgba(201,168,76,0.6);user-select:none;">Rotate</label>
+          <input type="range" id="ringRotateSlider" class="ring-rotate-slider" min="-45" max="45" value="0"
+                 oninput="ringRotation=parseInt(this.value)">
+        </div>
+        <button onclick="saveRingTryOnPhoto()"
+                style="border:1px solid #C9A84C;color:#C9A84C;background:transparent;
+                       height:36px;border-radius:6px;font-size:14px;font-family:Inter,sans-serif;
+                       padding:0 20px;cursor:pointer;letter-spacing:0.04em;">
+          Save Photo
+        </button>
       </div>
 
       <!-- ── Next / Back ── -->
@@ -3365,24 +3407,47 @@ function updateHandlePosition() {
 
 async function startTryOnCamera() {
   console.log('[JWLZIFY] starting camera...');
+  const video     = document.getElementById('tryon-video');
+  const container = document.getElementById('tryon-container');
+
+  // Remove any previous error overlay
+  if (container) {
+    const prev = container.querySelector('.tryon-cam-error');
+    if (prev) prev.remove();
+  }
+
+  // Gold pulse while waiting for permission
+  if (video) {
+    video.style.animation = 'tryonCamPulse 0.8s infinite';
+  }
+
+  if (LAB.cameraStream) {
+    LAB.cameraStream.getTracks().forEach(t => t.stop());
+    LAB.cameraStream = null;
+  }
+
   try {
-    const video = document.getElementById('tryon-video');
-    if (LAB.cameraStream) {
-      LAB.cameraStream.getTracks().forEach(t => t.stop());
-      LAB.cameraStream = null;
-    }
     const stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: 'user' }
+      video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' }
     });
     LAB.cameraStream = stream;
-    video.srcObject  = stream;
-  } catch(e) {
+    if (video) {
+      video.srcObject = stream;
+      video.style.animation = '';
+      video.onloadedmetadata = () => {
+        video.play().catch(() => {});
+        console.log('[JWLZIFY] camera stream active');
+      };
+    }
+  } catch (e) {
     console.warn('[JWLZIFY] camera access denied:', e.message);
-    const container = document.getElementById('tryon-container');
+    if (video) video.style.animation = '';
     if (container) {
-      const msg = document.createElement('p');
-      msg.style.cssText = 'color:white;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:20;font-family:Inter,sans-serif;font-size:13px;text-align:center;';
-      msg.textContent = 'Camera access denied — please allow camera';
+      const msg = document.createElement('div');
+      msg.className = 'tryon-cam-error';
+      msg.style.cssText = 'color:#F8F6F2;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:20;font-family:Inter,sans-serif;font-size:13px;text-align:center;padding:20px;';
+      msg.innerHTML = `<p style="margin-bottom:12px;line-height:1.6;">Camera access is needed for try-on.<br>Please allow camera access and try again.</p>
+        <button onclick="startTryOnCamera()" style="border:1px solid #C9A84C;color:#C9A84C;background:transparent;height:36px;border-radius:6px;font-size:14px;font-family:Inter,sans-serif;padding:0 16px;cursor:pointer;">Try Again</button>`;
       container.appendChild(msg);
     }
   }
@@ -3483,12 +3548,18 @@ function teardownTryOn() {
     if (rCtx) rCtx.clearRect(0, 0, ringCanvas.width, ringCanvas.height);
     ringCanvas.style.display = 'none';
   }
+  const loadingEl = document.getElementById('ring-tryon-loading');
+  if (loadingEl) loadingEl.style.display = 'none';
+  const controls = document.getElementById('ring-tryon-controls');
+  if (controls) controls.style.display = 'none';
+  const slider = document.getElementById('ringRotateSlider');
+  if (slider) slider.value = '0';
   const hintEl2 = document.getElementById('tryon-hint-text');
-  if (hintEl2) { hintEl2.textContent = 'DRAG JEWELRY TO POSITION · DRAG THE GREY DOT TO RESIZE'; hintEl2.style.opacity = '0.4'; }
+  if (hintEl2) { hintEl2.textContent = 'DRAG JEWELRY TO POSITION · DRAG THE GREY DOT TO RESIZE'; hintEl2.style.opacity = '0.4'; hintEl2.style.color = ''; }
   _ringTryonImg     = null;
   latestCutoutImage = null;
   _ringIsDragging   = false;
-  _ringIsResizing   = false;
+  ringRotation      = 0;
 }
 
 
@@ -4151,23 +4222,20 @@ window._loadPendantForTryOn = loadPendantForTryOn;
 const _RING_FALLBACK_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="38" fill="none" stroke="#C9A84C" stroke-width="18" stroke-linecap="round"/></svg>`;
 const _RING_FALLBACK_URL = 'data:image/svg+xml,' + encodeURIComponent(_RING_FALLBACK_SVG);
 
-let _ringRafId         = null;
-let _bgRemovalInterval = null;
-let latestCutoutImage  = null;
-let _ringTryonImg      = null;
-let ringX = 0, ringY = 0, ringSize = 120;
-let _ringIsDragging    = false;
-let _ringIsResizing    = false;
-let _ringDragOffX      = 0;
-let _ringDragOffY      = 0;
+let _ringRafId          = null;
+let _bgRemovalInterval  = null;
+let latestCutoutImage   = null;
+let _ringTryonImg       = null;
+let ringX = 0, ringY = 0, ringSize = 120, ringRotation = 0;
+let _ringIsDragging     = false;
+let _ringDragOffX       = 0;
+let _ringDragOffY       = 0;
+let _ringPinchStartDist = 0;
+let _ringPinchStartSize = 0;
 
 function _ringImgH() {
   if (!_ringTryonImg || !_ringTryonImg.naturalWidth) return ringSize;
   return ringSize * (_ringTryonImg.naturalHeight / _ringTryonImg.naturalWidth);
-}
-
-function _ringHandlePos() {
-  return { x: ringX + ringSize / 2, y: ringY + _ringImgH() / 2 };
 }
 
 async function captureAndRemoveBg() {
@@ -4208,40 +4276,46 @@ function _ringRenderLoop() {
 
   ctx.clearRect(0, 0, W, H);
 
-  // Layer 1: mirrored video (background)
+  // Layer 1: mirrored video
   if (video && video.readyState >= 2) {
     ctx.save();
+    ctx.translate(W, 0);
     ctx.scale(-1, 1);
-    ctx.drawImage(video, -W, 0, W, H);
+    ctx.drawImage(video, 0, 0, W, H);
     ctx.restore();
   }
 
-  // Layer 2: ring (sits behind the hand for correct occlusion)
+  // Layer 2: ring behind hand (fallback opacity if remove.bg hasn't returned yet)
   if (_ringTryonImg && _ringTryonImg.complete) {
     const rH = _ringImgH();
     ctx.save();
-    ctx.shadowColor   = 'rgba(0,0,0,0.45)';
-    ctx.shadowBlur    = 12;
+    ctx.globalAlpha = latestCutoutImage ? 1 : 0.75;
+    ctx.shadowColor   = 'rgba(0,0,0,0.4)';
+    ctx.shadowBlur    = 10;
     ctx.shadowOffsetY = 3;
-    ctx.drawImage(_ringTryonImg, ringX - ringSize / 2, ringY - rH / 2, ringSize, rH);
-    ctx.shadowColor = 'transparent';
+    ctx.translate(ringX, ringY);
+    ctx.rotate(ringRotation * Math.PI / 180);
+    ctx.drawImage(_ringTryonImg, -ringSize / 2, -rH / 2, ringSize, rH);
     ctx.restore();
   }
 
-  // Layer 3: remove.bg cutout — hand floats in front of ring
+  // Layer 3: hand cutout — floats in front of ring
   if (latestCutoutImage) {
     ctx.drawImage(latestCutoutImage, 0, 0, W, H);
   }
 
-  // Layer 4: resize handle (always visible)
-  const hp = _ringHandlePos();
-  ctx.beginPath();
-  ctx.arc(hp.x, hp.y, 6, 0, Math.PI * 2);
-  ctx.fillStyle = '#C9A84C';
-  ctx.fill();
-  ctx.strokeStyle = 'rgba(255,255,255,0.7)';
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
+  // Layer 4: drag handle dot at ring center
+  if (_ringTryonImg) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(ringX, ringY, 5, 0, Math.PI * 2);
+    ctx.fillStyle = '#C9A84C';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.restore();
+  }
 
   _ringRafId = requestAnimationFrame(_ringRenderLoop);
 }
@@ -4256,17 +4330,13 @@ function _ringPtrPos(e) {
 }
 
 function _ringDragStart(e) {
+  if (e.touches && e.touches.length !== 1) return;
   e.preventDefault();
   const { x, y } = _ringPtrPos(e);
-  const hp = _ringHandlePos();
-  const hdx = x - hp.x, hdy = y - hp.y;
-  if (Math.sqrt(hdx * hdx + hdy * hdy) <= 20) {
-    _ringIsResizing = true;
-    return;
-  }
-  const rH = _ringImgH();
-  if (x >= ringX - ringSize / 2 && x <= ringX + ringSize / 2 &&
-      y >= ringY - rH / 2       && y <= ringY + rH / 2) {
+  const rH  = _ringImgH();
+  const pad = 24;
+  if (x >= ringX - ringSize / 2 - pad && x <= ringX + ringSize / 2 + pad &&
+      y >= ringY - rH / 2 - pad       && y <= ringY + rH / 2 + pad) {
     _ringIsDragging = true;
     _ringDragOffX   = x - ringX;
     _ringDragOffY   = y - ringY;
@@ -4274,27 +4344,46 @@ function _ringDragStart(e) {
 }
 
 function _ringDragMove(e) {
-  if (!_ringIsDragging && !_ringIsResizing) return;
+  if (!_ringIsDragging) return;
+  if (e.touches && e.touches.length !== 1) { _ringIsDragging = false; return; }
   if (e.touches) e.preventDefault();
   const { x, y } = _ringPtrPos(e);
-  if (_ringIsDragging) {
-    ringX = x - _ringDragOffX;
-    ringY = y - _ringDragOffY;
-  } else {
-    const dx = x - ringX, dy = y - ringY;
-    ringSize = Math.max(60, Math.min(300, Math.sqrt(dx * dx + dy * dy) * 2));
-  }
+  ringX = x - _ringDragOffX;
+  ringY = y - _ringDragOffY;
 }
 
 function _ringDragEnd() {
   _ringIsDragging = false;
-  _ringIsResizing = false;
+}
+
+function _ringWheelHandler(e) {
+  e.preventDefault();
+  ringSize = Math.max(60, Math.min(300, ringSize + e.deltaY * -0.3));
+}
+
+function _ringPinchStart(e) {
+  if (e.touches.length !== 2) return;
+  const dx = e.touches[0].clientX - e.touches[1].clientX;
+  const dy = e.touches[0].clientY - e.touches[1].clientY;
+  _ringPinchStartDist = Math.sqrt(dx * dx + dy * dy);
+  _ringPinchStartSize = ringSize;
+}
+
+function _ringPinchMove(e) {
+  if (e.touches.length !== 2) return;
+  e.preventDefault();
+  const dx   = e.touches[0].clientX - e.touches[1].clientX;
+  const dy   = e.touches[0].clientY - e.touches[1].clientY;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  if (_ringPinchStartDist > 0) {
+    ringSize = Math.max(60, Math.min(300, _ringPinchStartSize * (dist / _ringPinchStartDist)));
+  }
 }
 
 async function loadRingForTryOn(imageUrl) {
-  console.log('[JWLZIFY] loading ring try-on (remove.bg manual)');
+  console.log('[JWLZIFY] loading ring try-on');
 
-  // Hide all other try-on overlays
+  // Hide other try-on overlays
   ['tryon-necklace', 'tryon-pendant', 'tryon-resize',
    'tryon-earring-left', 'tryon-earring-right',
    'tryon-earring-left-handle', 'tryon-earring-right-handle',
@@ -4306,19 +4395,28 @@ async function loadRingForTryOn(imageUrl) {
   // Size and show ring canvas
   const container  = document.getElementById('tryon-container');
   const ringCanvas = document.getElementById('ring-tryon-canvas');
-  const W = container.offsetWidth;
-  const H = container.offsetHeight;
+  const W = container.offsetWidth  || 600;
+  const H = container.offsetHeight || 520;
   ringCanvas.width  = W;
   ringCanvas.height = H;
   ringCanvas.style.display = 'block';
 
-  // Hint text — fade out after 4s
+  // Show ring controls
+  const controls = document.getElementById('ring-tryon-controls');
+  if (controls) controls.style.display = 'flex';
+
+  // Reset rotation slider
+  const slider = document.getElementById('ringRotateSlider');
+  if (slider) slider.value = '0';
+
+  // Hint text — fade out after 5s
   const hintEl = document.getElementById('tryon-hint-text');
   if (hintEl) {
-    hintEl.textContent = 'Drag to position · Drag corner to resize';
-    hintEl.style.opacity = '0.4';
-    hintEl.style.transition = 'opacity 1s ease';
-    setTimeout(() => { if (hintEl) hintEl.style.opacity = '0'; }, 4000);
+    hintEl.textContent = 'Drag to position · Scroll to resize · Slider to rotate';
+    hintEl.style.color = 'rgba(201,168,76,0.7)';
+    hintEl.style.opacity = '1';
+    hintEl.style.transition = 'opacity 1.5s ease';
+    setTimeout(() => { if (hintEl) hintEl.style.opacity = '0'; }, 5000);
   }
 
   // Load ring image
@@ -4330,19 +4428,22 @@ async function loadRingForTryOn(imageUrl) {
     _ringTryonImg.src = imageUrl || _RING_FALLBACK_URL;
   }
 
-  // Initial ring state
-  ringX = W / 2;
-  ringY = H / 2;
-  ringSize = 120;
-  _ringIsDragging   = false;
-  _ringIsResizing   = false;
+  // Initial ring state — center-bottom third (ring finger position)
+  ringX         = W / 2;
+  ringY         = H * 0.67;
+  ringSize      = 120;
+  ringRotation  = 0;
+  _ringIsDragging = false;
   latestCutoutImage = null;
 
-  // Attach drag/resize events
+  // Attach events
   ringCanvas.addEventListener('mousedown',  _ringDragStart);
-  ringCanvas.addEventListener('touchstart', _ringDragStart, { passive: false });
+  ringCanvas.addEventListener('touchstart', _ringDragStart,  { passive: false });
+  ringCanvas.addEventListener('touchstart', _ringPinchStart, { passive: false });
+  ringCanvas.addEventListener('wheel',      _ringWheelHandler, { passive: false });
   window.addEventListener('mousemove',  _ringDragMove);
-  window.addEventListener('touchmove',  _ringDragMove, { passive: false });
+  window.addEventListener('touchmove',  _ringDragMove,  { passive: false });
+  window.addEventListener('touchmove',  _ringPinchMove, { passive: false });
   window.addEventListener('mouseup',    _ringDragEnd);
   window.addEventListener('touchend',   _ringDragEnd);
 
@@ -4350,10 +4451,17 @@ async function loadRingForTryOn(imageUrl) {
   if (_ringRafId) cancelAnimationFrame(_ringRafId);
   _ringRafId = requestAnimationFrame(_ringRenderLoop);
 
-  // Immediate remove.bg call + 1500ms interval
-  captureAndRemoveBg();
+  // Show loading state, then start remove.bg interval
+  const loadingEl = document.getElementById('ring-tryon-loading');
+  if (loadingEl) { loadingEl.style.display = 'flex'; }
   if (_bgRemovalInterval) clearInterval(_bgRemovalInterval);
-  _bgRemovalInterval = setInterval(captureAndRemoveBg, 1500);
+
+  // Wait briefly for video to be ready, then start BG removal
+  setTimeout(() => {
+    if (loadingEl) loadingEl.style.display = 'none';
+    captureAndRemoveBg();
+    _bgRemovalInterval = setInterval(captureAndRemoveBg, 2000);
+  }, 1200);
 }
 
 function _ringTeardownEvents() {
@@ -4361,9 +4469,12 @@ function _ringTeardownEvents() {
   if (ringCanvas) {
     ringCanvas.removeEventListener('mousedown',  _ringDragStart);
     ringCanvas.removeEventListener('touchstart', _ringDragStart);
+    ringCanvas.removeEventListener('touchstart', _ringPinchStart);
+    ringCanvas.removeEventListener('wheel',      _ringWheelHandler);
   }
   window.removeEventListener('mousemove',  _ringDragMove);
   window.removeEventListener('touchmove',  _ringDragMove);
+  window.removeEventListener('touchmove',  _ringPinchMove);
   window.removeEventListener('mouseup',    _ringDragEnd);
   window.removeEventListener('touchend',   _ringDragEnd);
 }
@@ -4377,6 +4488,15 @@ function updateRingResizeHandle() {
   const r = img.getBoundingClientRect();
   handle.style.left = (r.right  - c.left - 7) + 'px';
   handle.style.top  = (r.bottom - c.top  - 7) + 'px';
+}
+
+function saveRingTryOnPhoto() {
+  const canvas = document.getElementById('ring-tryon-canvas');
+  if (!canvas) return;
+  const link = document.createElement('a');
+  link.download = 'jwlzify-ring-tryon.png';
+  link.href = canvas.toDataURL('image/png');
+  link.click();
 }
 
 /* Ring drag + resize */
