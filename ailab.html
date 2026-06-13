@@ -402,6 +402,7 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
             style="resize:vertical;line-height:1.7;"
             placeholder="e.g. An Art Deco engagement ring with a emerald-cut center diamond, geometric platinum shoulders with baguette accents, and subtle milgrain detail around the gallery…"></textarea>
           <p class="mt-2 body-copy" style="font-size:13px;color:#a0a6a9;">The more detail you give, the more precise the result. Describe the shape, stone, feeling, occasion.</p>
+          <p id="pendantIPDisclaimer" class="mt-2 body-copy" style="display:none;font-size:12px;color:#a0a6a9;">Copyrighted logos, brand marks, and character designs (e.g. Superman, Louis Vuitton, Nike) cannot be used for commercial orders. For best results, describe your custom design in your own words.</p>
         </div>
 
         <!-- Material -->
@@ -1821,6 +1822,8 @@ function setType(btn, type) {
   }
   LAB.type = type;
   updateWeightHeading();
+  const _disc = document.getElementById('pendantIPDisclaimer');
+  if (_disc) _disc.style.display = type === 'pendant' ? 'block' : 'none';
   if (type === 'necklace') showChainStyleModal();
 }
 
@@ -1863,7 +1866,7 @@ function buildPrompt(type, material, gem, style, desc) {
 
   if (isPendantType) {
     // Type keyword leads; user description follows as detail context
-    return `luxury ${style} ${wPart}pendant charm${descPart}, bail connector at top, ${mDisp}, ${gemPart}, close-up macro product photograph, pendant centered filling the frame, high contrast separation between pendant and background, soft even studio lighting with no shadows on background, pure white seamless background, ultra sharp focus, hyper realistic, 8K ultra high definition, precious metal gleam, gemstone sparkle and brilliance. No humans. No person. No body parts. No neck. No chest. No hands. No fingers. No ears. No skin. No model. Product-only photography. The jewelry piece is the sole subject of the image.`;
+    return `luxury ${style} ${wPart}pendant charm${descPart}, bail connector at top, ${mDisp}, ${gemPart}, close-up macro product photograph, pendant centered filling the frame, high contrast separation between pendant and background, soft even studio lighting with no shadows on background, pure white seamless background, ultra sharp focus, hyper realistic, 8K ultra high definition, precious metal gleam, gemstone sparkle and brilliance. No humans. No person. No body parts. No neck. No chest. No hands. No fingers. No ears. No skin. No model. Product-only photography. The jewelry piece is the sole subject of the image. No chain. No necklace cord. No string. The pendant is the only element in the image. Pendant displayed alone, flat lay on white surface, top-down view, studio lighting, luxury product photography.`;
   }
 
   if (type === 'necklace') {
