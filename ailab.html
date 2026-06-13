@@ -2015,11 +2015,11 @@ function buildPrompt(type, material, gem, style, desc) {
       stonePart = `with ${stoneCount} stones set into the band of a single ring`;
     }
     const stoneClarity = 'All stones are set into ONE single ring. This is one ring with multiple stones, not multiple rings. Do not generate more than one ring.';
-    return 'A single custom jewelry ring. '
+    return 'Single product photograph, single viewpoint: A single custom jewelry ring. '
       + [userDesc, mDisp + ' ring weighing ' + ringWeight, stonePart].filter(Boolean).join('. ')
       + '. ' + stoneClarity
       + ' Front view ring photography. The camera is positioned at exactly the same height as the center of the ring, pointing straight at the face of the ring. The ring is standing upright. The circular band is a perfect symmetrical oval at the bottom of the frame. The gemstone is dead center, pointing straight at the lens. This is NOT a hero shot. NOT a 3/4 angle. NOT shot from above or below. NOT tilted. The view is identical to looking directly through a telescope or tunnel straight at the ring face. Flat background. No hands. No fingers. No props. No fabric. Perfectly sharp focus on the stone and prongs. Soft even studio lighting. White or very light grey background. Luxury jewelry product photography, e-commerce style. No humans. No person. No body parts. No neck. No chest. No hands. No fingers. No ears. No skin. No model. Product-only photography. The jewelry piece is the sole subject of the image.'
-      + ' Single ring only. One ring centered on a white background. No multiple rings. No ring groupings. No lifestyle props. No pedestals or displays. Isolated product shot.';
+      + ' ONE single photograph. One ring shown from a single three-quarter angle. NOT a collage. NOT a grid. NOT multiple panels. NOT multiple angles. NOT a contact sheet. A single isolated product photograph of one ring, centered, on a seamless white background. One image, one ring, one viewpoint.';
   }
 
   const typeMap = {};
@@ -2394,7 +2394,8 @@ async function startGeneration(isTweak) {
     .filter(([t]) => t !== resolvedType)
     .flatMap(([, syns]) => syns)
     .join(', ');
-  const negativePrompt = `${negJewelryTerms}, brooch, anklet, person, human, model, body, face, hands, text, watermark, logo, blurry, low quality, distorted`;
+  const _ringNegPrefix = resolvedType === 'ring' ? 'collage, grid, multiple panels, multiple angles, contact sheet, multiple rings, split screen, tiled, montage, two rings, several rings, ' : '';
+  const negativePrompt = `${_ringNegPrefix}${negJewelryTerms}, brooch, anklet, person, human, model, body, face, hands, text, watermark, logo, blurry, low quality, distorted`;
 
   // Read all spec values fresh from the DOM at this exact click moment
   const _domSpecs = _readSpecsFromDOM();
@@ -2565,8 +2566,8 @@ async function confirmAndGenerate() {
   if (userSelections.style) parts.push(userSelections.style + ' style');
   if (userSelections.weightLabel) parts.push(userSelections.weightLabel + ' weight');
 
-  const _ringConstraintPrefix = LAB.type === 'ring' ? 'A single custom jewelry ring. ' : '';
-  const _ringConstraintSuffix = LAB.type === 'ring' ? ' Single ring only. One ring centered on a white background. No multiple rings. No ring groupings. No lifestyle props. No pedestals or displays. Isolated product shot.' : '';
+  const _ringConstraintPrefix = LAB.type === 'ring' ? 'Single product photograph, single viewpoint: A single custom jewelry ring. ' : '';
+  const _ringConstraintSuffix = LAB.type === 'ring' ? ' ONE single photograph. One ring shown from a single three-quarter angle. NOT a collage. NOT a grid. NOT multiple panels. NOT multiple angles. NOT a contact sheet. A single isolated product photograph of one ring, centered, on a seamless white background. One image, one ring, one viewpoint.' : '';
   const fullPrompt = _ringConstraintPrefix
     + 'Professional jewelry product photography. '
     + (userIdea ? userIdea + '. ' : '')
@@ -2593,9 +2594,11 @@ async function confirmAndGenerate() {
   const negJewelryTerms = Object.entries(_TYPE_SYNONYMS)
     .filter(([t]) => t !== LAB.type)
     .flatMap(([, syns]) => syns).join(', ');
-  const negativePrompt = negJewelryTerms + ', brooch, anklet, person, human, model, body, face, hands, text, watermark, logo, blurry, low quality, distorted';
+  const _ringNegPrefixC = LAB.type === 'ring' ? 'collage, grid, multiple panels, multiple angles, contact sheet, multiple rings, split screen, tiled, montage, two rings, several rings, ' : '';
+  const negativePrompt = _ringNegPrefixC + negJewelryTerms + ', brooch, anklet, person, human, model, body, face, hands, text, watermark, logo, blurry, low quality, distorted';
 
   console.log('[JWLZIFY] generation prompt:', fullPrompt);
+  console.log('[JWLZIFY] negative prompt:', negativePrompt);
   _enqueueGen(() => _generateImage(fullPrompt, negativePrompt)).then(blobUrl => {
     if (!blobUrl) {
       if (thisGen !== generationId) return;
