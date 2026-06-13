@@ -925,17 +925,24 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
 
       <!-- Ring try-on controls -->
       <div id="ring-tryon-controls" style="display:none;flex-direction:column;align-items:center;gap:10px;width:100%;max-width:780px;">
-        <div style="display:flex;align-items:center;gap:12px;">
+        <!-- Row 1: Rotate -->
+        <div style="display:flex;align-items:center;gap:12px;width:100%;max-width:400px;">
+          <span style="font-family:Inter,sans-serif;font-size:12px;color:rgba(201,168,76,0.6);user-select:none;width:36px;flex-shrink:0;">Rotate</span>
+          <label for="ringRotateSlider" style="display:none;"></label>
+          <input type="range" id="ringRotateSlider" class="ring-rotate-slider" min="-45" max="45" value="0"
+                 oninput="ringRotation=parseInt(this.value)" style="flex:1;">
+        </div>
+        <!-- Row 2: Size -->
+        <div style="display:flex;align-items:center;gap:12px;width:100%;max-width:400px;">
+          <span style="font-family:Inter,sans-serif;font-size:12px;color:rgba(201,168,76,0.6);user-select:none;width:36px;flex-shrink:0;">Size</span>
           <button onclick="ringSize=Math.max(60,ringSize-10)"
                   style="width:36px;height:36px;border:1px solid #C9A84C;color:#C9A84C;background:transparent;
-                         border-radius:6px;font-size:18px;margin:0 8px;cursor:pointer;line-height:1;flex-shrink:0;">−</button>
-          <label for="ringRotateSlider" style="font-family:Inter,sans-serif;font-size:12px;color:rgba(201,168,76,0.6);user-select:none;">Rotate</label>
-          <input type="range" id="ringRotateSlider" class="ring-rotate-slider" min="-45" max="45" value="0"
-                 oninput="ringRotation=parseInt(this.value)">
+                         border-radius:6px;font-size:18px;cursor:pointer;line-height:1;flex-shrink:0;">−</button>
           <button onclick="ringSize=Math.min(300,ringSize+10)"
                   style="width:36px;height:36px;border:1px solid #C9A84C;color:#C9A84C;background:transparent;
-                         border-radius:6px;font-size:18px;margin:0 8px;cursor:pointer;line-height:1;flex-shrink:0;">+</button>
+                         border-radius:6px;font-size:18px;cursor:pointer;line-height:1;flex-shrink:0;">+</button>
         </div>
+        <!-- Save -->
         <button onclick="saveRingTryOnPhoto()"
                 style="border:1px solid #C9A84C;color:#C9A84C;background:transparent;
                        height:36px;border-radius:6px;font-size:14px;font-family:Inter,sans-serif;
