@@ -1998,8 +1998,10 @@ function buildPrompt(type, material, gem, style, desc) {
     const stonePart = stoneCount === 1
       ? stoneSizes[0] + ' ' + gDisp + ' center stone'
       : stoneCount + ' stones, sizes: ' + stoneSizes.join(', ') + '. Center stone: ' + gDisp;
-    return [userDesc, mDisp + ' ring weighing ' + ringWeight, stonePart].filter(Boolean).join('. ')
-      + '. Front view ring photography. The camera is positioned at exactly the same height as the center of the ring, pointing straight at the face of the ring. The ring is standing upright. The circular band is a perfect symmetrical oval at the bottom of the frame. The gemstone is dead center, pointing straight at the lens. This is NOT a hero shot. NOT a 3/4 angle. NOT shot from above or below. NOT tilted. The view is identical to looking directly through a telescope or tunnel straight at the ring face. Flat background. No hands. No fingers. No props. No fabric. Perfectly sharp focus on the stone and prongs. Soft even studio lighting. White or very light grey background. Luxury jewelry product photography, e-commerce style. No humans. No person. No body parts. No neck. No chest. No hands. No fingers. No ears. No skin. No model. Product-only photography. The jewelry piece is the sole subject of the image.';
+    return 'A single custom jewelry ring. '
+      + [userDesc, mDisp + ' ring weighing ' + ringWeight, stonePart].filter(Boolean).join('. ')
+      + '. Front view ring photography. The camera is positioned at exactly the same height as the center of the ring, pointing straight at the face of the ring. The ring is standing upright. The circular band is a perfect symmetrical oval at the bottom of the frame. The gemstone is dead center, pointing straight at the lens. This is NOT a hero shot. NOT a 3/4 angle. NOT shot from above or below. NOT tilted. The view is identical to looking directly through a telescope or tunnel straight at the ring face. Flat background. No hands. No fingers. No props. No fabric. Perfectly sharp focus on the stone and prongs. Soft even studio lighting. White or very light grey background. Luxury jewelry product photography, e-commerce style. No humans. No person. No body parts. No neck. No chest. No hands. No fingers. No ears. No skin. No model. Product-only photography. The jewelry piece is the sole subject of the image.'
+      + ' Single ring only. One ring centered on a white background. No multiple rings. No ring groupings. No lifestyle props. No pedestals or displays. Isolated product shot.';
   }
 
   const typeMap = {};
@@ -2523,10 +2525,14 @@ async function confirmAndGenerate() {
   if (userSelections.style) parts.push(userSelections.style + ' style');
   if (userSelections.weightLabel) parts.push(userSelections.weightLabel + ' weight');
 
-  const fullPrompt = 'Professional jewelry product photography. '
+  const _ringConstraintPrefix = LAB.type === 'ring' ? 'A single custom jewelry ring. ' : '';
+  const _ringConstraintSuffix = LAB.type === 'ring' ? ' Single ring only. One ring centered on a white background. No multiple rings. No ring groupings. No lifestyle props. No pedestals or displays. Isolated product shot.' : '';
+  const fullPrompt = _ringConstraintPrefix
+    + 'Professional jewelry product photography. '
     + (userIdea ? userIdea + '. ' : '')
     + parts.join(', ')
-    + '. White background, studio lighting, ultra sharp, photorealistic, luxury, 8K.';
+    + '. White background, studio lighting, ultra sharp, photorealistic, luxury, 8K.'
+    + _ringConstraintSuffix;
 
   console.log('[JWLZIFY] final prompt:', fullPrompt);
 
