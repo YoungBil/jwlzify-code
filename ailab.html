@@ -1335,14 +1335,12 @@ const CLAUDE_API_KEY = '';
 
 /* ── Ring 3D Try-On configuration ── */
 const RING_3D_CONFIG = {
-  FAL_KEY: 'YOUR_FAL_KEY_HERE',
-  HUNYUAN_ENDPOINT: 'https://fal-ring-3d.sarkd333.workers.dev/fal-ai/hunyuan3d-v2',
+  HUNYUAN_ENDPOINT: 'https://fal-ring-3d.sarkd333.workers.dev/hunyuan3d-v3/image-to-3d',
   POLL_INTERVAL_MS: 3000,
   MAX_POLL_ATTEMPTS: 40,
   CANVAS_WIDTH: 600,
   CANVAS_HEIGHT: 600,
   ENV_MAP_INTENSITY: 1.6,
-  SHADOW_MAP_SIZE: 2048,
   INITIAL_CAMERA_Z: 2.4,
   MIN_CAMERA_Z: 1.2,
   MAX_CAMERA_Z: 5.0,
@@ -4827,7 +4825,7 @@ async function submitHunyuan(base64DataURL) {
   const res = await fetch(RING_3D_CONFIG.HUNYUAN_ENDPOINT, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ image_url: base64DataURL, num_inference_steps: 30, guidance_scale: 7.5, output_format: 'glb' }),
+    body: JSON.stringify({ image_url: base64DataURL, num_inference_steps: 30, guidance_scale: 6.0, output_format: 'glb', remove_background: true }),
   });
   if (!res.ok) throw new Error('Submission failed: ' + res.status);
   const data = await res.json();
@@ -4892,8 +4890,8 @@ async function initRing3DScene(glbUrl) {
   const dirLight = new T.DirectionalLight(0xffffff, 1.2);
   dirLight.position.set(3, 5, 3);
   dirLight.castShadow = true;
-  dirLight.shadow.mapSize.width = RING_3D_CONFIG.SHADOW_MAP_SIZE;
-  dirLight.shadow.mapSize.height = RING_3D_CONFIG.SHADOW_MAP_SIZE;
+  dirLight.shadow.mapSize.width = 2048;
+  dirLight.shadow.mapSize.height = 2048;
   scene.add(dirLight);
 
   const ptLight = new T.PointLight(0xfff8e7, 0.6);
