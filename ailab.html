@@ -1505,7 +1505,7 @@ async function _fetchWithRetry(makeUrl) {
   throw lastErr;
 }
 
-async function _generateImage(prompt, negativePrompt) {
+async function _generateImage(prompt, negativePrompt, initImage) {
   // PRIMARY: Gemini via Cloudflare Worker
   try {
     console.log('[JWLZIFY] calling Gemini worker...');
@@ -1564,7 +1564,7 @@ async function _generateImage(prompt, negativePrompt) {
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ inputs: prompt, negative_prompt: negativePrompt || '' })
+        body: JSON.stringify(Object.assign({ inputs: prompt, negative_prompt: negativePrompt || '' }, initImage ? { initImage } : {}))
       }
     );
     console.log('[JWLZIFY] HF worker response | method=huggingface | status=' + hfRes.status);
@@ -1747,6 +1747,7 @@ async function goStep(n) {
   if (n === 1) {
     selectedChainStyle = null; selectedChainPrompt = ''; selectedChainLabel = '';
     selectedChainLength = '18 inches (standard)';
+    lastGeneratedImage = null;
   }
   // Kill camera when leaving step 4 (Try On)
   if (LAB.step === 4 && n !== 4) {
@@ -2380,8 +2381,10 @@ async function startGeneration(isTweak) {
   }
 
   // Queue the fetch — Gemini primary, HuggingFace fallback, queue respects GEN_MAX_CONCURRENT
+  const initImage = (isTweak && window._postGenMode === 'refine') ? lastGeneratedImage : null;
   console.log('[JWLZIFY] generation prompt:', fullPrompt);
-  _enqueueGen(() => _generateImage(fullPrompt, negativePrompt)).then((blobUrl) => {
+  console.log('[JWLZIFY] img2img:', initImage ? 'yes (initImage present)' : 'no (txt2img)');
+  _enqueueGen(() => _generateImage(fullPrompt, negativePrompt, initImage)).then((blobUrl) => {
     console.log('[JWLZIFY] setting image src to:', blobUrl?.slice(0, 50));
     if (!blobUrl) {
       if (thisGen !== generationId) return;
@@ -2400,6 +2403,13 @@ async function startGeneration(isTweak) {
       return;
     }
     if (thisGen !== generationId) { URL.revokeObjectURL(blobUrl); return; }
+
+    // Capture as base64 for subsequent img2img refinement passes
+    fetch(blobUrl).then(r => r.blob()).then(blob => {
+      const _r = new FileReader();
+      _r.onload = () => { lastGeneratedImage = _r.result.split(',')[1]; };
+      _r.readAsDataURL(blob);
+    });
 
     LAB.imageUrl = blobUrl;
     bgRemovalCache.clear();
@@ -2529,6 +2539,7 @@ async function confirmAndGenerate() {
 /* ── Post-generation Refine / Fresh (all types) ── */
 window._postGenMode    = null;
 window._lastFullPrompt = null;
+let lastGeneratedImage = null;   // base64 of last generated image; used for img2img refinement
 
 function showPostGenUI() {
   const ui = document.getElementById('post-gen-ui');
