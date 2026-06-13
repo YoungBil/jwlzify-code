@@ -2597,11 +2597,23 @@ async function fetchSpotPrices() {
   ]);
 
   if (silverResult.status === 'fulfilled') {
-    const silverPerGram = silverResult.value?.price;
+    console.log('[JWLZIFY] silver price raw response:', silverResult.value);
+    const d = silverResult.value;
+    // Try common field names; detect per-oz vs per-gram from field name or unit hint
+    const TROY = 31.1034768;
+    const rawField = d?.pricePerGram ?? d?.price_per_gram
+                  ?? d?.pricePerOz  ?? d?.price_per_oz
+                  ?? d?.price       ?? d?.silver       ?? d?.silverPrice;
+    const isOz = d?.pricePerOz !== undefined || d?.price_per_oz !== undefined
+              || d?.unit === 'oz' || d?.per === 'oz';
+    const silverPerGram = rawField > 0 ? (isOz ? rawField / TROY : rawField) : null;
     if (silverPerGram > 0) {
-      spotPrices.silverPerGram = silverPerGram * 0.925; // 925 purity
+      spotPrices.silverPerGram = silverPerGram * 0.925; // 925 purity adjustment
       console.log('[JWLZIFY] silver price CAD/g:', spotPrices.silverPerGram.toFixed(4));
+      console.log('[JWLZIFY] silver price displayed:', spotPrices.silverPerGram.toFixed(4));
       silverOk = true;
+    } else {
+      console.warn('[JWLZIFY] silver price field not found or zero — response keys:', Object.keys(d || {}));
     }
   } else {
     console.warn('[JWLZIFY] silver-price worker failed:', silverResult.reason?.message);
