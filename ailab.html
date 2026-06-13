@@ -3596,10 +3596,11 @@ function teardownTryOn() {
   if (slider) slider.value = '0';
   const hintEl2 = document.getElementById('tryon-hint-text');
   if (hintEl2) { hintEl2.textContent = 'DRAG JEWELRY TO POSITION · DRAG THE GREY DOT TO RESIZE'; hintEl2.style.opacity = '0.4'; hintEl2.style.color = ''; }
-  _ringTryonImg     = null;
-  latestCutoutImage = null;
-  _ringIsDragging   = false;
-  ringRotation      = 0;
+  _ringTryonImg      = null;
+  _ringImgIsOriginal = false;
+  latestCutoutImage  = null;
+  _ringIsDragging    = false;
+  ringRotation       = 0;
 }
 
 
@@ -4262,16 +4263,15 @@ window._loadPendantForTryOn = loadPendantForTryOn;
 const _RING_FALLBACK_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="38" fill="none" stroke="#C9A84C" stroke-width="18" stroke-linecap="round"/></svg>`;
 const _RING_FALLBACK_URL = 'data:image/svg+xml,' + encodeURIComponent(_RING_FALLBACK_SVG);
 
-let _ringRafId          = null;
-let _bgRemovalInterval  = null;
-let latestCutoutImage   = null;
-let _ringTryonImg       = null;
+let _ringRafId         = null;
+let _bgRemovalInterval = null;
+let latestCutoutImage  = null;
+let _ringTryonImg      = null;
+let _ringImgIsOriginal = false;
 let ringX = 0, ringY = 0, ringSize = 120, ringRotation = 0;
-let _ringIsDragging     = false;
-let _ringDragOffX       = 0;
-let _ringDragOffY       = 0;
-let _ringPinchStartDist = 0;
-let _ringPinchStartSize = 0;
+let _ringIsDragging    = false;
+let _ringDragOffX      = 0;
+let _ringDragOffY      = 0;
 
 function _ringImgH() {
   if (!_ringTryonImg || !_ringTryonImg.naturalWidth) return ringSize;
@@ -4325,11 +4325,11 @@ function _ringRenderLoop() {
     ctx.restore();
   }
 
-  // Layer 2: ring behind hand (fallback opacity if remove.bg hasn't returned yet)
+  // Layer 2: ring behind hand
   if (_ringTryonImg && _ringTryonImg.complete) {
     const rH = _ringImgH();
     ctx.save();
-    ctx.globalAlpha = latestCutoutImage ? 1 : 0.75;
+    ctx.globalAlpha = _ringImgIsOriginal ? 0.85 : 1.0;
     ctx.shadowColor   = 'rgba(0,0,0,0.4)';
     ctx.shadowBlur    = 10;
     ctx.shadowOffsetY = 3;
@@ -4396,29 +4396,6 @@ function _ringDragEnd() {
   _ringIsDragging = false;
 }
 
-function _ringWheelHandler(e) {
-  e.preventDefault();
-  ringSize = Math.max(60, Math.min(300, ringSize + e.deltaY * -0.3));
-}
-
-function _ringPinchStart(e) {
-  if (e.touches.length !== 2) return;
-  const dx = e.touches[0].clientX - e.touches[1].clientX;
-  const dy = e.touches[0].clientY - e.touches[1].clientY;
-  _ringPinchStartDist = Math.sqrt(dx * dx + dy * dy);
-  _ringPinchStartSize = ringSize;
-}
-
-function _ringPinchMove(e) {
-  if (e.touches.length !== 2) return;
-  e.preventDefault();
-  const dx   = e.touches[0].clientX - e.touches[1].clientX;
-  const dy   = e.touches[0].clientY - e.touches[1].clientY;
-  const dist = Math.sqrt(dx * dx + dy * dy);
-  if (_ringPinchStartDist > 0) {
-    ringSize = Math.max(60, Math.min(300, _ringPinchStartSize * (dist / _ringPinchStartDist)));
-  }
-}
 
 async function loadRingForTryOn(imageUrl) {
   console.log('[JWLZIFY] loading ring try-on');
@@ -4452,41 +4429,47 @@ async function loadRingForTryOn(imageUrl) {
   // Hint text — fade out after 5s
   const hintEl = document.getElementById('tryon-hint-text');
   if (hintEl) {
-    hintEl.textContent = 'Drag to position · Scroll to resize · Slider to rotate';
+    hintEl.textContent = 'Drag to position · Use +/− to resize · Slider to rotate';
     hintEl.style.color = 'rgba(201,168,76,0.7)';
     hintEl.style.opacity = '1';
     hintEl.style.transition = 'opacity 1.5s ease';
     setTimeout(() => { if (hintEl) hintEl.style.opacity = '0'; }, 5000);
   }
 
-  // Remove ring background (non-blocking — render loop starts immediately, ring appears when ready)
+  // Remove ring background via remove.bg API only (no canvas fallback)
+  // Non-blocking — render loop starts immediately, ring appears when ready
   if (!_ringTryonImg || _ringTryonImg.dataset.src !== imageUrl) {
-    _ringTryonImg = null;
+    _ringTryonImg      = null;
+    _ringImgIsOriginal = false;
     const _srcToUse = imageUrl || _RING_FALLBACK_URL;
-    removePendantBackgroundCached(_srcToUse).then(cleanUrl => {
+    removeBgWithApi(_srcToUse).then(cleanUrl => {
       const img = new Image();
       img.onload = () => {
-        img.dataset.src = imageUrl;
-        _ringTryonImg = img;
+        img.dataset.src    = imageUrl;
+        _ringImgIsOriginal = false;
+        _ringTryonImg      = img;
         console.log('[Ring] using image source:', cleanUrl);
       };
       img.onerror = () => {
+        // blob URL failed to load — fall back to original at 0.85 opacity
         const fb = new Image();
         fb.crossOrigin = 'anonymous';
-        fb.dataset.src = imageUrl;
-        fb.src = _srcToUse;
-        _ringTryonImg = fb;
+        fb.dataset.src    = imageUrl;
+        fb.src            = _srcToUse;
+        _ringImgIsOriginal = true;
+        _ringTryonImg      = fb;
         console.log('[Ring] using image source (load-error fallback):', _srcToUse);
       };
       img.src = cleanUrl;
     }).catch(e => {
-      console.warn('[Ring] bg removal failed, using original:', e.message);
+      console.warn('[Ring] remove.bg failed, showing original at 0.85 opacity:', e.message);
       const img = new Image();
       img.crossOrigin = 'anonymous';
-      img.dataset.src = imageUrl;
-      img.onerror = () => { img.src = _RING_FALLBACK_URL; };
-      img.src = _srcToUse;
-      _ringTryonImg = img;
+      img.dataset.src    = imageUrl;
+      img.onerror        = () => { img.src = _RING_FALLBACK_URL; };
+      img.src            = _srcToUse;
+      _ringImgIsOriginal = true;
+      _ringTryonImg      = img;
       console.log('[Ring] using image source (api-error fallback):', _srcToUse);
     });
   }
@@ -4499,14 +4482,11 @@ async function loadRingForTryOn(imageUrl) {
   _ringIsDragging = false;
   latestCutoutImage = null;
 
-  // Attach events
+  // Attach events (drag only — size via +/− buttons)
   ringCanvas.addEventListener('mousedown',  _ringDragStart);
-  ringCanvas.addEventListener('touchstart', _ringDragStart,  { passive: false });
-  ringCanvas.addEventListener('touchstart', _ringPinchStart, { passive: false });
-  ringCanvas.addEventListener('wheel',      _ringWheelHandler, { passive: false });
+  ringCanvas.addEventListener('touchstart', _ringDragStart, { passive: false });
   window.addEventListener('mousemove',  _ringDragMove);
-  window.addEventListener('touchmove',  _ringDragMove,  { passive: false });
-  window.addEventListener('touchmove',  _ringPinchMove, { passive: false });
+  window.addEventListener('touchmove',  _ringDragMove, { passive: false });
   window.addEventListener('mouseup',    _ringDragEnd);
   window.addEventListener('touchend',   _ringDragEnd);
 
@@ -4532,12 +4512,9 @@ function _ringTeardownEvents() {
   if (ringCanvas) {
     ringCanvas.removeEventListener('mousedown',  _ringDragStart);
     ringCanvas.removeEventListener('touchstart', _ringDragStart);
-    ringCanvas.removeEventListener('touchstart', _ringPinchStart);
-    ringCanvas.removeEventListener('wheel',      _ringWheelHandler);
   }
   window.removeEventListener('mousemove',  _ringDragMove);
   window.removeEventListener('touchmove',  _ringDragMove);
-  window.removeEventListener('touchmove',  _ringPinchMove);
   window.removeEventListener('mouseup',    _ringDragEnd);
   window.removeEventListener('touchend',   _ringDragEnd);
 }
