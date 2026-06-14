@@ -946,7 +946,7 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
         <div style="display:flex;align-items:center;gap:12px;width:100%;max-width:400px;">
           <span id="ringFitLabel" style="font-family:Inter,sans-serif;font-size:12px;color:rgba(201,168,76,0.6);user-select:none;width:36px;flex-shrink:0;">Fit</span>
           <label for="ringFitSlider" style="display:none;"></label>
-          <input type="range" id="ringFitSlider" class="ring-rotate-slider" min="30" max="70" value="55"
+          <input type="range" id="ringFitSlider" class="ring-rotate-slider" min="35" max="65" value="45"
                  oninput="ringFadeStart=this.value/100;if(_ringTryonImg&&_ringMaskedCanvas)_buildRingMask(_ringTryonImg,_ringMaskSrcType)" style="flex:1;">
         </div>
         <!-- Save -->
@@ -3715,7 +3715,7 @@ function teardownTryOn() {
   ringRotation       = 0;
   _ringMaskedCanvas  = null;
   _ringMaskSrcType   = '';
-  ringFadeStart      = 0.55;
+  ringFadeStart      = 0.45;
   _tryOnMinSize      = 60;
   _tryOnMaxSize      = 300;
 }
@@ -4391,8 +4391,8 @@ let ringX = 0, ringY = 0, ringSize = 120, ringRotation = 0;
 let _ringIsDragging     = false;
 let _ringDragOffX       = 0;
 let _ringDragOffY       = 0;
-let ringFadeStart       = 0.55;   // controlled by "Fit" slider
-const _RING_FADE_END    = 0.75;   // fixed end of fade zone
+let ringFadeStart       = 0.45;   // controlled by "Fit" slider (range 0.35–0.65)
+const _RING_FADE_END    = 0.65;   // fully hidden below this — hides band backside
 let _ringMaskedCanvas   = null;   // offscreen 400×400 normalized+masked canvas
 let _ringMaskSrcType    = '';     // 'original' | 'cached' | 'transparent'
 let _tryOnMinSize       = 60;     // set per jewelry type in _loadCanvasJewelryTryOn
@@ -4432,7 +4432,7 @@ function _buildRingMask(img, srcType) {
 
   _ringMaskedCanvas = oc;
   _ringMaskSrcType  = srcType;
-  console.log('[Ring] mask applied | source:', srcType, '| normalized to 400x400 | fade:', fadeStart.toFixed(2), '-', fadeEnd.toFixed(2));
+  console.log('[TryOn] mask | type:', LAB.type, '| fade start:', fadeStart, '| fully hidden from:', fadeEnd);
 }
 
 async function captureAndRemoveBg() {
@@ -4631,8 +4631,8 @@ function _loadCanvasJewelryTryOn(imageUrl, cfg) {
 
   // Reset fit slider
   const fitSlider = document.getElementById('ringFitSlider');
-  if (fitSlider) fitSlider.value = '55';
-  ringFadeStart = 0.55;
+  if (fitSlider) fitSlider.value = '45';
+  ringFadeStart = 0.45;
 
   // Reset all state
   ringX              = W / 2;
