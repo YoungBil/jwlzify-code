@@ -1913,8 +1913,67 @@ function setType(btn, type) {
   if (LAB.step === 3 && LAB.type === 'pendant' && type !== 'pendant') {
     window.teardownARPipeline?.();
   }
+  const prevType = LAB.type;
   LAB.type = type;
+  userSelections.jewelryType = type;
+  console.log('[JWLZIFY] jewelry type in prompt:', userSelections.jewelryType);
+
+  if (prevType && prevType !== type) {
+    console.log('[JWLZIFY] jewelry type changed to:', type, '- state reset');
+
+    // Clear generated image and cache
+    LAB.imageUrl = null;
+    bgRemovalCache.clear();
+    const ri = document.getElementById('refineImg');  if (ri) ri.src = '';
+    const qi = document.getElementById('quoteImg');   if (qi) qi.src = '';
+    const ot = document.getElementById('orderThumb'); if (ot) ot.src = '';
+    lastGeneratedImage  = null;
+    window._lastFullPrompt = null;
+
+    // Clear userSelections, keeping only the new type
+    Object.keys(userSelections).forEach(k => { if (k !== 'jewelryType') delete userSelections[k]; });
+
+    // Reset spec step buttons and inputs
+    document.querySelectorAll('.spec-weight-btn, .spec-count-btn, .spec-chainlen-btn')
+      .forEach(b => b.classList.remove('active'));
+    const _swi = document.getElementById('specWeightInput');
+    if (_swi) _swi.value = '';
+    const _sci = document.getElementById('specCountCustomInput');
+    if (_sci) _sci.value = '';
+    const _scli = document.getElementById('specChainLengthCustomInput');
+    if (_scli) _scli.value = '';
+    const _ccw = document.getElementById('specCountCustomWrap');
+    if (_ccw) _ccw.style.display = 'none';
+    const _clcw = document.getElementById('specChainLengthCustomWrap');
+    if (_clcw) _clcw.style.display = 'none';
+
+    // Reset specifications to defaults
+    window.jwlSpecifications.metalGrams  = 4.5;
+    window.jwlSpecifications.weightLabel = 'medium';
+    window.jwlSpecifications.stoneCount  = 1;
+    window.jwlSpecifications.stones      = [1.0];
+    window.jwlSpecifications.totalCarats = 1.0;
+    if (typeof _renderStoneRows === 'function') _renderStoneRows();
+
+    // Reset chain state
+    selectedChainStyle = null; selectedChainPrompt = ''; selectedChainLabel = '';
+    selectedChainLength = '18 inches (standard)';
+
+    // Teardown try-on if active
+    if (isTryOnActive) {
+      isTryOnActive = false; isProcessing = false;
+      if (typeof teardownTryOn === 'function') teardownTryOn();
+    }
+
+    // Hide post-gen UI and error overlays
+    const _pgu = document.getElementById('post-gen-ui');
+    if (_pgu) _pgu.style.display = 'none';
+    const _geo = document.getElementById('genErrorOverlay');
+    if (_geo) _geo.style.display = 'none';
+  }
+
   updateWeightHeading();
+  updateChainLengthVisibility();
   const _disc = document.getElementById('pendantIPDisclaimer');
   if (_disc) _disc.style.display = type === 'pendant' ? 'block' : 'none';
   if (type === 'necklace') showChainStyleModal();
@@ -2530,51 +2589,16 @@ async function confirmAndGenerate() {
     ws.totalCarats = +userSelections.stones.reduce((a, b) => a + b, 0).toFixed(2);
   }
 
+  userSelections.jewelryType = LAB.type;
   console.log('[JWLZIFY] confirmed user selections:', userSelections);
 
   const userIdea = (document.getElementById('promptArea')?.value || '').trim();
-  const parts = [];
-  if (userSelections.material) parts.push(matLabel(userSelections.material));
-  if (userSelections.gem) {
-    const shapePart = userSelections.gemShape ? userSelections.gemShape + ' ' : '';
-    parts.push((shapePart + gemLabel(userSelections.gem)).trim());
-  }
-  if (userSelections.stoneCount && LAB.type === 'ring') {
-    const _sc  = userSelections.stoneCount;
-    const _gem = userSelections.gem ? gemLabel(userSelections.gem) : 'stone';
-    const _szs = (userSelections.stones && userSelections.stones.length > 0)
-      ? userSelections.stones.map(s => s + 'ct')
-      : [(_sc > 0 ? '1.0' : '1.0') + 'ct'];
-    let _stonePart;
-    if (_sc === 1) {
-      _stonePart = `with a single ${_szs[0]} ${_gem} center stone`;
-    } else if (_sc === 2) {
-      _stonePart = `with 2 stones set into the band of a single ring — one ${_szs[0]} ${_gem} center stone and one ${_szs[1] || _szs[0]} ${_gem} side stone`;
-    } else if (_sc === 3) {
-      _stonePart = `with 3 stones set into the band of a single ring — one ${_szs[0]} ${_gem} center stone flanked by two ${_szs[1] || _szs[0]} ${_gem} side stones`;
-    } else if (_sc === 4) {
-      _stonePart = `with 4 stones set into the band of a single ring — one ${_szs[0]} ${_gem} center stone and three ${_szs[1] || _szs[0]} ${_gem} accent stones`;
-    } else {
-      _stonePart = `with ${_sc} stones set into the band of a single ring`;
-    }
-    parts.push(_stonePart);
-    parts.push('All stones are set into ONE single ring. This is one ring with multiple stones, not multiple rings. Do not generate more than one ring.');
-  } else if (userSelections.stoneCount) {
-    parts.push(userSelections.stoneCount + ' stone' + (userSelections.stoneCount > 1 ? 's' : ''));
-    if (userSelections.stones && userSelections.stones.length > 0) parts.push('sizes: ' + userSelections.stones.map(s => s + 'ct').join(', '));
-  }
-  if (userSelections.style) parts.push(userSelections.style + ' style');
-  if (userSelections.weightLabel) parts.push(userSelections.weightLabel + ' weight');
 
-  const _ringConstraintPrefix = LAB.type === 'ring' ? 'Single product photograph, single viewpoint: A single custom jewelry ring. ' : '';
-  const _ringConstraintSuffix = LAB.type === 'ring' ? ' ONE single photograph. One ring shown from a single three-quarter angle. NOT a collage. NOT a grid. NOT multiple panels. NOT multiple angles. NOT a contact sheet. A single isolated product photograph of one ring, centered, on a seamless white background. One image, one ring, one viewpoint.' : '';
-  const fullPrompt = _ringConstraintPrefix
-    + 'Professional jewelry product photography. '
-    + (userIdea ? userIdea + '. ' : '')
-    + parts.join(', ')
-    + '. White background, studio lighting, ultra sharp, photorealistic, luxury, 8K.'
-    + _ringConstraintSuffix;
+  // buildPrompt handles all type-specific prompt logic; reuse it here so jewelry
+  // type is always the primary subject regardless of which path triggered generation.
+  const fullPrompt = buildPrompt(LAB.type, LAB.material, LAB.gem, LAB.style || 'Modern', userIdea);
 
+  console.log('[JWLZIFY] jewelry type in prompt:', userSelections.jewelryType);
   console.log('[JWLZIFY] final prompt:', fullPrompt);
 
   LAB.prompt = userIdea;
