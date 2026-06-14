@@ -1575,7 +1575,7 @@ function _buildHfJewelryDesc(type, material, gem, style, desc) {
   return `${userPart}luxury ${s} ${m} ${type}, ${g}`;
 }
 const _HF_RING_NEGATIVE     = 'tilted, angled, three-quarter view, 3/4 view, perspective, side view, side angle, top-down, birds eye, isometric, diagonal, rotated, lying flat, flat lay, on its side, leaning, oblique, dutch angle, foreshortening, multiple rings, collage, grid, two rings, group of rings, blurry, deformed, asymmetrical';
-const _HF_BRACELET_NEGATIVE = 'laid flat, flat lay, straight strip, uncoiled, top-down, birds eye, side view, vertical, coiled, tangled, multiple bracelets, collage, grid, two bracelets, group, stacked bracelets, asymmetrical, tilted, diagonal, dutch angle, blurry, deformed';
+const _HF_BRACELET_NEGATIVE = 'flat lay, laid flat, spread out, scattered, disconnected pieces, broken chain, straight strip, unclasped, open ends, multiple bracelets, two bracelets, collage, grid, tangled, deformed, asymmetrical, lying on surface, top-down, birds eye, side view, coiled, stacked';
 
 async function _generateImage(prompt, negativePrompt, initImage, hfOverrides) {
   hfOverrides = hfOverrides || {};
@@ -2078,9 +2078,10 @@ function buildPrompt(type, material, gem, style, desc) {
   }
 
   if (type === 'bracelet') {
-    const _braceletOrient = 'CAMERA ANGLE: front-facing eye-level view of the bracelet presented as a horizontal open oval ring shape, as if worn on a wrist facing the camera. The bracelet forms a wide horizontal ellipse. The decorative front face, clasp, or feature stones face directly toward the camera at the top-center of the oval. The opening of the bracelet is oriented so the front is at the top and the part that curves behind the wrist is at the bottom. Perfectly symmetrical left-to-right. Centered in frame with equal margins. The bracelet is shown as a complete circular/oval band, not laid flat, not coiled, not a straight strip.';
-    const _braceletGemNeg = 'Do not show the bracelet laid flat or as a straight strip. Do not show a top-down or side view. Show the bracelet as a symmetrical horizontal oval, front face toward the camera, as if worn on a wrist.';
-    return `luxury ${style} ${wPart}cuff bracelet jewelry${descPart}, ${mDisp}, ${gemPart}, isolated fine jewelry product photograph, pure white seamless background, no shadows, professional diffuse studio lighting, hyper realistic, 8K ultra high definition, macro lens, sharp focus, precious metal gleam, gemstone sparkle and brilliance, luxury brand catalog. ${_braceletOrient} No humans. No person. No body parts. No hands. No wrist. No skin. No model. Product-only photography. The jewelry piece is the sole subject of the image. ${_braceletGemNeg}`;
+    const _braceletShape = 'A single closed-loop bracelet shaped as one continuous oval band, photographed floating upright and facing the camera, presented exactly like a bangle held up to show its circular form. The full round shape of the bracelet is clearly visible as one connected loop. The decorative front of the bracelet faces the camera. Isolated on a plain white background.';
+    const _braceletOrient = 'CAMERA ANGLE: front-facing eye-level view. The bracelet is a complete closed oval band held upright facing the camera — like a bangle presented on edge. The decorative front face is at the top-center, fully visible. The band curves away from the camera at the bottom. Perfectly symmetrical left-to-right. Centered in frame with equal margins.';
+    const _braceletGemNeg = 'Show the bracelet as one complete connected oval loop facing the camera, like a bangle held up. Do not show it laid flat, scattered, spread out, or as disconnected pieces.';
+    return `luxury ${style} ${wPart}bracelet${descPart}, ${mDisp}, ${gemPart}, isolated fine jewelry product photograph, pure white seamless background, no shadows, professional diffuse studio lighting, hyper realistic, 8K ultra high definition, macro lens, sharp focus, precious metal gleam, gemstone sparkle and brilliance. ${_braceletShape} ${_braceletOrient} No humans. No person. No body parts. No hands. No wrist. No skin. No model. Product-only photography. The jewelry piece is the sole subject of the image. ${_braceletGemNeg}`;
   }
 
   if (type === 'ring') {
@@ -2548,10 +2549,10 @@ async function startGeneration(isTweak) {
     console.log('[JWLZIFY] Gemini ring prompt:', fullPrompt);
   } else if (resolvedType === 'bracelet') {
     const _hfDesc  = _buildHfJewelryDesc('bracelet', LAB.material, LAB.gem, LAB.style, desc);
-    const _hfInput = `${_hfDesc}, front view, worn-on-wrist angle, horizontal oval shape, symmetrical, eye-level shot, centered composition, front face toward camera, open band, circular bracelet, clasp at top, head-on view, product photography, white background, studio lighting, sharp focus, photorealistic, 8k, highly detailed`;
+    const _hfInput = `${_hfDesc}, single closed bangle, round bracelet loop, oval band shape, upright facing camera, one continuous loop, centered, symmetrical, product photography, white background, studio lighting, sharp focus, photorealistic, 8k`;
     _hfOverrides = { inputs: _hfInput, negative_prompt: _HF_BRACELET_NEGATIVE, guidance_scale: 9.0, num_inference_steps: 30 };
-    console.log('[JWLZIFY] HF bracelet prompt:', _hfInput);
-    console.log('[JWLZIFY] HF bracelet negative prompt:', _HF_BRACELET_NEGATIVE);
+    console.log('[JWLZIFY] bracelet prompt (HF):', _hfInput);
+    console.log('[JWLZIFY] bracelet negative:', _HF_BRACELET_NEGATIVE);
     console.log('[JWLZIFY] Gemini bracelet prompt:', fullPrompt);
   }
 
@@ -2682,10 +2683,10 @@ async function confirmAndGenerate() {
     console.log('[JWLZIFY] Gemini ring prompt:', fullPrompt);
   } else if (LAB.type === 'bracelet') {
     const _hfDesc  = _buildHfJewelryDesc('bracelet', LAB.material, LAB.gem, LAB.style || 'Modern', userIdea);
-    const _hfInput = `${_hfDesc}, front view, worn-on-wrist angle, horizontal oval shape, symmetrical, eye-level shot, centered composition, front face toward camera, open band, circular bracelet, clasp at top, head-on view, product photography, white background, studio lighting, sharp focus, photorealistic, 8k, highly detailed`;
+    const _hfInput = `${_hfDesc}, single closed bangle, round bracelet loop, oval band shape, upright facing camera, one continuous loop, centered, symmetrical, product photography, white background, studio lighting, sharp focus, photorealistic, 8k`;
     _hfOverridesC = { inputs: _hfInput, negative_prompt: _HF_BRACELET_NEGATIVE, guidance_scale: 9.0, num_inference_steps: 30 };
-    console.log('[JWLZIFY] HF bracelet prompt:', _hfInput);
-    console.log('[JWLZIFY] HF bracelet negative prompt:', _HF_BRACELET_NEGATIVE);
+    console.log('[JWLZIFY] bracelet prompt (HF):', _hfInput);
+    console.log('[JWLZIFY] bracelet negative:', _HF_BRACELET_NEGATIVE);
     console.log('[JWLZIFY] Gemini bracelet prompt:', fullPrompt);
   }
 
