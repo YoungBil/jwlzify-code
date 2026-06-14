@@ -1566,7 +1566,19 @@ async function _fetchWithRetry(makeUrl) {
   throw lastErr;
 }
 
-async function _generateImage(prompt, negativePrompt, initImage) {
+/* ── HF-specific prompt helpers ── */
+function _buildHfJewelryDesc(type, material, gem, style, desc) {
+  const m = matLabel(material);
+  const g = gemLabel(gem);
+  const s = style || 'Modern';
+  const userPart = desc && desc.trim() ? desc.trim() + ', ' : '';
+  return `${userPart}luxury ${s} ${m} ${type}, ${g}`;
+}
+const _HF_RING_NEGATIVE     = 'tilted, angled, three-quarter view, 3/4 view, perspective, side view, side angle, top-down, birds eye, isometric, diagonal, rotated, lying flat, flat lay, on its side, leaning, oblique, dutch angle, foreshortening, multiple rings, collage, grid, two rings, group of rings, blurry, deformed, asymmetrical';
+const _HF_BRACELET_NEGATIVE = 'laid flat, flat lay, straight strip, uncoiled, top-down, birds eye, side view, vertical, coiled, tangled, multiple bracelets, collage, grid, two bracelets, group, stacked bracelets, asymmetrical, tilted, diagonal, dutch angle, blurry, deformed';
+
+async function _generateImage(prompt, negativePrompt, initImage, hfOverrides) {
+  hfOverrides = hfOverrides || {};
   // PRIMARY: Gemini via Cloudflare Worker
   try {
     console.log('[JWLZIFY] calling Gemini worker...');
@@ -1625,7 +1637,15 @@ async function _generateImage(prompt, negativePrompt, initImage) {
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(Object.assign({ inputs: prompt, negative_prompt: negativePrompt || '' }, initImage ? { initImage } : {}))
+        body: JSON.stringify(Object.assign(
+          {
+            inputs:              hfOverrides.inputs              || prompt,
+            negative_prompt:     hfOverrides.negative_prompt !== undefined ? hfOverrides.negative_prompt : (negativePrompt || ''),
+            guidance_scale:      hfOverrides.guidance_scale      || 7.5,
+            num_inference_steps: hfOverrides.num_inference_steps || 30,
+          },
+          initImage ? { initImage } : {}
+        ))
       }
     );
     console.log('[JWLZIFY] HF worker response | method=huggingface | status=' + hfRes.status);
@@ -2085,7 +2105,9 @@ function buildPrompt(type, material, gem, style, desc) {
       + [userDesc, mDisp + ' ring weighing ' + ringWeight, stonePart].filter(Boolean).join('. ')
       + '. ' + stoneClarity
       + ' Front view ring photography. The camera is positioned at exactly the same height as the center of the ring, pointing straight at the face of the ring. The ring is standing upright. The circular band is a perfect symmetrical oval at the bottom of the frame. The gemstone is dead center, pointing straight at the lens. This is NOT a hero shot. NOT a 3/4 angle. NOT shot from above or below. NOT tilted. The view is identical to looking directly through a telescope or tunnel straight at the ring face. Flat background. No hands. No fingers. No props. No fabric. Perfectly sharp focus on the stone and prongs. Soft even studio lighting. White or very light grey background. Luxury jewelry product photography, e-commerce style. No humans. No person. No body parts. No neck. No chest. No hands. No fingers. No ears. No skin. No model. Product-only photography. The jewelry piece is the sole subject of the image.'
-      + ' ONE single photograph. One ring shown from a single three-quarter angle. NOT a collage. NOT a grid. NOT multiple panels. NOT multiple angles. NOT a contact sheet. A single isolated product photograph of one ring, centered, on a seamless white background. One image, one ring, one viewpoint.';
+      + ' CAMERA ANGLE: strict front elevation view, dead-on, eye-level, zero perspective distortion. The ring is standing perfectly upright and vertical, like the letter O or a wheel viewed straight on. The circular band is a full vertical circle facing the camera. The center stone and setting are at the top position, pointing straight up. The band opening runs vertically, top to bottom. The ring is perfectly symmetrical left-to-right. Both sides of the band are equally visible and mirror each other. The ring is centered in frame with equal margin on all sides.'
+      + ' ONE single photograph. ONE ring from a single front-facing elevation angle. NOT a collage. NOT a grid. NOT multiple panels. NOT multiple angles. NOT a contact sheet. A single isolated product photograph of one ring, centered, on a seamless white background. One image, one ring, one viewpoint.'
+      + ' Do not tilt or angle the ring. Do not show a three-quarter or side view. Show only a perfectly upright, front-facing, symmetrical ring.';
   }
 
   const typeMap = {};
@@ -2512,9 +2534,21 @@ async function startGeneration(isTweak) {
 
   // Queue the fetch — Gemini primary, HuggingFace fallback, queue respects GEN_MAX_CONCURRENT
   const initImage = (isTweak && window._postGenMode === 'refine') ? lastGeneratedImage : null;
+
+  // HF-specific keyword-stacked overrides (SDXL weights early tokens more heavily)
+  let _hfOverrides = null;
+  if (resolvedType === 'ring') {
+    const _hfDesc  = _buildHfJewelryDesc('ring', LAB.material, LAB.gem, LAB.style, desc);
+    const _hfInput = `${_hfDesc}, front view, straight-on, dead center, upright ring, vertical band, symmetrical, eye-level shot, frontal elevation, centered composition, stone at top, band at bottom, perfectly vertical, head-on angle, orthographic front view, product photography, white background, studio lighting, sharp focus, photorealistic, 8k, highly detailed`;
+    _hfOverrides = { inputs: _hfInput, negative_prompt: _HF_RING_NEGATIVE, guidance_scale: 9.0, num_inference_steps: 30 };
+    console.log('[JWLZIFY] HF ring prompt:', _hfInput);
+    console.log('[JWLZIFY] HF negative prompt:', _HF_RING_NEGATIVE);
+    console.log('[JWLZIFY] Gemini ring prompt:', fullPrompt);
+  }
+
   console.log('[JWLZIFY] generation prompt:', fullPrompt);
   console.log('[JWLZIFY] img2img:', initImage ? 'yes (initImage present)' : 'no (txt2img)');
-  _enqueueGen(() => _generateImage(fullPrompt, negativePrompt, initImage)).then((blobUrl) => {
+  _enqueueGen(() => _generateImage(fullPrompt, negativePrompt, initImage, _hfOverrides)).then((blobUrl) => {
     console.log('[JWLZIFY] setting image src to:', blobUrl?.slice(0, 50));
     if (!blobUrl) {
       if (thisGen !== generationId) return;
@@ -2628,9 +2662,20 @@ async function confirmAndGenerate() {
   const _ringNegPrefixC = LAB.type === 'ring' ? 'collage, grid, multiple panels, multiple angles, contact sheet, multiple rings, split screen, tiled, montage, two rings, several rings, ' : '';
   const negativePrompt = _ringNegPrefixC + negJewelryTerms + ', brooch, anklet, person, human, model, body, face, hands, text, watermark, logo, blurry, low quality, distorted';
 
+  // HF-specific keyword-stacked overrides for ring
+  let _hfOverridesC = null;
+  if (LAB.type === 'ring') {
+    const _hfDesc  = _buildHfJewelryDesc('ring', LAB.material, LAB.gem, LAB.style || 'Modern', userIdea);
+    const _hfInput = `${_hfDesc}, front view, straight-on, dead center, upright ring, vertical band, symmetrical, eye-level shot, frontal elevation, centered composition, stone at top, band at bottom, perfectly vertical, head-on angle, orthographic front view, product photography, white background, studio lighting, sharp focus, photorealistic, 8k, highly detailed`;
+    _hfOverridesC = { inputs: _hfInput, negative_prompt: _HF_RING_NEGATIVE, guidance_scale: 9.0, num_inference_steps: 30 };
+    console.log('[JWLZIFY] HF ring prompt:', _hfInput);
+    console.log('[JWLZIFY] HF negative prompt:', _HF_RING_NEGATIVE);
+    console.log('[JWLZIFY] Gemini ring prompt:', fullPrompt);
+  }
+
   console.log('[JWLZIFY] generation prompt:', fullPrompt);
   console.log('[JWLZIFY] negative prompt:', negativePrompt);
-  _enqueueGen(() => _generateImage(fullPrompt, negativePrompt)).then(blobUrl => {
+  _enqueueGen(() => _generateImage(fullPrompt, negativePrompt, null, _hfOverridesC)).then(blobUrl => {
     if (!blobUrl) {
       if (thisGen !== generationId) return;
       setGenLoading(false);
