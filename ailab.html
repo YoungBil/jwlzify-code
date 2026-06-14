@@ -935,16 +935,16 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
         <!-- Row 2: Size -->
         <div style="display:flex;align-items:center;gap:12px;width:100%;max-width:400px;">
           <span style="font-family:Inter,sans-serif;font-size:12px;color:rgba(201,168,76,0.6);user-select:none;width:36px;flex-shrink:0;">Size</span>
-          <button onclick="ringSize=Math.max(60,ringSize-10)"
+          <button onclick="ringSize=Math.max(_tryOnMinSize,ringSize-10)"
                   style="width:36px;height:36px;border:1px solid #C9A84C;color:#C9A84C;background:transparent;
                          border-radius:6px;font-size:18px;cursor:pointer;line-height:1;flex-shrink:0;">−</button>
-          <button onclick="ringSize=Math.min(300,ringSize+10)"
+          <button onclick="ringSize=Math.min(_tryOnMaxSize,ringSize+10)"
                   style="width:36px;height:36px;border:1px solid #C9A84C;color:#C9A84C;background:transparent;
                          border-radius:6px;font-size:18px;cursor:pointer;line-height:1;flex-shrink:0;">+</button>
         </div>
         <!-- Row 3: Fit on finger -->
         <div style="display:flex;align-items:center;gap:12px;width:100%;max-width:400px;">
-          <span style="font-family:Inter,sans-serif;font-size:12px;color:rgba(201,168,76,0.6);user-select:none;width:36px;flex-shrink:0;">Fit</span>
+          <span id="ringFitLabel" style="font-family:Inter,sans-serif;font-size:12px;color:rgba(201,168,76,0.6);user-select:none;width:36px;flex-shrink:0;">Fit</span>
           <label for="ringFitSlider" style="display:none;"></label>
           <input type="range" id="ringFitSlider" class="ring-rotate-slider" min="30" max="70" value="55"
                  oninput="ringFadeStart=this.value/100;if(_ringTryonImg&&_ringMaskedCanvas)_buildRingMask(_ringTryonImg,_ringMaskSrcType)" style="flex:1;">
@@ -3700,6 +3700,8 @@ function teardownTryOn() {
   _ringMaskedCanvas  = null;
   _ringMaskSrcType   = '';
   ringFadeStart      = 0.55;
+  _tryOnMinSize      = 60;
+  _tryOnMaxSize      = 300;
 }
 
 
@@ -4377,6 +4379,8 @@ let ringFadeStart       = 0.55;   // controlled by "Fit" slider
 const _RING_FADE_END    = 0.75;   // fixed end of fade zone
 let _ringMaskedCanvas   = null;   // offscreen 400×400 normalized+masked canvas
 let _ringMaskSrcType    = '';     // 'original' | 'cached' | 'transparent'
+let _tryOnMinSize       = 60;     // set per jewelry type in _loadCanvasJewelryTryOn
+let _tryOnMaxSize       = 300;
 
 function _ringImgH() {
   if (!_ringTryonImg || !_ringTryonImg.naturalWidth) return ringSize;
@@ -4540,9 +4544,38 @@ function _ringDragEnd() {
 
 
 function loadRingForTryOn(imageUrl) {
-  console.log('[Ring] try-on started, image source:', imageUrl);
+  _loadCanvasJewelryTryOn(imageUrl, {
+    typeLabel:   'ring',
+    defaultSize: 120,
+    minSize:     60,
+    maxSize:     300,
+    getDefaultY: (H) => H * 0.67,
+    hintText:    'Drag to position · Use +/− to resize · Fit slider to adjust occlusion',
+    fitLabel:    'Fit on finger',
+  });
+}
+
+function loadBraceletForTryOn(imageUrl) {
+  _loadCanvasJewelryTryOn(imageUrl, {
+    typeLabel:   'bracelet',
+    defaultSize: 200,
+    minSize:     100,
+    maxSize:     360,
+    getDefaultY: (H) => H * 0.75,
+    hintText:    'Hold your wrist up to the camera · Drag to position · +/− to resize · slider to rotate',
+    fitLabel:    'Fit on wrist',
+  });
+}
+
+function _loadCanvasJewelryTryOn(imageUrl, cfg) {
+  console.log('[Ring] try-on started, type:', cfg.typeLabel, '| image source:', imageUrl);
   console.time('[Ring] webcam ready');
   console.time('[Ring] ring drawn');
+
+  _tryOnMinSize = cfg.minSize;
+  _tryOnMaxSize = cfg.maxSize;
+  const fitLabelEl = document.getElementById('ringFitLabel');
+  if (fitLabelEl) fitLabelEl.textContent = cfg.fitLabel || 'Fit';
 
   // Hide other try-on overlays
   ['tryon-necklace', 'tryon-pendant', 'tryon-resize',
@@ -4569,7 +4602,7 @@ function loadRingForTryOn(imageUrl) {
   // Hint text — fade out after 5s
   const hintEl = document.getElementById('tryon-hint-text');
   if (hintEl) {
-    hintEl.textContent = 'Drag to position · Use +/− to resize · Fit slider to adjust occlusion';
+    hintEl.textContent = cfg.hintText || 'Drag to position · Use +/− to resize · Fit slider to adjust occlusion';
     hintEl.style.color = 'rgba(201,168,76,0.7)';
     hintEl.style.opacity = '1';
     hintEl.style.transition = 'opacity 1.5s ease';
@@ -4587,8 +4620,8 @@ function loadRingForTryOn(imageUrl) {
 
   // Reset all state
   ringX              = W / 2;
-  ringY              = H * 0.67;
-  ringSize           = 120;
+  ringY              = cfg.getDefaultY(H);
+  ringSize           = cfg.defaultSize;
   ringRotation       = 0;
   _ringIsDragging    = false;
   _ringFirstDraw     = false;
