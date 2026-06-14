@@ -942,6 +942,13 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
                   style="width:36px;height:36px;border:1px solid #C9A84C;color:#C9A84C;background:transparent;
                          border-radius:6px;font-size:18px;cursor:pointer;line-height:1;flex-shrink:0;">+</button>
         </div>
+        <!-- Row 3: Fit on finger -->
+        <div style="display:flex;align-items:center;gap:12px;width:100%;max-width:400px;">
+          <span style="font-family:Inter,sans-serif;font-size:12px;color:rgba(201,168,76,0.6);user-select:none;width:36px;flex-shrink:0;">Fit</span>
+          <label for="ringFitSlider" style="display:none;"></label>
+          <input type="range" id="ringFitSlider" class="ring-rotate-slider" min="30" max="70" value="55"
+                 oninput="ringFadeStart=this.value/100;if(_ringTryonImg&&_ringMaskedCanvas)_buildRingMask(_ringTryonImg,_ringMaskSrcType)" style="flex:1;">
+        </div>
         <!-- Save -->
         <button onclick="saveRingTryOnPhoto()"
                 style="border:1px solid #C9A84C;color:#C9A84C;background:transparent;
@@ -3645,6 +3652,9 @@ function teardownTryOn() {
   latestCutoutImage  = null;
   _ringIsDragging    = false;
   ringRotation       = 0;
+  _ringMaskedCanvas  = null;
+  _ringMaskSrcType   = '';
+  ringFadeStart      = 0.55;
 }
 
 
@@ -4318,10 +4328,46 @@ let ringX = 0, ringY = 0, ringSize = 120, ringRotation = 0;
 let _ringIsDragging     = false;
 let _ringDragOffX       = 0;
 let _ringDragOffY       = 0;
+let ringFadeStart       = 0.55;   // controlled by "Fit" slider
+const _RING_FADE_END    = 0.75;   // fixed end of fade zone
+let _ringMaskedCanvas   = null;   // offscreen 400×400 normalized+masked canvas
+let _ringMaskSrcType    = '';     // 'original' | 'cached' | 'transparent'
 
 function _ringImgH() {
   if (!_ringTryonImg || !_ringTryonImg.naturalWidth) return ringSize;
   return ringSize * (_ringTryonImg.naturalHeight / _ringTryonImg.naturalWidth);
+}
+
+function _buildRingMask(img, srcType) {
+  const SIZE = 400;
+  const oc  = document.createElement('canvas');
+  oc.width  = SIZE;
+  oc.height = SIZE;
+  const oc2 = oc.getContext('2d');
+
+  // Draw normalized: preserve aspect ratio, center within 400×400
+  const ar = img.naturalWidth / img.naturalHeight;
+  let dw, dh, dx, dy;
+  if (ar >= 1) { dw = SIZE; dh = SIZE / ar; }
+  else         { dh = SIZE; dw = SIZE * ar; }
+  dx = (SIZE - dw) / 2;
+  dy = (SIZE - dh) / 2;
+  oc2.drawImage(img, dx, dy, dw, dh);
+
+  // Gradient mask — destination-out removes pixels where gradient is opaque
+  const fadeStart = ringFadeStart;
+  const fadeEnd   = _RING_FADE_END;
+  const grad = oc2.createLinearGradient(0, SIZE * fadeStart, 0, SIZE * fadeEnd);
+  grad.addColorStop(0, 'rgba(0,0,0,0)');  // nothing removed at top of fade zone
+  grad.addColorStop(1, 'rgba(0,0,0,1)');  // fully removed at bottom of fade zone
+  oc2.globalCompositeOperation = 'destination-out';
+  oc2.fillStyle = grad;
+  oc2.fillRect(0, 0, SIZE, SIZE);
+  oc2.globalCompositeOperation = 'source-over';
+
+  _ringMaskedCanvas = oc;
+  _ringMaskSrcType  = srcType;
+  console.log('[Ring] mask applied | source:', srcType, '| normalized to 400x400 | fade:', fadeStart.toFixed(2), '-', fadeEnd.toFixed(2));
 }
 
 async function captureAndRemoveBg() {
@@ -4372,22 +4418,21 @@ function _ringRenderLoop() {
     ctx.restore();
   }
 
-  // Layer 2: ring behind hand
-  if (_ringTryonImg && _ringTryonImg.complete && _ringTryonImg.naturalWidth > 0) {
-    const rH = _ringImgH();
+  // Layer 2: ring behind hand — draw normalized+masked offscreen canvas
+  if (_ringMaskedCanvas) {
     if (!_ringFirstDraw) {
-      console.log('[Ring] drawing ring on canvas at:', ringX + ',' + ringY, 'size:', ringSize + 'px', 'dimensions:', _ringTryonImg.naturalWidth + 'x' + _ringTryonImg.naturalHeight);
+      console.log('[Ring] drawing ring on canvas at:', ringX + ',' + ringY, 'size:', ringSize + 'px');
       console.timeEnd('[Ring] ring drawn');
       _ringFirstDraw = true;
     }
     ctx.save();
-    ctx.globalAlpha = _ringImgIsOriginal ? 0.85 : 1.0;
+    ctx.globalAlpha   = _ringImgIsOriginal ? 0.85 : 1.0;
     ctx.shadowColor   = 'rgba(0,0,0,0.4)';
     ctx.shadowBlur    = 10;
     ctx.shadowOffsetY = 3;
     ctx.translate(ringX, ringY);
     ctx.rotate(ringRotation * Math.PI / 180);
-    ctx.drawImage(_ringTryonImg, -ringSize / 2, -rH / 2, ringSize, rH);
+    ctx.drawImage(_ringMaskedCanvas, -ringSize / 2, -ringSize / 2, ringSize, ringSize);
     ctx.restore();
   }
 
@@ -4397,7 +4442,7 @@ function _ringRenderLoop() {
   }
 
   // Layer 4: drag handle dot at ring center
-  if (_ringTryonImg) {
+  if (_ringMaskedCanvas) {
     ctx.save();
     ctx.beginPath();
     ctx.arc(ringX, ringY, 5, 0, Math.PI * 2);
@@ -4476,19 +4521,24 @@ function loadRingForTryOn(imageUrl) {
   const controls = document.getElementById('ring-tryon-controls');
   if (controls) controls.style.display = 'flex';
 
-  // Reset rotation slider
-  const slider = document.getElementById('ringRotateSlider');
-  if (slider) slider.value = '0';
-
   // Hint text — fade out after 5s
   const hintEl = document.getElementById('tryon-hint-text');
   if (hintEl) {
-    hintEl.textContent = 'Drag to position · Use +/− to resize · Slider to rotate';
+    hintEl.textContent = 'Drag to position · Use +/− to resize · Fit slider to adjust occlusion';
     hintEl.style.color = 'rgba(201,168,76,0.7)';
     hintEl.style.opacity = '1';
     hintEl.style.transition = 'opacity 1.5s ease';
     setTimeout(() => { if (hintEl) hintEl.style.opacity = '0'; }, 5000);
   }
+
+  // Reset rotation and fit sliders
+  const slider = document.getElementById('ringRotateSlider');
+  if (slider) slider.value = '0';
+
+  // Reset fit slider
+  const fitSlider = document.getElementById('ringFitSlider');
+  if (fitSlider) fitSlider.value = '55';
+  ringFadeStart = 0.55;
 
   // Reset all state
   ringX              = W / 2;
@@ -4501,6 +4551,8 @@ function loadRingForTryOn(imageUrl) {
   latestCutoutImage  = null;
   _ringTryonImg      = null;
   _ringImgIsOriginal = false;
+  _ringMaskedCanvas  = null;
+  _ringMaskSrcType   = '';
 
   // Attach events
   ringCanvas.addEventListener('mousedown',  _ringDragStart);
@@ -4536,11 +4588,12 @@ function loadRingForTryOn(imageUrl) {
   const origImg = _makeImg(_srcToUse);
   origImg.dataset.src = imageUrl;
   origImg.onload = () => {
-    // Only assign if we haven't already got a transparent version
+    // Only set if we haven't already received a transparent version
     if (_ringImgIsOriginal !== false || _ringTryonImg === null) {
       _ringTryonImg      = origImg;
       _ringImgIsOriginal = true;
       console.log('[Ring] ring image loaded (original), dimensions:', origImg.naturalWidth + 'x' + origImg.naturalHeight);
+      _buildRingMask(origImg, 'original');
     }
   };
   origImg.onerror = () => console.warn('[Ring] original image failed to load');
@@ -4555,6 +4608,7 @@ function loadRingForTryOn(imageUrl) {
       _ringTryonImg      = cleanImg;
       _ringImgIsOriginal = false;
       console.log('[Ring] transparent ring swapped in (from cache)');
+      _buildRingMask(cleanImg, 'cached');
     };
   } else {
     removeBgWithApi(_srcToUse).then(cleanUrl => {
@@ -4568,6 +4622,7 @@ function loadRingForTryOn(imageUrl) {
         _ringTryonImg      = cleanImg;
         _ringImgIsOriginal = false;
         console.log('[Ring] transparent ring swapped in');
+        _buildRingMask(cleanImg, 'transparent');
       };
     }).catch(e => {
       console.log('[Ring] remove.bg call status: failed —', e.message, '— keeping original at 0.85');
