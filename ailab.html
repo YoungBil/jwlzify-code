@@ -5316,11 +5316,24 @@ async function loadNecklaceForTryOn(imageUrl) {
   necklaceResize.style.display = 'block';
   requestAnimationFrame(updateNecklaceResizeHandle);
 
-  // Swap to bg-removed version — cached so no extra API call on revisit
-  const cleanUrl = await removePendantBackgroundCached(imageUrl);
-  necklaceImg.src = cleanUrl;
-  requestAnimationFrame(updateNecklaceResizeHandle);
-  console.log('[JWLZIFY] necklace loaded with bg removed');
+  // Swap to bg-removed version via API only.
+  // Canvas flood-fill is NOT used here: metallic chains on a grey background
+  // have near-identical RGB to the background, so flood-fill removes the chain
+  // itself and returns a transparent PNG. On API failure, keep the original.
+  try {
+    let cleanUrl = bgRemovalCache.get(imageUrl);
+    if (!cleanUrl) {
+      cleanUrl = await removeBgWithApi(imageUrl);
+      bgRemovalCache.set(imageUrl, cleanUrl);
+    }
+    if (isTryOnActive) {
+      necklaceImg.src = cleanUrl;
+      requestAnimationFrame(updateNecklaceResizeHandle);
+    }
+    console.log('[JWLZIFY] necklace bg removed via API');
+  } catch (e) {
+    console.log('[JWLZIFY] necklace bg removal failed, keeping original:', e.message);
+  }
 }
 </script>
 
