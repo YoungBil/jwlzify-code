@@ -1920,10 +1920,23 @@ function buildPrompt(type, material, gem, style, desc) {
     const chainLenVisible = ['cable','box','rope','figaro'].includes(selectedChainStyle);
     const chainLenStr = (chainLenVisible && selectedChainLength) ? `Chain length: ${selectedChainLength}.` : '';
     const specStr = [chainStyleStr, chainLenStr].filter(Boolean).join(' ');
+    const necklaceFraming = [
+      'necklace displayed as if worn',
+      'front-facing view photographed straight on',
+      'chain forms a clean symmetrical U-shape draped down both sides evenly',
+      'pendant centered at bottom of the curve facing directly forward',
+      'displayed on an invisible ghost mannequin neck form',
+      'vertical portrait orientation',
+      'professional jewelry photography',
+      'plain seamless light grey background',
+      'soft even studio lighting',
+      'highly detailed',
+      'photorealistic'
+    ];
     return [userDesc, chainSpecific, wPart.trim(), mDisp, gemPart].filter(Boolean).join(', ')
       + (userDesc || chainSpecific || wPart.trim() || mDisp || gemPart ? '. ' : '')
       + (specStr ? specStr + ' ' : '')
-      + "Product photography of a single necklace chain. Knolling style. Overhead flat lay. Shot from directly above at exactly 90 degrees. Chain laid flat on a pure white surface, arranged in a complete U-shape or oval loop, both ends meeting symmetrically at the top. No perspective angle. No 3D depth. No close-up macro shot. No partial chain. No dangling. No fabric props. No pendant. No charm. No gemstone drop. The full chain is visible and centered. Ultra-sharp focus across the entire chain. Studio lighting, white background, luxury e-commerce product photography. No humans. No person. No body parts. No neck. No chest. No hands. No fingers. No ears. No skin. No model. Product-only photography. The jewelry piece is the sole subject of the image.";
+      + necklaceFraming.join(', ') + '.';
   }
 
   if (type === 'earrings') {
@@ -2331,7 +2344,10 @@ async function startGeneration(isTweak) {
     .filter(([t]) => t !== resolvedType)
     .flatMap(([, syns]) => syns)
     .join(', ');
-  const negativePrompt = `${negJewelryTerms}, brooch, anklet, person, human, model, body, face, hands, text, watermark, logo, blurry, low quality, distorted`;
+  const necklaceNegative = resolvedType === 'necklace'
+    ? ', flat lay, tabletop, top-down view, coiled chain, chain laid flat, jewelry box, angled perspective, asymmetrical drape, multiple necklaces, hands, neck skin, mannequin face'
+    : '';
+  const negativePrompt = `${negJewelryTerms}, brooch, anklet, person, human, model, body, face, hands, text, watermark, logo, blurry, low quality, distorted${necklaceNegative}`;
 
   // Read all spec values fresh from the DOM at this exact click moment
   const _domSpecs = _readSpecsFromDOM();
@@ -2504,7 +2520,10 @@ async function confirmAndGenerate() {
   const negJewelryTerms = Object.entries(_TYPE_SYNONYMS)
     .filter(([t]) => t !== LAB.type)
     .flatMap(([, syns]) => syns).join(', ');
-  const negativePrompt = negJewelryTerms + ', brooch, anklet, person, human, model, body, face, hands, text, watermark, logo, blurry, low quality, distorted';
+  const _necklaceNeg = LAB.type === 'necklace'
+    ? ', flat lay, tabletop, top-down view, coiled chain, chain laid flat, jewelry box, angled perspective, asymmetrical drape, multiple necklaces, hands, neck skin, mannequin face'
+    : '';
+  const negativePrompt = negJewelryTerms + ', brooch, anklet, person, human, model, body, face, hands, text, watermark, logo, blurry, low quality, distorted' + _necklaceNeg;
 
   console.log('[JWLZIFY] generation prompt:', fullPrompt);
   _enqueueGen(() => _generateImage(fullPrompt, negativePrompt)).then(blobUrl => {
