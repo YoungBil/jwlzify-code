@@ -2879,11 +2879,13 @@ function showRefineStep() {
   goStep(3);
   fetchSpecCard();
 
-  // Preload remove.bg for ring try-on while user reads refine step
-  if (LAB.type === 'ring' && LAB.imageUrl && !bgRemovalCache.has(LAB.imageUrl)) {
+  // Preload remove.bg for canvas try-on (ring + bracelet) while the user reads
+  // the refine step, so the transparent PNG is cached and ready the instant
+  // try-on opens. Result is keyed by image URL in bgRemovalCache.
+  if ((LAB.type === 'ring' || LAB.type === 'bracelet') && LAB.imageUrl && !bgRemovalCache.has(LAB.imageUrl)) {
     removeBgWithApi(LAB.imageUrl).then(cleanUrl => {
       bgRemovalCache.set(LAB.imageUrl, cleanUrl);
-      console.log('[Ring] preloaded remove.bg result at refine step');
+      console.log('[TryOn]', LAB.type, 'preloaded remove.bg result at refine step');
     }).catch(() => {});
   }
 }
@@ -3721,6 +3723,10 @@ function teardownTryOn() {
   _tryOnMaxSize      = 300;
 }
 
+// Safety net: also stop the camera + render loop if the page is hidden/closed
+// while try-on is open (step navigation already calls teardownTryOn).
+window.addEventListener('pagehide', () => { if (isTryOnActive) teardownTryOn(); });
+
 
 
 
@@ -4398,7 +4404,7 @@ const _BRACELET_FADE_W  = 0.20;   // bracelet fade-transition width (35%→55% b
 let _ringMaskDirection  = 'hide-bottom'; // 'hide-bottom' = ring (band back), 'hide-top' = bracelet (far arc)
 let _ringMaskedCanvas   = null;   // offscreen 400×400 normalized+masked canvas
 let _ringMaskSrcType    = '';     // 'original' | 'cached' | 'transparent'
-let _tryOnMinSize       = 60;     // set per jewelry type in _loadCanvasJewelryTryOn
+let _tryOnMinSize       = 60;     // set per jewelry type in initTryOn
 let _tryOnMaxSize       = 300;
 
 function _ringImgH() {
@@ -4583,38 +4589,45 @@ function _ringDragEnd() {
 
 
 function loadRingForTryOn(imageUrl) {
-  _loadCanvasJewelryTryOn(imageUrl, {
+  initTryOn({
+    imageUrl:      imageUrl,
     typeLabel:     'ring',
-    defaultSize:   120,
+    defaultSize:   120,            // ring
     minSize:       60,
     maxSize:       300,
-    getDefaultY:   (H) => H * 0.67,
+    getDefaultY:   (H) => H * 0.67, // centred on the hand
     hintText:      'Drag to position · Use +/− to resize · Fit slider to adjust occlusion',
     fitLabel:      'Fit on finger',
     maskDirection: 'hide-bottom',   // ring sits ON the finger → hide band backside (bottom)
-    fitMin:        35,              // slider 0.35–0.65, default 0.45
+    fitMin:        35,              // slider 0.35–0.65
     fitMax:        65,
-    fitDefault:    45,
+    fitDefault:    55,             // clean optimal (~0.55): front of band visible, backside tucked behind finger
   });
 }
 
 function loadBraceletForTryOn(imageUrl) {
-  _loadCanvasJewelryTryOn(imageUrl, {
+  initTryOn({
+    imageUrl:      imageUrl,
     typeLabel:     'bracelet',
-    defaultSize:   200,
+    defaultSize:   200,            // bracelet
     minSize:       100,
     maxSize:       360,
-    getDefaultY:   (H) => H * 0.75,
+    getDefaultY:   (H) => H * 0.75, // centred, slightly lower than the ring
     hintText:      'Hold your wrist up to the camera · Drag to position · +/− to resize · Fit slider to tuck behind wrist',
     fitLabel:      'Fit on wrist',
     maskDirection: 'hide-top',      // bracelet wraps AROUND the wrist → hide far arc (top)
     fitMin:        25,              // slider 0.25–0.55
     fitMax:        55,
-    fitDefault:    50,             // ~85% of range — slightly below max, still hides the top background box on first frame
+    fitDefault:    50,             // ~85% of range — slightly below max, hides the top background box on first frame
   });
 }
 
-function _loadCanvasJewelryTryOn(imageUrl, cfg) {
+// Shared, parameterized try-on used by BOTH ring and bracelet (and any future
+// "wraps around a body part" type). Config differs only by type / size /
+// position / maskDirection / fitLabel / hintText / fit defaults — the body below
+// is identical for every type.
+function initTryOn(cfg) {
+  const imageUrl = cfg.imageUrl;
   console.log('[Ring] try-on started, type:', cfg.typeLabel, '| image source:', imageUrl);
   console.time('[Ring] webcam ready');
   console.time('[Ring] ring drawn');
@@ -4671,14 +4684,21 @@ function _loadCanvasJewelryTryOn(imageUrl, cfg) {
     fitSlider.max   = String(fitMax);
     fitSlider.value = String(fitDefault);
   }
-  // Apply the default immediately so the first rendered frame uses the optimal
+  // Apply the default immediately so the FIRST rendered frame uses the optimal
   // occlusion (no slider interaction required); slider stays adjustable after.
   ringFadeStart = fitDefault / 100;
-  const defaultFitValue = fitDefault;
-  console.log('[TryOn] type:', cfg.typeLabel, '| fit slider default:', defaultFitValue);
-  if (cfg.maskDirection === 'hide-top') {
-    console.log('[TryOn] bracelet fit slider default:', defaultFitValue);
-  }
+  const defaultFitValue = ringFadeStart;            // fraction (e.g. 0.55 ring, 0.50 bracelet)
+  console.log('[TryOn]', cfg.typeLabel, 'fit default:', defaultFitValue);
+
+  // #8 — one-glance sanity check on open: type, mask direction, fit default, size, image source
+  const _openSource = bgRemovalCache.get(cfg.imageUrl || _RING_FALLBACK_URL)
+    ? 'transparent (cached)'
+    : 'fallback-original (until remove.bg returns)';
+  console.log('[TryOn] open —', cfg.typeLabel,
+              '| mask:', cfg.maskDirection,
+              '| fit default:', defaultFitValue,
+              '| size:', cfg.defaultSize,
+              '| image source:', _openSource);
 
   // Reset all state
   ringX              = W / 2;
@@ -4738,7 +4758,12 @@ function _loadCanvasJewelryTryOn(imageUrl, cfg) {
   };
   origImg.onerror = () => console.warn('[Ring] original image failed to load');
 
-  // PHASE 2: get transparent version (cache → API → keep original)
+  // PHASE 2: get transparent version (cache → API → keep original).
+  // Once remove.bg credits are active, the returned PNG is fully transparent,
+  // so the background box is gone with no mask needed to hide it.
+  const _logSource = (removeBgSucceeded) =>
+    console.log('[TryOn]', cfg.typeLabel, 'image source:', removeBgSucceeded ? 'transparent' : 'fallback-original');
+
   const cachedUrl = bgRemovalCache.get(_srcToUse);
   if (cachedUrl) {
     console.log('[Ring] remove.bg result loaded from cache');
@@ -4747,8 +4772,8 @@ function _loadCanvasJewelryTryOn(imageUrl, cfg) {
     cleanImg.onload = () => {
       _ringTryonImg      = cleanImg;
       _ringImgIsOriginal = false;
-      console.log('[Ring] transparent ring swapped in (from cache)');
       _buildRingMask(cleanImg, 'cached');
+      _logSource(true);
     };
   } else {
     removeBgWithApi(_srcToUse).then(cleanUrl => {
@@ -4761,11 +4786,13 @@ function _loadCanvasJewelryTryOn(imageUrl, cfg) {
         if (!isTryOnActive) return;
         _ringTryonImg      = cleanImg;
         _ringImgIsOriginal = false;
-        console.log('[Ring] transparent ring swapped in');
         _buildRingMask(cleanImg, 'transparent');
+        _logSource(true);
       };
     }).catch(e => {
+      // No credits / failure → keep original drawn at opacity 0.85 (fallback).
       console.log('[Ring] remove.bg call status: failed —', e.message, '— keeping original at 0.85');
+      _logSource(false);
     });
   }
 }
@@ -5189,7 +5216,7 @@ document.addEventListener('pointerup', () => {
 });
 
 // NOTE: the bracelet try-on now uses the shared canvas pipeline
-// (see loadBraceletForTryOn → _loadCanvasJewelryTryOn above), giving it the
+// (see loadBraceletForTryOn → initTryOn above), giving it the
 // same drag / +−size / rotation / remove.bg / caching / 400×400 mask as the
 // ring, with maskDirection 'hide-top' so the far arc tucks behind the wrist.
 // The previous DOM-<img> implementation was removed to stop it shadowing that.
