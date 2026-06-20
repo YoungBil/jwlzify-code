@@ -4608,9 +4608,9 @@ function loadBraceletForTryOn(imageUrl) {
     hintText:      'Hold your wrist up to the camera · Drag to position · +/− to resize · Fit slider to tuck behind wrist',
     fitLabel:      'Fit on wrist',
     maskDirection: 'hide-top',      // bracelet wraps AROUND the wrist → hide far arc (top)
-    fitMin:        25,              // slider 0.25–0.55, default 0.35 (where the top fade begins)
+    fitMin:        25,              // slider 0.25–0.55
     fitMax:        55,
-    fitDefault:    35,
+    fitDefault:    55,             // open at the high end so the top background box is hidden on first frame
   });
 }
 
@@ -4671,7 +4671,11 @@ function _loadCanvasJewelryTryOn(imageUrl, cfg) {
     fitSlider.max   = String(fitMax);
     fitSlider.value = String(fitDefault);
   }
+  // Apply the default immediately so the first rendered frame uses the optimal
+  // occlusion (no slider interaction required); slider stays adjustable after.
   ringFadeStart = fitDefault / 100;
+  const defaultFitValue = fitDefault;
+  console.log('[TryOn] type:', cfg.typeLabel, '| fit slider default:', defaultFitValue);
 
   // Reset all state
   ringX              = W / 2;
