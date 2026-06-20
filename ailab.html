@@ -4394,6 +4394,8 @@ let _ringDragOffX       = 0;
 let _ringDragOffY       = 0;
 let ringFadeStart       = 0.45;   // controlled by "Fit" slider (range 0.35–0.65)
 const _RING_FADE_END    = 0.65;   // fully hidden below this — hides band backside
+const _BRACELET_FADE_W  = 0.20;   // bracelet fade-transition width (35%→55% by default)
+let _ringMaskDirection  = 'hide-bottom'; // 'hide-bottom' = ring (band back), 'hide-top' = bracelet (far arc)
 let _ringMaskedCanvas   = null;   // offscreen 400×400 normalized+masked canvas
 let _ringMaskSrcType    = '';     // 'original' | 'cached' | 'transparent'
 let _tryOnMinSize       = 60;     // set per jewelry type in _loadCanvasJewelryTryOn
@@ -4420,20 +4422,40 @@ function _buildRingMask(img, srcType) {
   dy = (SIZE - dh) / 2;
   oc2.drawImage(img, dx, dy, dw, dh);
 
-  // Gradient mask — destination-out removes pixels where gradient is opaque
-  const fadeStart = ringFadeStart;
-  const fadeEnd   = _RING_FADE_END;
-  const grad = oc2.createLinearGradient(0, SIZE * fadeStart, 0, SIZE * fadeEnd);
-  grad.addColorStop(0, 'rgba(0,0,0,0)');  // nothing removed at top of fade zone
-  grad.addColorStop(1, 'rgba(0,0,0,1)');  // fully removed at bottom of fade zone
+  // Gradient mask — destination-out removes pixels where gradient is opaque.
+  // Orientation depends on how the piece sits:
+  //   ring     → hide the BOTTOM (band backside goes behind the finger)
+  //   bracelet → hide the TOP (far arc of the loop goes behind the wrist)
+  let fadeStart, fadeEnd, region;
   oc2.globalCompositeOperation = 'destination-out';
-  oc2.fillStyle = grad;
-  oc2.fillRect(0, 0, SIZE, SIZE);
+  if (_ringMaskDirection === 'hide-top') {
+    // Bracelet: fully hidden from 0% down to fadeStart, fade fadeStart→fadeEnd, visible below.
+    fadeStart = ringFadeStart;                          // end of fully-hidden region (slider, default 0.35)
+    fadeEnd   = Math.min(0.95, fadeStart + _BRACELET_FADE_W); // fade width 0.20 → default 0.55
+    const grad = oc2.createLinearGradient(0, SIZE * fadeStart, 0, SIZE * fadeEnd);
+    grad.addColorStop(0, 'rgba(0,0,0,1)');  // fully removed at/above top of fade zone (hide far arc)
+    grad.addColorStop(1, 'rgba(0,0,0,0)');  // fully visible at/below bottom of fade zone (front curve)
+    oc2.fillStyle = grad;
+    oc2.fillRect(0, 0, SIZE, SIZE);
+    region = 'top 0%–' + Math.round(fadeStart * 100) + '% (fade to ' + Math.round(fadeEnd * 100) + '%)';
+  } else {
+    // Ring (default, unchanged): visible top, hidden bottom.
+    fadeStart = ringFadeStart;
+    fadeEnd   = _RING_FADE_END;
+    const grad = oc2.createLinearGradient(0, SIZE * fadeStart, 0, SIZE * fadeEnd);
+    grad.addColorStop(0, 'rgba(0,0,0,0)');  // nothing removed at top of fade zone
+    grad.addColorStop(1, 'rgba(0,0,0,1)');  // fully removed at bottom of fade zone
+    oc2.fillStyle = grad;
+    oc2.fillRect(0, 0, SIZE, SIZE);
+    region = 'bottom ' + Math.round(fadeEnd * 100) + '%–100% (fade from ' + Math.round(fadeStart * 100) + '%)';
+  }
   oc2.globalCompositeOperation = 'source-over';
 
   _ringMaskedCanvas = oc;
   _ringMaskSrcType  = srcType;
-  console.log('[TryOn] mask | type:', LAB.type, '| fade start:', fadeStart, '| fully hidden from:', fadeEnd);
+  const type = LAB.type;
+  const maskDirection = _ringMaskDirection;
+  console.log('[TryOn] type:', type, '| mask direction:', maskDirection, '| hidden region:', region);
 }
 
 async function captureAndRemoveBg() {
@@ -4562,25 +4584,33 @@ function _ringDragEnd() {
 
 function loadRingForTryOn(imageUrl) {
   _loadCanvasJewelryTryOn(imageUrl, {
-    typeLabel:   'ring',
-    defaultSize: 120,
-    minSize:     60,
-    maxSize:     300,
-    getDefaultY: (H) => H * 0.67,
-    hintText:    'Drag to position · Use +/− to resize · Fit slider to adjust occlusion',
-    fitLabel:    'Fit on finger',
+    typeLabel:     'ring',
+    defaultSize:   120,
+    minSize:       60,
+    maxSize:       300,
+    getDefaultY:   (H) => H * 0.67,
+    hintText:      'Drag to position · Use +/− to resize · Fit slider to adjust occlusion',
+    fitLabel:      'Fit on finger',
+    maskDirection: 'hide-bottom',   // ring sits ON the finger → hide band backside (bottom)
+    fitMin:        35,              // slider 0.35–0.65, default 0.45
+    fitMax:        65,
+    fitDefault:    45,
   });
 }
 
 function loadBraceletForTryOn(imageUrl) {
   _loadCanvasJewelryTryOn(imageUrl, {
-    typeLabel:   'bracelet',
-    defaultSize: 200,
-    minSize:     100,
-    maxSize:     360,
-    getDefaultY: (H) => H * 0.75,
-    hintText:    'Hold your wrist up to the camera · Drag to position · +/− to resize · slider to rotate',
-    fitLabel:    'Fit on wrist',
+    typeLabel:     'bracelet',
+    defaultSize:   200,
+    minSize:       100,
+    maxSize:       360,
+    getDefaultY:   (H) => H * 0.75,
+    hintText:      'Hold your wrist up to the camera · Drag to position · +/− to resize · Fit slider to tuck behind wrist',
+    fitLabel:      'Fit on wrist',
+    maskDirection: 'hide-top',      // bracelet wraps AROUND the wrist → hide far arc (top)
+    fitMin:        25,              // slider 0.25–0.55, default 0.35 (where the top fade begins)
+    fitMax:        55,
+    fitDefault:    35,
   });
 }
 
@@ -4589,8 +4619,9 @@ function _loadCanvasJewelryTryOn(imageUrl, cfg) {
   console.time('[Ring] webcam ready');
   console.time('[Ring] ring drawn');
 
-  _tryOnMinSize = cfg.minSize;
-  _tryOnMaxSize = cfg.maxSize;
+  _tryOnMinSize      = cfg.minSize;
+  _tryOnMaxSize      = cfg.maxSize;
+  _ringMaskDirection = cfg.maskDirection || 'hide-bottom';
   const fitLabelEl = document.getElementById('ringFitLabel');
   if (fitLabelEl) fitLabelEl.textContent = cfg.fitLabel || 'Fit';
 
@@ -4630,10 +4661,17 @@ function _loadCanvasJewelryTryOn(imageUrl, cfg) {
   const slider = document.getElementById('ringRotateSlider');
   if (slider) slider.value = '0';
 
-  // Reset fit slider
-  const fitSlider = document.getElementById('ringFitSlider');
-  if (fitSlider) fitSlider.value = '45';
-  ringFadeStart = 0.45;
+  // Reset fit slider — range/default vary per type (ring vs bracelet)
+  const fitMin     = cfg.fitMin     != null ? cfg.fitMin     : 35;
+  const fitMax     = cfg.fitMax     != null ? cfg.fitMax     : 65;
+  const fitDefault = cfg.fitDefault != null ? cfg.fitDefault : 45;
+  const fitSlider  = document.getElementById('ringFitSlider');
+  if (fitSlider) {
+    fitSlider.min   = String(fitMin);
+    fitSlider.max   = String(fitMax);
+    fitSlider.value = String(fitDefault);
+  }
+  ringFadeStart = fitDefault / 100;
 
   // Reset all state
   ringX              = W / 2;
@@ -5143,60 +5181,11 @@ document.addEventListener('pointerup', () => {
   braceletResizing = false;
 });
 
-async function loadBraceletForTryOn(imageUrl) {
-  console.log('[JWLZIFY] loading bracelet try-on');
-
-  ['tryon-necklace', 'tryon-pendant', 'tryon-resize',
-   'tryon-earring-left', 'tryon-earring-right',
-   'tryon-earring-left-handle', 'tryon-earring-right-handle',
-   'tryon-necklace-img', 'tryon-necklace-resize'
-  ].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.style.display = 'none';
-  });
-
-  let braceletImg    = document.getElementById('tryon-bracelet-img');
-  let braceletResize = document.getElementById('tryon-bracelet-resize');
-
-  if (!braceletImg) {
-    braceletImg = document.createElement('img');
-    braceletImg.id = 'tryon-bracelet-img';
-    braceletImg.style.cssText =
-      'position:absolute;cursor:grab;user-select:none;display:none;z-index:10;pointer-events:auto;height:auto;';
-    document.getElementById('tryon-container').appendChild(braceletImg);
-  }
-
-  if (!braceletResize) {
-    braceletResize = document.createElement('div');
-    braceletResize.id = 'tryon-bracelet-resize';
-    braceletResize.style.cssText =
-      'position:absolute;width:14px;height:14px;background:#C0C0C0;border-radius:50%;' +
-      'cursor:se-resize;display:none;z-index:11;' +
-      'border:1.5px solid rgba(255,255,255,0.7);box-shadow:0 1px 4px rgba(0,0,0,0.4);';
-    document.getElementById('tryon-container').appendChild(braceletResize);
-  }
-
-  const container  = document.getElementById('tryon-container');
-  const W          = container.offsetWidth;
-  const H          = container.offsetHeight;
-  const defaultW   = 200;
-  const defaultLeft = Math.floor((W - defaultW) / 2);
-  const defaultTop  = Math.floor(H / 2 - 50);
-
-  braceletImg.src           = imageUrl;
-  braceletImg.style.width   = defaultW + 'px';
-  braceletImg.style.height  = 'auto';
-  braceletImg.style.left    = defaultLeft + 'px';
-  braceletImg.style.top     = defaultTop  + 'px';
-  braceletImg.style.display = 'block';
-  braceletResize.style.display = 'block';
-  requestAnimationFrame(updateBraceletResizeHandle);
-
-  const cleanUrl = await removePendantBackgroundCached(imageUrl);
-  braceletImg.src = cleanUrl;
-  requestAnimationFrame(updateBraceletResizeHandle);
-  console.log('[JWLZIFY] bracelet loaded with bg removed');
-}
+// NOTE: the bracelet try-on now uses the shared canvas pipeline
+// (see loadBraceletForTryOn → _loadCanvasJewelryTryOn above), giving it the
+// same drag / +−size / rotation / remove.bg / caching / 400×400 mask as the
+// ring, with maskDirection 'hide-top' so the far arc tucks behind the wrist.
+// The previous DOM-<img> implementation was removed to stop it shadowing that.
 
 async function loadNecklaceForTryOn(imageUrl) {
   console.log('[JWLZIFY] loading necklace try-on');
