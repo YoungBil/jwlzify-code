@@ -150,6 +150,25 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
 #camWrap { position:relative; overflow:hidden; background:#000; }
 #camWrap video { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; transform:scaleX(-1); }
 
+/* ── Ring try-on ── */
+@keyframes tryonCamPulse {
+  0%,100% { box-shadow:0 0 0 2px rgba(201,168,76,0.4); }
+  50%     { box-shadow:0 0 0 2px #C9A84C; }
+}
+.ring-rotate-slider {
+  -webkit-appearance:none; appearance:none;
+  width:200px; height:3px;
+  background:rgba(201,168,76,0.2); border-radius:2px; outline:none; cursor:pointer;
+}
+.ring-rotate-slider::-webkit-slider-thumb {
+  -webkit-appearance:none; width:16px; height:16px;
+  background:#C9A84C; border-radius:50%; cursor:pointer;
+}
+.ring-rotate-slider::-moz-range-thumb {
+  width:16px; height:16px; background:#C9A84C;
+  border-radius:50%; cursor:pointer; border:none;
+}
+
 /* ── Jewelry overlays ── */
 #jewelryUnit {
   position:absolute; display:none; flex-direction:column; align-items:center;
@@ -894,6 +913,49 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
         <!-- Ring try-on canvas -->
         <canvas id="ring-tryon-canvas"></canvas>
 
+        <!-- Ring loading overlay -->
+        <div id="ring-tryon-loading" style="display:none;position:absolute;inset:0;z-index:15;
+             background:rgba(11,15,26,0.7);align-items:center;justify-content:center;flex-direction:column;gap:12px;">
+          <div style="width:36px;height:36px;border-radius:50%;border:2px solid rgba(201,168,76,0.3);
+               border-top-color:#C9A84C;animation:dSpin 0.9s linear infinite;"></div>
+          <p style="font-family:Inter,sans-serif;font-size:12px;color:#C9A84C;letter-spacing:0.08em;">Removing background…</p>
+        </div>
+
+      </div>
+
+      <!-- Ring try-on controls -->
+      <div id="ring-tryon-controls" style="display:none;flex-direction:column;align-items:center;gap:10px;width:100%;max-width:780px;">
+        <!-- Row 1: Rotate -->
+        <div style="display:flex;align-items:center;gap:12px;width:100%;max-width:400px;">
+          <span style="font-family:Inter,sans-serif;font-size:12px;color:rgba(201,168,76,0.6);user-select:none;width:36px;flex-shrink:0;">Rotate</span>
+          <label for="ringRotateSlider" style="display:none;"></label>
+          <input type="range" id="ringRotateSlider" class="ring-rotate-slider" min="-45" max="45" value="0"
+                 oninput="ringRotation=parseInt(this.value)" style="flex:1;">
+        </div>
+        <!-- Row 2: Size -->
+        <div style="display:flex;align-items:center;gap:12px;width:100%;max-width:400px;">
+          <span style="font-family:Inter,sans-serif;font-size:12px;color:rgba(201,168,76,0.6);user-select:none;width:36px;flex-shrink:0;">Size</span>
+          <button onclick="ringSize=Math.max(_tryOnMinSize,ringSize-10)"
+                  style="width:36px;height:36px;border:1px solid #C9A84C;color:#C9A84C;background:transparent;
+                         border-radius:6px;font-size:18px;cursor:pointer;line-height:1;flex-shrink:0;">−</button>
+          <button onclick="ringSize=Math.min(_tryOnMaxSize,ringSize+10)"
+                  style="width:36px;height:36px;border:1px solid #C9A84C;color:#C9A84C;background:transparent;
+                         border-radius:6px;font-size:18px;cursor:pointer;line-height:1;flex-shrink:0;">+</button>
+        </div>
+        <!-- Row 3: Fit on finger -->
+        <div style="display:flex;align-items:center;gap:12px;width:100%;max-width:400px;">
+          <span id="ringFitLabel" style="font-family:Inter,sans-serif;font-size:12px;color:rgba(201,168,76,0.6);user-select:none;width:36px;flex-shrink:0;">Fit</span>
+          <label for="ringFitSlider" style="display:none;"></label>
+          <input type="range" id="ringFitSlider" class="ring-rotate-slider" min="35" max="65" value="45"
+                 oninput="ringFadeStart=this.value/100;if(_ringTryonImg&&_ringMaskedCanvas)_buildRingMask(_ringTryonImg,_ringMaskSrcType)" style="flex:1;">
+        </div>
+        <!-- Save -->
+        <button onclick="saveRingTryOnPhoto()"
+                style="border:1px solid #C9A84C;color:#C9A84C;background:transparent;
+                       height:36px;border-radius:6px;font-size:14px;font-family:Inter,sans-serif;
+                       padding:0 20px;cursor:pointer;letter-spacing:0.04em;">
+          Save Photo
+        </button>
       </div>
 
       <!-- ── Next / Back ── -->
@@ -1340,7 +1402,6 @@ const CLAUDE_API_KEY = '';
 
 /* ── Ring 3D Try-On configuration ── */
 const RING_3D_CONFIG = {
-  TRIPOSR_ENDPOINT: 'https://triposr-ring-3d.sarkd333.workers.dev',
   CANVAS_WIDTH: 600,
   CANVAS_HEIGHT: 600,
   ENV_MAP_INTENSITY: 1.6,
@@ -1505,7 +1566,20 @@ async function _fetchWithRetry(makeUrl) {
   throw lastErr;
 }
 
-async function _generateImage(prompt, negativePrompt, initImage) {
+/* ── HF-specific prompt helpers ── */
+function _buildHfJewelryDesc(type, material, gem, style, desc) {
+  const m = matLabel(material);
+  const g = gemLabel(gem);
+  const s = style || 'Modern';
+  const userPart = desc && desc.trim() ? desc.trim() + ', ' : '';
+  return `${userPart}luxury ${s} ${m} ${type}, ${g}`;
+}
+const _HF_RING_NEGATIVE      = 'tilted, angled, three-quarter view, 3/4 view, perspective, side view, side angle, top-down, birds eye, isometric, diagonal, rotated, lying flat, flat lay, on its side, leaning, oblique, dutch angle, foreshortening, multiple rings, collage, grid, two rings, group of rings, blurry, deformed, asymmetrical';
+const _HF_BRACELET_NEGATIVE  = 'flat lay, laid flat, spread out, scattered, disconnected pieces, broken chain, straight strip, unclasped, open ends, multiple bracelets, two bracelets, collage, grid, tangled, deformed, asymmetrical, lying on surface, top-down, birds eye, side view, coiled, stacked';
+const _HF_NECKLACE_NEGATIVE  = 'flat lay, tabletop, top-down view, coiled chain, chain laid flat, jewelry box, angled perspective, asymmetrical drape, cropped chain, multiple necklaces, hands, neck skin, mannequin face, busy background, blurry, deformed';
+
+async function _generateImage(prompt, negativePrompt, initImage, hfOverrides) {
+  hfOverrides = hfOverrides || {};
   // PRIMARY: Gemini via Cloudflare Worker
   try {
     console.log('[JWLZIFY] calling Gemini worker...');
@@ -1564,7 +1638,15 @@ async function _generateImage(prompt, negativePrompt, initImage) {
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(Object.assign({ inputs: prompt, negative_prompt: negativePrompt || '' }, initImage ? { initImage } : {}))
+        body: JSON.stringify(Object.assign(
+          {
+            inputs:              hfOverrides.inputs              || prompt,
+            negative_prompt:     hfOverrides.negative_prompt !== undefined ? hfOverrides.negative_prompt : (negativePrompt || ''),
+            guidance_scale:      hfOverrides.guidance_scale      || 7.5,
+            num_inference_steps: hfOverrides.num_inference_steps || 30,
+          },
+          initImage ? { initImage } : {}
+        ))
       }
     );
     console.log('[JWLZIFY] HF worker response | method=huggingface | status=' + hfRes.status);
@@ -1738,11 +1820,7 @@ function updateProgress(n) {
 
 /* ── Step navigation ─────────────────────────── */
 async function goStep(n) {
-  // Ring 3D try-on intercept — opens 3D modal instead of camera view
-  if (n === 4 && LAB.type === 'ring' && typeof ring3DFallbackMode !== 'undefined' && !ring3DFallbackMode) {
-    startRing3DTryOn();
-    return;
-  }
+
   // Reset chain style on new design / start over
   if (n === 1) {
     selectedChainStyle = null; selectedChainPrompt = ''; selectedChainLabel = '';
@@ -1863,8 +1941,67 @@ function setType(btn, type) {
   if (LAB.step === 3 && LAB.type === 'pendant' && type !== 'pendant') {
     window.teardownARPipeline?.();
   }
+  const prevType = LAB.type;
   LAB.type = type;
+  userSelections.jewelryType = type;
+  console.log('[JWLZIFY] jewelry type in prompt:', userSelections.jewelryType);
+
+  if (prevType && prevType !== type) {
+    console.log('[JWLZIFY] jewelry type changed to:', type, '- state reset');
+
+    // Clear generated image and cache
+    LAB.imageUrl = null;
+    bgRemovalCache.clear();
+    const ri = document.getElementById('refineImg');  if (ri) ri.src = '';
+    const qi = document.getElementById('quoteImg');   if (qi) qi.src = '';
+    const ot = document.getElementById('orderThumb'); if (ot) ot.src = '';
+    lastGeneratedImage  = null;
+    window._lastFullPrompt = null;
+
+    // Clear userSelections, keeping only the new type
+    Object.keys(userSelections).forEach(k => { if (k !== 'jewelryType') delete userSelections[k]; });
+
+    // Reset spec step buttons and inputs
+    document.querySelectorAll('.spec-weight-btn, .spec-count-btn, .spec-chainlen-btn')
+      .forEach(b => b.classList.remove('active'));
+    const _swi = document.getElementById('specWeightInput');
+    if (_swi) _swi.value = '';
+    const _sci = document.getElementById('specCountCustomInput');
+    if (_sci) _sci.value = '';
+    const _scli = document.getElementById('specChainLengthCustomInput');
+    if (_scli) _scli.value = '';
+    const _ccw = document.getElementById('specCountCustomWrap');
+    if (_ccw) _ccw.style.display = 'none';
+    const _clcw = document.getElementById('specChainLengthCustomWrap');
+    if (_clcw) _clcw.style.display = 'none';
+
+    // Reset specifications to defaults
+    window.jwlSpecifications.metalGrams  = 4.5;
+    window.jwlSpecifications.weightLabel = 'medium';
+    window.jwlSpecifications.stoneCount  = 1;
+    window.jwlSpecifications.stones      = [1.0];
+    window.jwlSpecifications.totalCarats = 1.0;
+    if (typeof _renderStoneRows === 'function') _renderStoneRows();
+
+    // Reset chain state
+    selectedChainStyle = null; selectedChainPrompt = ''; selectedChainLabel = '';
+    selectedChainLength = '18 inches (standard)';
+
+    // Teardown try-on if active
+    if (isTryOnActive) {
+      isTryOnActive = false; isProcessing = false;
+      if (typeof teardownTryOn === 'function') teardownTryOn();
+    }
+
+    // Hide post-gen UI and error overlays
+    const _pgu = document.getElementById('post-gen-ui');
+    if (_pgu) _pgu.style.display = 'none';
+    const _geo = document.getElementById('genErrorOverlay');
+    if (_geo) _geo.style.display = 'none';
+  }
+
   updateWeightHeading();
+  updateChainLengthVisibility();
   const _disc = document.getElementById('pendantIPDisclaimer');
   if (_disc) _disc.style.display = type === 'pendant' ? 'block' : 'none';
   if (type === 'necklace') showChainStyleModal();
@@ -1923,9 +2060,10 @@ function buildPrompt(type, material, gem, style, desc) {
     const necklaceFraming = [
       'necklace displayed as if worn',
       'front-facing view photographed straight on',
-      'chain forms a clean symmetrical U-shape draped down both sides evenly',
-      'pendant centered at bottom of the curve facing directly forward',
+      'chain forms a clean symmetrical U-shape draped evenly down both sides',
+      'pendant centered at the bottom of the curve facing directly forward',
       'displayed on an invisible ghost mannequin neck form',
+      'isolated single necklace, full chain visible from end to end',
       'vertical portrait orientation',
       'professional jewelry photography',
       'plain seamless light grey background',
@@ -1933,10 +2071,15 @@ function buildPrompt(type, material, gem, style, desc) {
       'highly detailed',
       'photorealistic'
     ];
-    return [userDesc, chainSpecific, wPart.trim(), mDisp, gemPart].filter(Boolean).join(', ')
-      + (userDesc || chainSpecific || wPart.trim() || mDisp || gemPart ? '. ' : '')
-      + (specStr ? specStr + ' ' : '')
-      + necklaceFraming.join(', ') + '.';
+    const necklaceCore = [
+      userDesc,
+      chainSpecific,
+      wPart.trim(),
+      mDisp ? `crafted in ${mDisp}` : '',
+      gemPart ? `featuring ${gemPart}` : '',
+      ...necklaceFraming
+    ].filter(Boolean).join(', ');
+    return necklaceCore + (specStr ? '. ' + specStr : '') + '.';
   }
 
   if (type === 'earrings') {
@@ -1955,7 +2098,10 @@ function buildPrompt(type, material, gem, style, desc) {
   }
 
   if (type === 'bracelet') {
-    return `luxury ${style} ${wPart}cuff bracelet jewelry${descPart}, ${mDisp}, ${gemPart}, isolated fine jewelry product photograph, pure white seamless background, no shadows, no reflections on background, professional diffuse studio lighting, hyper realistic, 8K ultra high definition, macro lens, sharp focus, precious metal gleam, gemstone sparkle and brilliance, luxury brand catalog. Flat lay product photo, bracelet lying horizontally on a clean white surface, top-down view, no hands, no wrist, no chain, no necklace, no V-shape, centered, studio lighting, white background. No humans. No person. No body parts. No neck. No chest. No hands. No fingers. No ears. No skin. No model. Product-only photography. The jewelry piece is the sole subject of the image.`;
+    const _braceletShape = 'A single closed-loop bracelet shaped as one continuous oval band, photographed floating upright and facing the camera, presented exactly like a bangle held up to show its circular form. The full round shape of the bracelet is clearly visible as one connected loop. The decorative front of the bracelet faces the camera. Isolated on a plain white background.';
+    const _braceletOrient = 'CAMERA ANGLE: front-facing eye-level view. The bracelet is a complete closed oval band held upright facing the camera — like a bangle presented on edge. The decorative front face is at the top-center, fully visible. The band curves away from the camera at the bottom. Perfectly symmetrical left-to-right. Centered in frame with equal margins.';
+    const _braceletGemNeg = 'Show the bracelet as one complete connected oval loop facing the camera, like a bangle held up. Do not show it laid flat, scattered, spread out, or as disconnected pieces.';
+    return `luxury ${style} ${wPart}bracelet${descPart}, ${mDisp}, ${gemPart}, isolated fine jewelry product photograph, pure white seamless background, no shadows, professional diffuse studio lighting, hyper realistic, 8K ultra high definition, macro lens, sharp focus, precious metal gleam, gemstone sparkle and brilliance. ${_braceletShape} ${_braceletOrient} No humans. No person. No body parts. No hands. No wrist. No skin. No model. Product-only photography. The jewelry piece is the sole subject of the image. ${_braceletGemNeg}`;
   }
 
   if (type === 'ring') {
@@ -1965,11 +2111,26 @@ function buildPrompt(type, material, gem, style, desc) {
       ? (specs.metalGrams || 4.5) + 'g exact'
       : (WEIGHT_LABELS[weightLabel] || 'Medium (4-6g)');
     const stoneSizes = stones.map(s => s + 'ct');
-    const stonePart = stoneCount === 1
-      ? stoneSizes[0] + ' ' + gDisp + ' center stone'
-      : stoneCount + ' stones, sizes: ' + stoneSizes.join(', ') + '. Center stone: ' + gDisp;
-    return [userDesc, mDisp + ' ring weighing ' + ringWeight, stonePart].filter(Boolean).join('. ')
-      + '. Front view ring photography. The camera is positioned at exactly the same height as the center of the ring, pointing straight at the face of the ring. The ring is standing upright. The circular band is a perfect symmetrical oval at the bottom of the frame. The gemstone is dead center, pointing straight at the lens. This is NOT a hero shot. NOT a 3/4 angle. NOT shot from above or below. NOT tilted. The view is identical to looking directly through a telescope or tunnel straight at the ring face. Flat background. No hands. No fingers. No props. No fabric. Perfectly sharp focus on the stone and prongs. Soft even studio lighting. White or very light grey background. Luxury jewelry product photography, e-commerce style. No humans. No person. No body parts. No neck. No chest. No hands. No fingers. No ears. No skin. No model. Product-only photography. The jewelry piece is the sole subject of the image.';
+    let stonePart;
+    if (stoneCount === 1) {
+      stonePart = `with a single ${stoneSizes[0]} ${gDisp} center stone`;
+    } else if (stoneCount === 2) {
+      stonePart = `with 2 stones set into the band of a single ring — one ${stoneSizes[0]} ${gDisp} center stone and one ${stoneSizes[1] || stoneSizes[0]} ${gDisp} side stone`;
+    } else if (stoneCount === 3) {
+      stonePart = `with 3 stones set into the band of a single ring — one ${stoneSizes[0]} ${gDisp} center stone flanked by two ${stoneSizes[1] || stoneSizes[0]} ${gDisp} side stones`;
+    } else if (stoneCount === 4) {
+      stonePart = `with 4 stones set into the band of a single ring — one ${stoneSizes[0]} ${gDisp} center stone and three ${stoneSizes[1] || stoneSizes[0]} ${gDisp} accent stones`;
+    } else {
+      stonePart = `with ${stoneCount} stones set into the band of a single ring`;
+    }
+    const stoneClarity = 'All stones are set into ONE single ring. This is one ring with multiple stones, not multiple rings. Do not generate more than one ring.';
+    return 'Single product photograph, single viewpoint: A single custom jewelry ring. '
+      + [userDesc, mDisp + ' ring weighing ' + ringWeight, stonePart].filter(Boolean).join('. ')
+      + '. ' + stoneClarity
+      + ' Front view ring photography. The camera is positioned at exactly the same height as the center of the ring, pointing straight at the face of the ring. The ring is standing upright. The circular band is a perfect symmetrical oval at the bottom of the frame. The gemstone is dead center, pointing straight at the lens. This is NOT a hero shot. NOT a 3/4 angle. NOT shot from above or below. NOT tilted. The view is identical to looking directly through a telescope or tunnel straight at the ring face. Flat background. No hands. No fingers. No props. No fabric. Perfectly sharp focus on the stone and prongs. Soft even studio lighting. White or very light grey background. Luxury jewelry product photography, e-commerce style. No humans. No person. No body parts. No neck. No chest. No hands. No fingers. No ears. No skin. No model. Product-only photography. The jewelry piece is the sole subject of the image.'
+      + ' CAMERA ANGLE: strict front elevation view, dead-on, eye-level, zero perspective distortion. The ring is standing perfectly upright and vertical, like the letter O or a wheel viewed straight on. The circular band is a full vertical circle facing the camera. The center stone and setting are at the top position, pointing straight up. The band opening runs vertically, top to bottom. The ring is perfectly symmetrical left-to-right. Both sides of the band are equally visible and mirror each other. The ring is centered in frame with equal margin on all sides.'
+      + ' ONE single photograph. ONE ring from a single front-facing elevation angle. NOT a collage. NOT a grid. NOT multiple panels. NOT multiple angles. NOT a contact sheet. A single isolated product photograph of one ring, centered, on a seamless white background. One image, one ring, one viewpoint.'
+      + ' Do not tilt or angle the ring. Do not show a three-quarter or side view. Show only a perfectly upright, front-facing, symmetrical ring.';
   }
 
   const typeMap = {};
@@ -2344,10 +2505,9 @@ async function startGeneration(isTweak) {
     .filter(([t]) => t !== resolvedType)
     .flatMap(([, syns]) => syns)
     .join(', ');
-  const necklaceNegative = resolvedType === 'necklace'
-    ? ', flat lay, tabletop, top-down view, coiled chain, chain laid flat, jewelry box, angled perspective, asymmetrical drape, multiple necklaces, hands, neck skin, mannequin face'
-    : '';
-  const negativePrompt = `${negJewelryTerms}, brooch, anklet, person, human, model, body, face, hands, text, watermark, logo, blurry, low quality, distorted${necklaceNegative}`;
+  const _ringNegPrefix     = resolvedType === 'ring' ? 'collage, grid, multiple panels, multiple angles, contact sheet, multiple rings, split screen, tiled, montage, two rings, several rings, ' : '';
+  const _necklaceNegSuffix = resolvedType === 'necklace' ? ', flat lay, tabletop, top-down view, coiled chain, chain laid flat, jewelry box, angled perspective, asymmetrical drape, cropped chain, multiple necklaces, hands, neck skin, mannequin face, busy background' : '';
+  const negativePrompt = `${_ringNegPrefix}${negJewelryTerms}, brooch, anklet, person, human, model, body, face, hands, text, watermark, logo, blurry, low quality, distorted${_necklaceNegSuffix}`;
 
   // Read all spec values fresh from the DOM at this exact click moment
   const _domSpecs = _readSpecsFromDOM();
@@ -2398,9 +2558,35 @@ async function startGeneration(isTweak) {
 
   // Queue the fetch — Gemini primary, HuggingFace fallback, queue respects GEN_MAX_CONCURRENT
   const initImage = (isTweak && window._postGenMode === 'refine') ? lastGeneratedImage : null;
+
+  // HF-specific keyword-stacked overrides (SDXL weights early tokens more heavily)
+  let _hfOverrides = null;
+  if (resolvedType === 'ring') {
+    const _hfDesc  = _buildHfJewelryDesc('ring', LAB.material, LAB.gem, LAB.style, desc);
+    const _hfInput = `${_hfDesc}, front view, straight-on, dead center, upright ring, vertical band, symmetrical, eye-level shot, frontal elevation, centered composition, stone at top, band at bottom, perfectly vertical, head-on angle, orthographic front view, product photography, white background, studio lighting, sharp focus, photorealistic, 8k, highly detailed`;
+    _hfOverrides = { inputs: _hfInput, negative_prompt: _HF_RING_NEGATIVE, guidance_scale: 9.0, num_inference_steps: 30 };
+    console.log('[JWLZIFY] HF ring prompt:', _hfInput);
+    console.log('[JWLZIFY] HF negative prompt:', _HF_RING_NEGATIVE);
+    console.log('[JWLZIFY] Gemini ring prompt:', fullPrompt);
+  } else if (resolvedType === 'bracelet') {
+    const _hfDesc  = _buildHfJewelryDesc('bracelet', LAB.material, LAB.gem, LAB.style, desc);
+    const _hfInput = `${_hfDesc}, single closed bangle, round bracelet loop, oval band shape, upright facing camera, one continuous loop, centered, symmetrical, product photography, white background, studio lighting, sharp focus, photorealistic, 8k`;
+    _hfOverrides = { inputs: _hfInput, negative_prompt: _HF_BRACELET_NEGATIVE, guidance_scale: 9.0, num_inference_steps: 30 };
+    console.log('[JWLZIFY] bracelet prompt (HF):', _hfInput);
+    console.log('[JWLZIFY] bracelet negative:', _HF_BRACELET_NEGATIVE);
+    console.log('[JWLZIFY] Gemini bracelet prompt:', fullPrompt);
+  } else if (resolvedType === 'necklace') {
+    const _hfDesc  = _buildHfJewelryDesc('necklace', LAB.material, LAB.gem, LAB.style, desc);
+    const _hfInput = `${_hfDesc}, necklace displayed as if worn, front-facing view photographed straight on, chain forms a clean symmetrical U-shape draped evenly down both sides, pendant centered at the bottom of the curve, ghost mannequin neck form, isolated single necklace full chain visible, vertical portrait orientation, light grey background, studio lighting, sharp focus, photorealistic, 8k`;
+    _hfOverrides = { inputs: _hfInput, negative_prompt: _HF_NECKLACE_NEGATIVE, guidance_scale: 9.0, num_inference_steps: 30 };
+    console.log('[JWLZIFY] necklace prompt (HF):', _hfInput);
+    console.log('[JWLZIFY] necklace negative:', _HF_NECKLACE_NEGATIVE);
+    console.log('[JWLZIFY] Gemini necklace prompt:', fullPrompt);
+  }
+
   console.log('[JWLZIFY] generation prompt:', fullPrompt);
   console.log('[JWLZIFY] img2img:', initImage ? 'yes (initImage present)' : 'no (txt2img)');
-  _enqueueGen(() => _generateImage(fullPrompt, negativePrompt, initImage)).then((blobUrl) => {
+  _enqueueGen(() => _generateImage(fullPrompt, negativePrompt, initImage, _hfOverrides)).then((blobUrl) => {
     console.log('[JWLZIFY] setting image src to:', blobUrl?.slice(0, 50));
     if (!blobUrl) {
       if (thisGen !== generationId) return;
@@ -2482,25 +2668,16 @@ async function confirmAndGenerate() {
     ws.totalCarats = +userSelections.stones.reduce((a, b) => a + b, 0).toFixed(2);
   }
 
+  userSelections.jewelryType = LAB.type;
   console.log('[JWLZIFY] confirmed user selections:', userSelections);
 
   const userIdea = (document.getElementById('promptArea')?.value || '').trim();
-  const parts = [];
-  if (userSelections.material) parts.push(matLabel(userSelections.material));
-  if (userSelections.gem) {
-    const shapePart = userSelections.gemShape ? userSelections.gemShape + ' ' : '';
-    parts.push((shapePart + gemLabel(userSelections.gem)).trim());
-  }
-  if (userSelections.stoneCount) parts.push(userSelections.stoneCount + ' stone' + (userSelections.stoneCount > 1 ? 's' : ''));
-  if (userSelections.stones && userSelections.stones.length > 0) parts.push('sizes: ' + userSelections.stones.map(s => s + 'ct').join(', '));
-  if (userSelections.style) parts.push(userSelections.style + ' style');
-  if (userSelections.weightLabel) parts.push(userSelections.weightLabel + ' weight');
 
-  const fullPrompt = 'Professional jewelry product photography. '
-    + (userIdea ? userIdea + '. ' : '')
-    + parts.join(', ')
-    + '. White background, studio lighting, ultra sharp, photorealistic, luxury, 8K.';
+  // buildPrompt handles all type-specific prompt logic; reuse it here so jewelry
+  // type is always the primary subject regardless of which path triggered generation.
+  const fullPrompt = buildPrompt(LAB.type, LAB.material, LAB.gem, LAB.style || 'Modern', userIdea);
 
+  console.log('[JWLZIFY] jewelry type in prompt:', userSelections.jewelryType);
   console.log('[JWLZIFY] final prompt:', fullPrompt);
 
   LAB.prompt = userIdea;
@@ -2520,13 +2697,38 @@ async function confirmAndGenerate() {
   const negJewelryTerms = Object.entries(_TYPE_SYNONYMS)
     .filter(([t]) => t !== LAB.type)
     .flatMap(([, syns]) => syns).join(', ');
-  const _necklaceNeg = LAB.type === 'necklace'
-    ? ', flat lay, tabletop, top-down view, coiled chain, chain laid flat, jewelry box, angled perspective, asymmetrical drape, multiple necklaces, hands, neck skin, mannequin face'
-    : '';
-  const negativePrompt = negJewelryTerms + ', brooch, anklet, person, human, model, body, face, hands, text, watermark, logo, blurry, low quality, distorted' + _necklaceNeg;
+  const _ringNegPrefixC     = LAB.type === 'ring' ? 'collage, grid, multiple panels, multiple angles, contact sheet, multiple rings, split screen, tiled, montage, two rings, several rings, ' : '';
+  const _necklaceNegSuffixC = LAB.type === 'necklace' ? ', flat lay, tabletop, top-down view, coiled chain, chain laid flat, jewelry box, angled perspective, asymmetrical drape, cropped chain, multiple necklaces, hands, neck skin, mannequin face, busy background' : '';
+  const negativePrompt = _ringNegPrefixC + negJewelryTerms + ', brooch, anklet, person, human, model, body, face, hands, text, watermark, logo, blurry, low quality, distorted' + _necklaceNegSuffixC;
+
+  // HF-specific keyword-stacked overrides for ring / bracelet / necklace
+  let _hfOverridesC = null;
+  if (LAB.type === 'ring') {
+    const _hfDesc  = _buildHfJewelryDesc('ring', LAB.material, LAB.gem, LAB.style || 'Modern', userIdea);
+    const _hfInput = `${_hfDesc}, front view, straight-on, dead center, upright ring, vertical band, symmetrical, eye-level shot, frontal elevation, centered composition, stone at top, band at bottom, perfectly vertical, head-on angle, orthographic front view, product photography, white background, studio lighting, sharp focus, photorealistic, 8k, highly detailed`;
+    _hfOverridesC = { inputs: _hfInput, negative_prompt: _HF_RING_NEGATIVE, guidance_scale: 9.0, num_inference_steps: 30 };
+    console.log('[JWLZIFY] HF ring prompt:', _hfInput);
+    console.log('[JWLZIFY] HF negative prompt:', _HF_RING_NEGATIVE);
+    console.log('[JWLZIFY] Gemini ring prompt:', fullPrompt);
+  } else if (LAB.type === 'bracelet') {
+    const _hfDesc  = _buildHfJewelryDesc('bracelet', LAB.material, LAB.gem, LAB.style || 'Modern', userIdea);
+    const _hfInput = `${_hfDesc}, single closed bangle, round bracelet loop, oval band shape, upright facing camera, one continuous loop, centered, symmetrical, product photography, white background, studio lighting, sharp focus, photorealistic, 8k`;
+    _hfOverridesC = { inputs: _hfInput, negative_prompt: _HF_BRACELET_NEGATIVE, guidance_scale: 9.0, num_inference_steps: 30 };
+    console.log('[JWLZIFY] bracelet prompt (HF):', _hfInput);
+    console.log('[JWLZIFY] bracelet negative:', _HF_BRACELET_NEGATIVE);
+    console.log('[JWLZIFY] Gemini bracelet prompt:', fullPrompt);
+  } else if (LAB.type === 'necklace') {
+    const _hfDesc  = _buildHfJewelryDesc('necklace', LAB.material, LAB.gem, LAB.style || 'Modern', userIdea);
+    const _hfInput = `${_hfDesc}, necklace displayed as if worn, front-facing view photographed straight on, chain forms a clean symmetrical U-shape draped evenly down both sides, pendant centered at the bottom of the curve, ghost mannequin neck form, isolated single necklace full chain visible, vertical portrait orientation, light grey background, studio lighting, sharp focus, photorealistic, 8k`;
+    _hfOverridesC = { inputs: _hfInput, negative_prompt: _HF_NECKLACE_NEGATIVE, guidance_scale: 9.0, num_inference_steps: 30 };
+    console.log('[JWLZIFY] necklace prompt (HF):', _hfInput);
+    console.log('[JWLZIFY] necklace negative:', _HF_NECKLACE_NEGATIVE);
+    console.log('[JWLZIFY] Gemini necklace prompt:', fullPrompt);
+  }
 
   console.log('[JWLZIFY] generation prompt:', fullPrompt);
-  _enqueueGen(() => _generateImage(fullPrompt, negativePrompt)).then(blobUrl => {
+  console.log('[JWLZIFY] negative prompt:', negativePrompt);
+  _enqueueGen(() => _generateImage(fullPrompt, negativePrompt, null, _hfOverridesC)).then(blobUrl => {
     if (!blobUrl) {
       if (thisGen !== generationId) return;
       setGenLoading(false);
@@ -2712,6 +2914,16 @@ function showRefineStep() {
 
   goStep(3);
   fetchSpecCard();
+
+  // Preload remove.bg for canvas try-on (ring + bracelet) while the user reads
+  // the refine step, so the transparent PNG is cached and ready the instant
+  // try-on opens. Result is keyed by image URL in bgRemovalCache.
+  if ((LAB.type === 'ring' || LAB.type === 'bracelet') && LAB.imageUrl && !bgRemovalCache.has(LAB.imageUrl)) {
+    removeBgWithApi(LAB.imageUrl).then(cleanUrl => {
+      bgRemovalCache.set(LAB.imageUrl, cleanUrl);
+      console.log('[TryOn]', LAB.type, 'preloaded remove.bg result at refine step');
+    }).catch(() => {});
+  }
 }
 
 function applySuggestion(el) {
@@ -3384,24 +3596,47 @@ function updateHandlePosition() {
 
 async function startTryOnCamera() {
   console.log('[JWLZIFY] starting camera...');
+  const video     = document.getElementById('tryon-video');
+  const container = document.getElementById('tryon-container');
+
+  // Remove any previous error overlay
+  if (container) {
+    const prev = container.querySelector('.tryon-cam-error');
+    if (prev) prev.remove();
+  }
+
+  // Gold pulse while waiting for permission
+  if (video) {
+    video.style.animation = 'tryonCamPulse 0.8s infinite';
+  }
+
+  if (LAB.cameraStream) {
+    LAB.cameraStream.getTracks().forEach(t => t.stop());
+    LAB.cameraStream = null;
+  }
+
   try {
-    const video = document.getElementById('tryon-video');
-    if (LAB.cameraStream) {
-      LAB.cameraStream.getTracks().forEach(t => t.stop());
-      LAB.cameraStream = null;
-    }
     const stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: 'user' }
+      video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' }
     });
     LAB.cameraStream = stream;
-    video.srcObject  = stream;
-  } catch(e) {
+    if (video) {
+      video.srcObject = stream;
+      video.style.animation = '';
+      video.onloadedmetadata = () => {
+        video.play().catch(() => {});
+        console.log('[JWLZIFY] camera stream active');
+      };
+    }
+  } catch (e) {
     console.warn('[JWLZIFY] camera access denied:', e.message);
-    const container = document.getElementById('tryon-container');
+    if (video) video.style.animation = '';
     if (container) {
-      const msg = document.createElement('p');
-      msg.style.cssText = 'color:white;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:20;font-family:Inter,sans-serif;font-size:13px;text-align:center;';
-      msg.textContent = 'Camera access denied — please allow camera';
+      const msg = document.createElement('div');
+      msg.className = 'tryon-cam-error';
+      msg.style.cssText = 'color:#F8F6F2;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:20;font-family:Inter,sans-serif;font-size:13px;text-align:center;padding:20px;';
+      msg.innerHTML = `<p style="margin-bottom:12px;line-height:1.6;">Camera access is needed for try-on.<br>Please allow camera access and try again.</p>
+        <button onclick="startTryOnCamera()" style="border:1px solid #C9A84C;color:#C9A84C;background:transparent;height:36px;border-radius:6px;font-size:14px;font-family:Inter,sans-serif;padding:0 16px;cursor:pointer;">Try Again</button>`;
       container.appendChild(msg);
     }
   }
@@ -3502,13 +3737,31 @@ function teardownTryOn() {
     if (rCtx) rCtx.clearRect(0, 0, ringCanvas.width, ringCanvas.height);
     ringCanvas.style.display = 'none';
   }
+  const loadingEl = document.getElementById('ring-tryon-loading');
+  if (loadingEl) loadingEl.style.display = 'none';
+  const controls = document.getElementById('ring-tryon-controls');
+  if (controls) controls.style.display = 'none';
+  const slider = document.getElementById('ringRotateSlider');
+  if (slider) slider.value = '0';
   const hintEl2 = document.getElementById('tryon-hint-text');
-  if (hintEl2) { hintEl2.textContent = 'DRAG JEWELRY TO POSITION · DRAG THE GREY DOT TO RESIZE'; hintEl2.style.opacity = '0.4'; }
-  _ringTryonImg     = null;
-  latestCutoutImage = null;
-  _ringIsDragging   = false;
-  _ringIsResizing   = false;
+  if (hintEl2) { hintEl2.textContent = 'DRAG JEWELRY TO POSITION · DRAG THE GREY DOT TO RESIZE'; hintEl2.style.opacity = '0.4'; hintEl2.style.color = ''; }
+  _ringTryonImg      = null;
+  _ringImgIsOriginal = false;
+  _ringFirstDraw     = false;
+  _ringWebcamDrawn   = false;
+  latestCutoutImage  = null;
+  _ringIsDragging    = false;
+  ringRotation       = 0;
+  _ringMaskedCanvas  = null;
+  _ringMaskSrcType   = '';
+  ringFadeStart      = 0.45;
+  _tryOnMinSize      = 60;
+  _tryOnMaxSize      = 300;
 }
+
+// Safety net: also stop the camera + render loop if the page is hidden/closed
+// while try-on is open (step navigation already calls teardownTryOn).
+window.addEventListener('pagehide', () => { if (isTryOnActive) teardownTryOn(); });
 
 
 
@@ -4170,23 +4423,81 @@ window._loadPendantForTryOn = loadPendantForTryOn;
 const _RING_FALLBACK_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="38" fill="none" stroke="#C9A84C" stroke-width="18" stroke-linecap="round"/></svg>`;
 const _RING_FALLBACK_URL = 'data:image/svg+xml,' + encodeURIComponent(_RING_FALLBACK_SVG);
 
-let _ringRafId         = null;
-let _bgRemovalInterval = null;
-let latestCutoutImage  = null;
-let _ringTryonImg      = null;
-let ringX = 0, ringY = 0, ringSize = 120;
-let _ringIsDragging    = false;
-let _ringIsResizing    = false;
-let _ringDragOffX      = 0;
-let _ringDragOffY      = 0;
+let _ringRafId          = null;
+let _bgRemovalInterval  = null;
+let latestCutoutImage   = null;
+let _ringTryonImg       = null;
+let _ringImgIsOriginal  = false;
+let _ringFirstDraw      = false;
+let _ringWebcamDrawn    = false;
+let ringX = 0, ringY = 0, ringSize = 120, ringRotation = 0;
+let _ringIsDragging     = false;
+let _ringDragOffX       = 0;
+let _ringDragOffY       = 0;
+let ringFadeStart       = 0.45;   // controlled by "Fit" slider (range 0.35–0.65)
+const _RING_FADE_END    = 0.65;   // fully hidden below this — hides band backside
+const _BRACELET_FADE_W  = 0.20;   // bracelet fade-transition width (35%→55% by default)
+let _ringMaskDirection  = 'hide-bottom'; // 'hide-bottom' = ring (band back), 'hide-top' = bracelet (far arc)
+let _ringMaskedCanvas   = null;   // offscreen 400×400 normalized+masked canvas
+let _ringMaskSrcType    = '';     // 'original' | 'cached' | 'transparent'
+let _tryOnMinSize       = 60;     // set per jewelry type in initTryOn
+let _tryOnMaxSize       = 300;
 
 function _ringImgH() {
   if (!_ringTryonImg || !_ringTryonImg.naturalWidth) return ringSize;
   return ringSize * (_ringTryonImg.naturalHeight / _ringTryonImg.naturalWidth);
 }
 
-function _ringHandlePos() {
-  return { x: ringX + ringSize / 2, y: ringY + _ringImgH() / 2 };
+function _buildRingMask(img, srcType) {
+  const SIZE = 400;
+  const oc  = document.createElement('canvas');
+  oc.width  = SIZE;
+  oc.height = SIZE;
+  const oc2 = oc.getContext('2d');
+
+  // Draw normalized: preserve aspect ratio, center within 400×400
+  const ar = img.naturalWidth / img.naturalHeight;
+  let dw, dh, dx, dy;
+  if (ar >= 1) { dw = SIZE; dh = SIZE / ar; }
+  else         { dh = SIZE; dw = SIZE * ar; }
+  dx = (SIZE - dw) / 2;
+  dy = (SIZE - dh) / 2;
+  oc2.drawImage(img, dx, dy, dw, dh);
+
+  // Gradient mask — destination-out removes pixels where gradient is opaque.
+  // Orientation depends on how the piece sits:
+  //   ring     → hide the BOTTOM (band backside goes behind the finger)
+  //   bracelet → hide the TOP (far arc of the loop goes behind the wrist)
+  let fadeStart, fadeEnd, region;
+  oc2.globalCompositeOperation = 'destination-out';
+  if (_ringMaskDirection === 'hide-top') {
+    // Bracelet: fully hidden from 0% down to fadeStart, fade fadeStart→fadeEnd, visible below.
+    fadeStart = ringFadeStart;                          // end of fully-hidden region (slider, default 0.35)
+    fadeEnd   = Math.min(0.95, fadeStart + _BRACELET_FADE_W); // fade width 0.20 → default 0.55
+    const grad = oc2.createLinearGradient(0, SIZE * fadeStart, 0, SIZE * fadeEnd);
+    grad.addColorStop(0, 'rgba(0,0,0,1)');  // fully removed at/above top of fade zone (hide far arc)
+    grad.addColorStop(1, 'rgba(0,0,0,0)');  // fully visible at/below bottom of fade zone (front curve)
+    oc2.fillStyle = grad;
+    oc2.fillRect(0, 0, SIZE, SIZE);
+    region = 'top 0%–' + Math.round(fadeStart * 100) + '% (fade to ' + Math.round(fadeEnd * 100) + '%)';
+  } else {
+    // Ring (default, unchanged): visible top, hidden bottom.
+    fadeStart = ringFadeStart;
+    fadeEnd   = _RING_FADE_END;
+    const grad = oc2.createLinearGradient(0, SIZE * fadeStart, 0, SIZE * fadeEnd);
+    grad.addColorStop(0, 'rgba(0,0,0,0)');  // nothing removed at top of fade zone
+    grad.addColorStop(1, 'rgba(0,0,0,1)');  // fully removed at bottom of fade zone
+    oc2.fillStyle = grad;
+    oc2.fillRect(0, 0, SIZE, SIZE);
+    region = 'bottom ' + Math.round(fadeEnd * 100) + '%–100% (fade from ' + Math.round(fadeStart * 100) + '%)';
+  }
+  oc2.globalCompositeOperation = 'source-over';
+
+  _ringMaskedCanvas = oc;
+  _ringMaskSrcType  = srcType;
+  const type = LAB.type;
+  const maskDirection = _ringMaskDirection;
+  console.log('[TryOn] type:', type, '| mask direction:', maskDirection, '| hidden region:', region);
 }
 
 async function captureAndRemoveBg() {
@@ -4227,40 +4538,51 @@ function _ringRenderLoop() {
 
   ctx.clearRect(0, 0, W, H);
 
-  // Layer 1: mirrored video (background)
+  // Layer 1: mirrored video
   if (video && video.readyState >= 2) {
+    if (!_ringWebcamDrawn) { console.timeEnd('[Ring] webcam ready'); _ringWebcamDrawn = true; }
     ctx.save();
+    ctx.translate(W, 0);
     ctx.scale(-1, 1);
-    ctx.drawImage(video, -W, 0, W, H);
+    ctx.drawImage(video, 0, 0, W, H);
     ctx.restore();
   }
 
-  // Layer 2: ring (sits behind the hand for correct occlusion)
-  if (_ringTryonImg && _ringTryonImg.complete) {
-    const rH = _ringImgH();
+  // Layer 2: ring behind hand — draw normalized+masked offscreen canvas
+  if (_ringMaskedCanvas) {
+    if (!_ringFirstDraw) {
+      console.log('[Ring] drawing ring on canvas at:', ringX + ',' + ringY, 'size:', ringSize + 'px');
+      console.timeEnd('[Ring] ring drawn');
+      _ringFirstDraw = true;
+    }
     ctx.save();
-    ctx.shadowColor   = 'rgba(0,0,0,0.45)';
-    ctx.shadowBlur    = 12;
+    ctx.globalAlpha   = _ringImgIsOriginal ? 0.85 : 1.0;
+    ctx.shadowColor   = 'rgba(0,0,0,0.4)';
+    ctx.shadowBlur    = 10;
     ctx.shadowOffsetY = 3;
-    ctx.drawImage(_ringTryonImg, ringX - ringSize / 2, ringY - rH / 2, ringSize, rH);
-    ctx.shadowColor = 'transparent';
+    ctx.translate(ringX, ringY);
+    ctx.rotate(ringRotation * Math.PI / 180);
+    ctx.drawImage(_ringMaskedCanvas, -ringSize / 2, -ringSize / 2, ringSize, ringSize);
     ctx.restore();
   }
 
-  // Layer 3: remove.bg cutout — hand floats in front of ring
+  // Layer 3: hand cutout — floats in front of ring
   if (latestCutoutImage) {
     ctx.drawImage(latestCutoutImage, 0, 0, W, H);
   }
 
-  // Layer 4: resize handle (always visible)
-  const hp = _ringHandlePos();
-  ctx.beginPath();
-  ctx.arc(hp.x, hp.y, 6, 0, Math.PI * 2);
-  ctx.fillStyle = '#C9A84C';
-  ctx.fill();
-  ctx.strokeStyle = 'rgba(255,255,255,0.7)';
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
+  // Layer 4: drag handle dot at ring center
+  if (_ringMaskedCanvas) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(ringX, ringY, 5, 0, Math.PI * 2);
+    ctx.fillStyle = '#C9A84C';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.restore();
+  }
 
   _ringRafId = requestAnimationFrame(_ringRenderLoop);
 }
@@ -4275,17 +4597,13 @@ function _ringPtrPos(e) {
 }
 
 function _ringDragStart(e) {
+  if (e.touches && e.touches.length !== 1) return;
   e.preventDefault();
   const { x, y } = _ringPtrPos(e);
-  const hp = _ringHandlePos();
-  const hdx = x - hp.x, hdy = y - hp.y;
-  if (Math.sqrt(hdx * hdx + hdy * hdy) <= 20) {
-    _ringIsResizing = true;
-    return;
-  }
-  const rH = _ringImgH();
-  if (x >= ringX - ringSize / 2 && x <= ringX + ringSize / 2 &&
-      y >= ringY - rH / 2       && y <= ringY + rH / 2) {
+  const rH  = _ringImgH();
+  const pad = 24;
+  if (x >= ringX - ringSize / 2 - pad && x <= ringX + ringSize / 2 + pad &&
+      y >= ringY - rH / 2 - pad       && y <= ringY + rH / 2 + pad) {
     _ringIsDragging = true;
     _ringDragOffX   = x - ringX;
     _ringDragOffY   = y - ringY;
@@ -4293,27 +4611,70 @@ function _ringDragStart(e) {
 }
 
 function _ringDragMove(e) {
-  if (!_ringIsDragging && !_ringIsResizing) return;
+  if (!_ringIsDragging) return;
+  if (e.touches && e.touches.length !== 1) { _ringIsDragging = false; return; }
   if (e.touches) e.preventDefault();
   const { x, y } = _ringPtrPos(e);
-  if (_ringIsDragging) {
-    ringX = x - _ringDragOffX;
-    ringY = y - _ringDragOffY;
-  } else {
-    const dx = x - ringX, dy = y - ringY;
-    ringSize = Math.max(60, Math.min(300, Math.sqrt(dx * dx + dy * dy) * 2));
-  }
+  ringX = x - _ringDragOffX;
+  ringY = y - _ringDragOffY;
 }
 
 function _ringDragEnd() {
   _ringIsDragging = false;
-  _ringIsResizing = false;
 }
 
-async function loadRingForTryOn(imageUrl) {
-  console.log('[JWLZIFY] loading ring try-on (remove.bg manual)');
 
-  // Hide all other try-on overlays
+function loadRingForTryOn(imageUrl) {
+  initTryOn({
+    imageUrl:      imageUrl,
+    typeLabel:     'ring',
+    defaultSize:   120,            // ring
+    minSize:       60,
+    maxSize:       300,
+    getDefaultY:   (H) => H * 0.67, // centred on the hand
+    hintText:      'Drag to position · Use +/− to resize · Fit slider to adjust occlusion',
+    fitLabel:      'Fit on finger',
+    maskDirection: 'hide-bottom',   // ring sits ON the finger → hide band backside (bottom)
+    fitMin:        35,              // slider 0.35–0.65
+    fitMax:        65,
+    fitDefault:    55,             // clean optimal (~0.55): front of band visible, backside tucked behind finger
+  });
+}
+
+function loadBraceletForTryOn(imageUrl) {
+  initTryOn({
+    imageUrl:      imageUrl,
+    typeLabel:     'bracelet',
+    defaultSize:   200,            // bracelet
+    minSize:       100,
+    maxSize:       360,
+    getDefaultY:   (H) => H * 0.75, // centred, slightly lower than the ring
+    hintText:      'Hold your wrist up to the camera · Drag to position · +/− to resize · Fit slider to tuck behind wrist',
+    fitLabel:      'Fit on wrist',
+    maskDirection: 'hide-top',      // bracelet wraps AROUND the wrist → hide far arc (top)
+    fitMin:        25,              // slider 0.25–0.55
+    fitMax:        55,
+    fitDefault:    50,             // ~85% of range — slightly below max, hides the top background box on first frame
+  });
+}
+
+// Shared, parameterized try-on used by BOTH ring and bracelet (and any future
+// "wraps around a body part" type). Config differs only by type / size /
+// position / maskDirection / fitLabel / hintText / fit defaults — the body below
+// is identical for every type.
+function initTryOn(cfg) {
+  const imageUrl = cfg.imageUrl;
+  console.log('[Ring] try-on started, type:', cfg.typeLabel, '| image source:', imageUrl);
+  console.time('[Ring] webcam ready');
+  console.time('[Ring] ring drawn');
+
+  _tryOnMinSize      = cfg.minSize;
+  _tryOnMaxSize      = cfg.maxSize;
+  _ringMaskDirection = cfg.maskDirection || 'hide-bottom';
+  const fitLabelEl = document.getElementById('ringFitLabel');
+  if (fitLabelEl) fitLabelEl.textContent = cfg.fitLabel || 'Fit';
+
+  // Hide other try-on overlays
   ['tryon-necklace', 'tryon-pendant', 'tryon-resize',
    'tryon-earring-left', 'tryon-earring-right',
    'tryon-earring-left-handle', 'tryon-earring-right-handle',
@@ -4325,39 +4686,71 @@ async function loadRingForTryOn(imageUrl) {
   // Size and show ring canvas
   const container  = document.getElementById('tryon-container');
   const ringCanvas = document.getElementById('ring-tryon-canvas');
-  const W = container.offsetWidth;
-  const H = container.offsetHeight;
+  const W = container.offsetWidth  || 600;
+  const H = container.offsetHeight || 520;
   ringCanvas.width  = W;
   ringCanvas.height = H;
   ringCanvas.style.display = 'block';
 
-  // Hint text — fade out after 4s
+  // Show ring controls
+  const controls = document.getElementById('ring-tryon-controls');
+  if (controls) controls.style.display = 'flex';
+
+  // Hint text — fade out after 5s
   const hintEl = document.getElementById('tryon-hint-text');
   if (hintEl) {
-    hintEl.textContent = 'Drag to position · Drag corner to resize';
-    hintEl.style.opacity = '0.4';
-    hintEl.style.transition = 'opacity 1s ease';
-    setTimeout(() => { if (hintEl) hintEl.style.opacity = '0'; }, 4000);
+    hintEl.textContent = cfg.hintText || 'Drag to position · Use +/− to resize · Fit slider to adjust occlusion';
+    hintEl.style.color = 'rgba(201,168,76,0.7)';
+    hintEl.style.opacity = '1';
+    hintEl.style.transition = 'opacity 1.5s ease';
+    setTimeout(() => { if (hintEl) hintEl.style.opacity = '0'; }, 5000);
   }
 
-  // Load ring image
-  if (!_ringTryonImg || _ringTryonImg.dataset.src !== imageUrl) {
-    _ringTryonImg = new Image();
-    _ringTryonImg.crossOrigin = 'anonymous';
-    _ringTryonImg.dataset.src = imageUrl;
-    _ringTryonImg.onerror = () => { _ringTryonImg.src = _RING_FALLBACK_URL; };
-    _ringTryonImg.src = imageUrl || _RING_FALLBACK_URL;
+  // Reset rotation and fit sliders
+  const slider = document.getElementById('ringRotateSlider');
+  if (slider) slider.value = '0';
+
+  // Reset fit slider — range/default vary per type (ring vs bracelet)
+  const fitMin     = cfg.fitMin     != null ? cfg.fitMin     : 35;
+  const fitMax     = cfg.fitMax     != null ? cfg.fitMax     : 65;
+  const fitDefault = cfg.fitDefault != null ? cfg.fitDefault : 45;
+  const fitSlider  = document.getElementById('ringFitSlider');
+  if (fitSlider) {
+    fitSlider.min   = String(fitMin);
+    fitSlider.max   = String(fitMax);
+    fitSlider.value = String(fitDefault);
   }
+  // Apply the default immediately so the FIRST rendered frame uses the optimal
+  // occlusion (no slider interaction required); slider stays adjustable after.
+  ringFadeStart = fitDefault / 100;
+  const defaultFitValue = ringFadeStart;            // fraction (e.g. 0.55 ring, 0.50 bracelet)
+  console.log('[TryOn]', cfg.typeLabel, 'fit default:', defaultFitValue);
 
-  // Initial ring state
-  ringX = W / 2;
-  ringY = H / 2;
-  ringSize = 120;
-  _ringIsDragging   = false;
-  _ringIsResizing   = false;
-  latestCutoutImage = null;
+  // #8 — one-glance sanity check on open: type, mask direction, fit default, size, image source
+  const _openSource = bgRemovalCache.get(cfg.imageUrl || _RING_FALLBACK_URL)
+    ? 'transparent (cached)'
+    : 'fallback-original (until remove.bg returns)';
+  console.log('[TryOn] open —', cfg.typeLabel,
+              '| mask:', cfg.maskDirection,
+              '| fit default:', defaultFitValue,
+              '| size:', cfg.defaultSize,
+              '| image source:', _openSource);
 
-  // Attach drag/resize events
+  // Reset all state
+  ringX              = W / 2;
+  ringY              = cfg.getDefaultY(H);
+  ringSize           = cfg.defaultSize;
+  ringRotation       = 0;
+  _ringIsDragging    = false;
+  _ringFirstDraw     = false;
+  _ringWebcamDrawn   = false;
+  latestCutoutImage  = null;
+  _ringTryonImg      = null;
+  _ringImgIsOriginal = false;
+  _ringMaskedCanvas  = null;
+  _ringMaskSrcType   = '';
+
+  // Attach events
   ringCanvas.addEventListener('mousedown',  _ringDragStart);
   ringCanvas.addEventListener('touchstart', _ringDragStart, { passive: false });
   window.addEventListener('mousemove',  _ringDragMove);
@@ -4365,14 +4758,79 @@ async function loadRingForTryOn(imageUrl) {
   window.addEventListener('mouseup',    _ringDragEnd);
   window.addEventListener('touchend',   _ringDragEnd);
 
-  // Start render loop
+  // Start render loop immediately — webcam feed shows with no blocking
   if (_ringRafId) cancelAnimationFrame(_ringRafId);
   _ringRafId = requestAnimationFrame(_ringRenderLoop);
 
-  // Immediate remove.bg call + 1500ms interval
-  captureAndRemoveBg();
+  // Start webcam hand-cutout interval (hide loading overlay first)
+  const loadingEl = document.getElementById('ring-tryon-loading');
+  if (loadingEl) loadingEl.style.display = 'none';
   if (_bgRemovalInterval) clearInterval(_bgRemovalInterval);
-  _bgRemovalInterval = setInterval(captureAndRemoveBg, 1500);
+  captureAndRemoveBg();
+  _bgRemovalInterval = setInterval(captureAndRemoveBg, 2000);
+
+  // ── Ring image loading: original first, transparent swap when ready ──
+  const _srcToUse = imageUrl || _RING_FALLBACK_URL;
+
+  // Helper: create an Image from a src, no crossOrigin for blob URLs
+  function _makeImg(src) {
+    const img = new Image();
+    if (!src.startsWith('blob:') && !src.startsWith('data:')) img.crossOrigin = 'anonymous';
+    img.src = src;
+    return img;
+  }
+
+  // PHASE 1: load original immediately so ring draws without waiting for remove.bg
+  const origImg = _makeImg(_srcToUse);
+  origImg.dataset.src = imageUrl;
+  origImg.onload = () => {
+    // Only set if we haven't already received a transparent version
+    if (_ringImgIsOriginal !== false || _ringTryonImg === null) {
+      _ringTryonImg      = origImg;
+      _ringImgIsOriginal = true;
+      console.log('[Ring] ring image loaded (original), dimensions:', origImg.naturalWidth + 'x' + origImg.naturalHeight);
+      _buildRingMask(origImg, 'original');
+    }
+  };
+  origImg.onerror = () => console.warn('[Ring] original image failed to load');
+
+  // PHASE 2: get transparent version (cache → API → keep original).
+  // Once remove.bg credits are active, the returned PNG is fully transparent,
+  // so the background box is gone with no mask needed to hide it.
+  const _logSource = (removeBgSucceeded) =>
+    console.log('[TryOn]', cfg.typeLabel, 'image source:', removeBgSucceeded ? 'transparent' : 'fallback-original');
+
+  const cachedUrl = bgRemovalCache.get(_srcToUse);
+  if (cachedUrl) {
+    console.log('[Ring] remove.bg result loaded from cache');
+    const cleanImg = _makeImg(cachedUrl);
+    cleanImg.dataset.src = imageUrl;
+    cleanImg.onload = () => {
+      _ringTryonImg      = cleanImg;
+      _ringImgIsOriginal = false;
+      _buildRingMask(cleanImg, 'cached');
+      _logSource(true);
+    };
+  } else {
+    removeBgWithApi(_srcToUse).then(cleanUrl => {
+      bgRemovalCache.set(_srcToUse, cleanUrl);
+      console.log('[Ring] remove.bg call status: 200 OK');
+      if (!isTryOnActive) return;
+      const cleanImg = _makeImg(cleanUrl);
+      cleanImg.dataset.src = imageUrl;
+      cleanImg.onload = () => {
+        if (!isTryOnActive) return;
+        _ringTryonImg      = cleanImg;
+        _ringImgIsOriginal = false;
+        _buildRingMask(cleanImg, 'transparent');
+        _logSource(true);
+      };
+    }).catch(e => {
+      // No credits / failure → keep original drawn at opacity 0.85 (fallback).
+      console.log('[Ring] remove.bg call status: failed —', e.message, '— keeping original at 0.85');
+      _logSource(false);
+    });
+  }
 }
 
 function _ringTeardownEvents() {
@@ -4396,6 +4854,15 @@ function updateRingResizeHandle() {
   const r = img.getBoundingClientRect();
   handle.style.left = (r.right  - c.left - 7) + 'px';
   handle.style.top  = (r.bottom - c.top  - 7) + 'px';
+}
+
+function saveRingTryOnPhoto() {
+  const canvas = document.getElementById('ring-tryon-canvas');
+  if (!canvas) return;
+  const link = document.createElement('a');
+  link.download = 'jwlzify-ring-tryon.png';
+  link.href = canvas.toDataURL('image/png');
+  link.click();
 }
 
 /* Ring drag + resize */
@@ -4784,60 +5251,11 @@ document.addEventListener('pointerup', () => {
   braceletResizing = false;
 });
 
-async function loadBraceletForTryOn(imageUrl) {
-  console.log('[JWLZIFY] loading bracelet try-on');
-
-  ['tryon-necklace', 'tryon-pendant', 'tryon-resize',
-   'tryon-earring-left', 'tryon-earring-right',
-   'tryon-earring-left-handle', 'tryon-earring-right-handle',
-   'tryon-necklace-img', 'tryon-necklace-resize'
-  ].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.style.display = 'none';
-  });
-
-  let braceletImg    = document.getElementById('tryon-bracelet-img');
-  let braceletResize = document.getElementById('tryon-bracelet-resize');
-
-  if (!braceletImg) {
-    braceletImg = document.createElement('img');
-    braceletImg.id = 'tryon-bracelet-img';
-    braceletImg.style.cssText =
-      'position:absolute;cursor:grab;user-select:none;display:none;z-index:10;pointer-events:auto;height:auto;';
-    document.getElementById('tryon-container').appendChild(braceletImg);
-  }
-
-  if (!braceletResize) {
-    braceletResize = document.createElement('div');
-    braceletResize.id = 'tryon-bracelet-resize';
-    braceletResize.style.cssText =
-      'position:absolute;width:14px;height:14px;background:#C0C0C0;border-radius:50%;' +
-      'cursor:se-resize;display:none;z-index:11;' +
-      'border:1.5px solid rgba(255,255,255,0.7);box-shadow:0 1px 4px rgba(0,0,0,0.4);';
-    document.getElementById('tryon-container').appendChild(braceletResize);
-  }
-
-  const container  = document.getElementById('tryon-container');
-  const W          = container.offsetWidth;
-  const H          = container.offsetHeight;
-  const defaultW   = 200;
-  const defaultLeft = Math.floor((W - defaultW) / 2);
-  const defaultTop  = Math.floor(H / 2 - 50);
-
-  braceletImg.src           = imageUrl;
-  braceletImg.style.width   = defaultW + 'px';
-  braceletImg.style.height  = 'auto';
-  braceletImg.style.left    = defaultLeft + 'px';
-  braceletImg.style.top     = defaultTop  + 'px';
-  braceletImg.style.display = 'block';
-  braceletResize.style.display = 'block';
-  requestAnimationFrame(updateBraceletResizeHandle);
-
-  const cleanUrl = await removePendantBackgroundCached(imageUrl);
-  braceletImg.src = cleanUrl;
-  requestAnimationFrame(updateBraceletResizeHandle);
-  console.log('[JWLZIFY] bracelet loaded with bg removed');
-}
+// NOTE: the bracelet try-on now uses the shared canvas pipeline
+// (see loadBraceletForTryOn → initTryOn above), giving it the
+// same drag / +−size / rotation / remove.bg / caching / 400×400 mask as the
+// ring, with maskDirection 'hide-top' so the far arc tucks behind the wrist.
+// The previous DOM-<img> implementation was removed to stop it shadowing that.
 
 async function loadNecklaceForTryOn(imageUrl) {
   console.log('[JWLZIFY] loading necklace try-on');
@@ -5035,14 +5453,8 @@ async function loadNecklaceForTryOn(imageUrl) {
 <script>
 'use strict';
 
-/* ── Fallback flag — set true to let goStep bypass the 3D intercept ── */
-let ring3DFallbackMode = false;
-
 /* ── Three.js library loading gate ── */
 let ring3DLibsReady = false;
-
-/* ── Log endpoint on init so we can verify the value in console ── */
-console.log('[Ring3D] TRIPOSR_ENDPOINT:', RING_3D_CONFIG.TRIPOSR_ENDPOINT);
 
 /* ── loadScript utility ── */
 function loadScript(src) {
@@ -5136,88 +5548,6 @@ async function getImageBase64(url) {
     c.getContext('2d').drawImage(img, 0, 0);
     return c.toDataURL('image/png');
   }
-}
-
-/* ── TripoSR: join queue then poll status from frontend ── */
-async function submitTripoSR(base64DataURL) {
-  const BASE = RING_3D_CONFIG.TRIPOSR_ENDPOINT;
-
-  // STEP 1: join queue
-  console.log('[Ring3D] joining TripoSR queue:', BASE + '/join');
-  const joinRes = await fetch(BASE + '/join', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ image_url: base64DataURL }),
-  });
-  if (!joinRes.ok) {
-    const body = await joinRes.text().catch(() => '(unreadable)');
-    console.error('[Ring3D] /join failed | status=' + joinRes.status + ' | body:', body);
-    throw new Error('TripoSR /join failed: ' + joinRes.status);
-  }
-  const joinData = await joinRes.json();
-  const session_hash = joinData.session_hash;
-  console.log('[Ring3D] TripoSR queue joined, session:', session_hash);
-  if (!session_hash) throw new Error('No session_hash in /join response');
-
-  // STEP 2: poll status
-  const MAX_ATTEMPTS = 60;
-  const POLL_MS      = 4000;
-  const statusUrl    = BASE + '/status?session_hash=' + encodeURIComponent(session_hash);
-
-  for (let i = 0; i < MAX_ATTEMPTS; i++) {
-    await new Promise(r => setTimeout(r, POLL_MS));
-    const statusRes = await fetch(statusUrl).catch(e => {
-      console.warn('[Ring3D] poll fetch error (attempt ' + (i + 1) + '):', e.message);
-      return null;
-    });
-    if (!statusRes || !statusRes.ok) { console.warn('[Ring3D] poll non-OK (attempt ' + (i + 1) + ')'); continue; }
-
-    const text  = await statusRes.text();
-    const lines = text.split('\n').filter(l => l.startsWith('data:'));
-
-    for (const line of lines) {
-      let data;
-      try { data = JSON.parse(line.replace('data:', '').trim()); } catch (_) { continue; }
-      console.log('[Ring3D] TripoSR status:', data.msg);
-
-      if (data.msg === 'queue_full' || data.msg === 'error') {
-        throw new Error('TripoSR status: ' + data.msg);
-      }
-
-      if (data.msg === 'process_completed') {
-        const glbData = data.output && data.output.data;
-        console.log('[Ring3D] TripoSR output data:', glbData);
-        if (!glbData) throw new Error('process_completed but no output.data');
-
-        // Extract GLB from output array — try each index
-        for (const item of (Array.isArray(glbData) ? glbData : [glbData])) {
-          if (typeof item !== 'string') continue;
-          if (item.startsWith('http')) {
-            console.log('[Ring3D] GLB URL from output:', item);
-            return item;
-          }
-          // base64 string — decode to blob URL
-          try {
-            const byteChars = atob(item);
-            const byteArr   = new Uint8Array(byteChars.length);
-            for (let j = 0; j < byteChars.length; j++) byteArr[j] = byteChars.charCodeAt(j);
-            const blob   = new Blob([byteArr], { type: 'model/gltf-binary' });
-            const glbUrl = URL.createObjectURL(blob);
-            console.log('[Ring3D] GLB decoded from base64 to blob URL');
-            return glbUrl;
-          } catch (_) {}
-        }
-
-        // Last resort: scan serialised JSON for any .glb URL
-        const m = JSON.stringify(glbData).match(/"(https?:[^"]+\.glb[^"]*)"/);
-        if (m) { console.log('[Ring3D] GLB URL found via JSON scan:', m[1]); return m[1]; }
-
-        throw new Error('process_completed but no GLB found in output.data');
-      }
-    }
-  }
-
-  throw new Error('TripoSR polling timed out after ' + MAX_ATTEMPTS + ' attempts');
 }
 
 /* ── Three.js scene initialisation ── */
@@ -5374,35 +5704,13 @@ async function startRing3DTryOn() {
   try {
     if (!await loadRing3DLibs()) throw new Error('3D libraries unavailable');
 
-    const imgEl = document.querySelector('img[alt="Your AI jewelry design"]');
-    if (!imgEl || !imgEl.src) throw new Error('No source image found');
-
-    const base64 = await getImageBase64(LAB.imageUrl || imgEl.src);
-    console.log('[Ring3D] image converted to base64 | length:', base64.length);
-    const glbUrl = await submitTripoSR(base64);
-    console.log('[Ring3D] GLB URL:', glbUrl);
-    if (!glbUrl) throw new Error('No GLB URL from TripoSR');
-
-    stopRing3DTextCycle();
-    await initRing3DScene(glbUrl);
-
-    document.getElementById('ring3DLoading').style.display = 'none';
-    document.getElementById('ring3DCanvasWrap').style.display = 'block';
-    document.getElementById('ring3DFooter').style.display = 'flex';
-
-    setTimeout(() => {
-      const h = document.getElementById('ringCanvasHint');
-      if (h) h.classList.add('fade-out');
-    }, 5000);
+    throw new Error('3D pipeline disabled');
 
   } catch (e) {
     console.error('[Ring3D]', e.message || e);
     stopRing3DTextCycle();
     closeRing3DModal();
-    // Silent fallback: open the existing 2D camera try-on
-    ring3DFallbackMode = true;
     goStep(4);
-    ring3DFallbackMode = false;
   }
 }
 
