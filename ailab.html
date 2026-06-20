@@ -597,23 +597,36 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
       <div>
         <h3 style="font-family:'Playfair Display',serif;font-size:20px;font-weight:600;color:#1b1c1c;margin-bottom:20px;">Stones</h3>
 
-        <label style="font-family:Inter,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.1em;color:#71787c;text-transform:uppercase;display:block;margin-bottom:10px;">Number of Stones</label>
-        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;">
-          <button class="spec-toggle spec-count-btn" data-count="1" onclick="setSpecCount(1)">1</button>
-          <button class="spec-toggle spec-count-btn" data-count="2" onclick="setSpecCount(2)">2</button>
-          <button class="spec-toggle spec-count-btn" data-count="3" onclick="setSpecCount(3)">3</button>
-          <button class="spec-toggle spec-count-btn" data-count="4" onclick="setSpecCount(4)">4</button>
-          <button class="spec-toggle spec-count-btn" data-count="custom" onclick="setSpecCount('custom')">Custom</button>
-        </div>
-        <div id="specCountCustomWrap" style="display:none;margin-bottom:20px;">
-          <input id="specCountCustomInput" type="number" min="1" max="20" step="1" placeholder="e.g. 5 (max 20)"
-            style="width:100%;font-family:Inter,sans-serif;font-size:14px;padding:10px 14px;border:1.5px solid rgba(193,199,203,0.5);border-radius:10px;outline:none;color:#1b1c1c;box-sizing:border-box;transition:border-color 0.2s;"
-            oninput="setSpecCountCustom(this.value)"
-            onfocus="this.style.borderColor='#3c6474'" onblur="this.style.borderColor='rgba(193,199,203,0.5)'">
+        <!-- NECKLACE ONLY: Stone placement selector -->
+        <div id="necklacePlacementWrap" style="display:none;margin-bottom:20px;">
+          <label style="font-family:Inter,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.1em;color:#71787c;text-transform:uppercase;display:block;margin-bottom:10px;">Stone Placement</label>
+          <div style="display:flex;flex-wrap:wrap;gap:8px;">
+            <button class="spec-toggle necklace-placement-btn active" data-placement="stations" onclick="setNecklacePlacement('stations')">Stations</button>
+            <button class="spec-toggle necklace-placement-btn" data-placement="full" onclick="setNecklacePlacement('full')">Full</button>
+            <button class="spec-toggle necklace-placement-btn" data-placement="none" onclick="setNecklacePlacement('none')">None</button>
+          </div>
         </div>
 
-        <label style="font-family:Inter,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.1em;color:#71787c;text-transform:uppercase;display:block;margin-bottom:12px;">Stone Sizes</label>
-        <div id="specStonesContainer" style="display:flex;flex-direction:column;gap:12px;"></div>
+        <!-- Count and size fields — hidden for necklace when placement = None -->
+        <div id="necklaceStoneDetailsWrap">
+          <label style="font-family:Inter,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.1em;color:#71787c;text-transform:uppercase;display:block;margin-bottom:10px;">Number of Stones</label>
+          <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;">
+            <button class="spec-toggle spec-count-btn" data-count="1" onclick="setSpecCount(1)">1</button>
+            <button class="spec-toggle spec-count-btn" data-count="2" onclick="setSpecCount(2)">2</button>
+            <button class="spec-toggle spec-count-btn" data-count="3" onclick="setSpecCount(3)">3</button>
+            <button class="spec-toggle spec-count-btn" data-count="4" onclick="setSpecCount(4)">4</button>
+            <button class="spec-toggle spec-count-btn" data-count="custom" onclick="setSpecCount('custom')">Custom</button>
+          </div>
+          <div id="specCountCustomWrap" style="display:none;margin-bottom:20px;">
+            <input id="specCountCustomInput" type="number" min="1" max="20" step="1" placeholder="e.g. 5 (max 20)"
+              style="width:100%;font-family:Inter,sans-serif;font-size:14px;padding:10px 14px;border:1.5px solid rgba(193,199,203,0.5);border-radius:10px;outline:none;color:#1b1c1c;box-sizing:border-box;transition:border-color 0.2s;"
+              oninput="setSpecCountCustom(this.value)"
+              onfocus="this.style.borderColor='#3c6474'" onblur="this.style.borderColor='rgba(193,199,203,0.5)'">
+          </div>
+
+          <label style="font-family:Inter,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.1em;color:#71787c;text-transform:uppercase;display:block;margin-bottom:12px;">Stone Sizes</label>
+          <div id="specStonesContainer" style="display:flex;flex-direction:column;gap:12px;"></div>
+        </div>
       </div>
 
     </div>
@@ -1418,10 +1431,11 @@ const REMOVE_BG_API_KEY = 'SaaY6FrGJRJs7tj5zh7Jvs29';
 /* ── Gemini image generation ── */
 
 /* ── Chain style selection for necklace type ── */
-let selectedChainStyle  = null;
-let selectedChainPrompt = '';
-let selectedChainLabel  = '';
-let selectedChainLength = '18 inches (standard)';
+let selectedChainStyle      = null;
+let selectedChainPrompt     = '';
+let selectedChainLabel      = '';
+let selectedChainLength     = '18 inches (standard)';
+let selectedNecklacePlacement = 'stations'; // 'none' | 'stations' | 'full'
 
 /* ── BG removal cache — avoids repeat API calls per session ── */
 const bgRemovalCache = new Map();
@@ -1576,7 +1590,7 @@ function _buildHfJewelryDesc(type, material, gem, style, desc) {
 }
 const _HF_RING_NEGATIVE      = 'tilted, angled, three-quarter view, 3/4 view, perspective, side view, side angle, top-down, birds eye, isometric, diagonal, rotated, lying flat, flat lay, on its side, leaning, oblique, dutch angle, foreshortening, multiple rings, collage, grid, two rings, group of rings, blurry, deformed, asymmetrical';
 const _HF_BRACELET_NEGATIVE  = 'flat lay, laid flat, spread out, scattered, disconnected pieces, broken chain, straight strip, unclasped, open ends, multiple bracelets, two bracelets, collage, grid, tangled, deformed, asymmetrical, lying on surface, top-down, birds eye, side view, coiled, stacked, two bracelets, double band, two bands, stacked bracelets, pair of bracelets, multiple loops, double loop, two rings, twin bands, layered bracelets, second bracelet, duplicate';
-const _HF_NECKLACE_NEGATIVE  = 'flat lay, tabletop, top-down view, coiled chain, chain laid flat, jewelry box, angled perspective, asymmetrical drape, cropped chain, multiple necklaces, hands, neck skin, mannequin face, busy background, blurry, deformed';
+const _HF_NECKLACE_NEGATIVE  = 'flat lay, tabletop, top-down view, coiled chain, chain laid flat, jewelry box, angled perspective, asymmetrical drape, cropped chain, multiple necklaces, hands, neck skin, mannequin face, busy background, blurry, deformed, pendant, charm, hanging pendant, locket, dangling ornament, extra pendant, multiple chains, two necklaces, double chain, several chains, duplicate necklace, tangled chains';
 // Single-band enforcement — bracelet only. Appended to BOTH Gemini and HF positive prompts.
 const _BRACELET_SINGLE_BAND   = 'ONE single bracelet band only. A single continuous loop. One unbroken band. Exactly one bracelet, not two, not a pair, not stacked, not double-banded. A single solitary bracelet shown as one closed oval loop facing the camera.';
 // Gemini-only extra instruction folded into the bracelet prompt.
@@ -1829,6 +1843,7 @@ async function goStep(n) {
   if (n === 1) {
     selectedChainStyle = null; selectedChainPrompt = ''; selectedChainLabel = '';
     selectedChainLength = '18 inches (standard)';
+    selectedNecklacePlacement = 'stations';
     lastGeneratedImage = null;
   }
   // Kill camera when leaving step 4 (Try On)
@@ -2008,7 +2023,28 @@ function setType(btn, type) {
   updateChainLengthVisibility();
   const _disc = document.getElementById('pendantIPDisclaimer');
   if (_disc) _disc.style.display = type === 'pendant' ? 'block' : 'none';
+  // Necklace-only: stone placement selector visibility
+  const _placementWrap = document.getElementById('necklacePlacementWrap');
+  if (_placementWrap) _placementWrap.style.display = type === 'necklace' ? 'block' : 'none';
+  if (type !== 'necklace') {
+    const _stoneDetailsWrap = document.getElementById('necklaceStoneDetailsWrap');
+    if (_stoneDetailsWrap) _stoneDetailsWrap.style.display = '';
+  } else {
+    _updateNecklacePlacementUI();
+  }
   if (type === 'necklace') showChainStyleModal();
+}
+
+/* ── Necklace stone placement selector ──────── */
+function setNecklacePlacement(val) {
+  selectedNecklacePlacement = val;
+  document.querySelectorAll('.necklace-placement-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.placement === val));
+  _updateNecklacePlacementUI();
+}
+function _updateNecklacePlacementUI() {
+  const detailsWrap = document.getElementById('necklaceStoneDetailsWrap');
+  if (detailsWrap) detailsWrap.style.display = selectedNecklacePlacement === 'none' ? 'none' : '';
 }
 
 /* ── Style chip selector ─────────────────────── */
@@ -2061,13 +2097,23 @@ function buildPrompt(type, material, gem, style, desc) {
     const chainLenVisible = ['cable','box','rope','figaro'].includes(selectedChainStyle);
     const chainLenStr = (chainLenVisible && selectedChainLength) ? `Chain length: ${selectedChainLength}.` : '';
     const specStr = [chainStyleStr, chainLenStr].filter(Boolean).join(' ');
+    // Placement-aware gem description — chain-only necklaces, no pendant ever
+    let necklaceGemStr = '';
+    if (selectedNecklacePlacement === 'none') {
+      necklaceGemStr = 'plain chain with no stones';
+    } else if (gemPart) {
+      const _placementDesc = selectedNecklacePlacement === 'full'
+        ? 'stones set continuously along the entire chain, tennis necklace style'
+        : 'stones spaced evenly along the chain as individual stations';
+      necklaceGemStr = `featuring ${gemPart}, ${_placementDesc}`;
+    }
     const necklaceFraming = [
       'necklace displayed as if worn',
       'front-facing view photographed straight on',
       'chain forms a clean symmetrical U-shape draped evenly down both sides',
-      'pendant centered at the bottom of the curve facing directly forward',
       'displayed on an invisible ghost mannequin neck form',
       'isolated single necklace, full chain visible from end to end',
+      'a single continuous chain only, no pendant, no charm, one necklace',
       'vertical portrait orientation',
       'professional jewelry photography',
       'plain seamless light grey background',
@@ -2080,7 +2126,7 @@ function buildPrompt(type, material, gem, style, desc) {
       chainSpecific,
       wPart.trim(),
       mDisp ? `crafted in ${mDisp}` : '',
-      gemPart ? `featuring ${gemPart}` : '',
+      necklaceGemStr,
       ...necklaceFraming
     ].filter(Boolean).join(', ');
     return necklaceCore + (specStr ? '. ' + specStr : '') + '.';
@@ -2510,7 +2556,7 @@ async function startGeneration(isTweak) {
     .flatMap(([, syns]) => syns)
     .join(', ');
   const _ringNegPrefix     = resolvedType === 'ring' ? 'collage, grid, multiple panels, multiple angles, contact sheet, multiple rings, split screen, tiled, montage, two rings, several rings, ' : '';
-  const _necklaceNegSuffix = resolvedType === 'necklace' ? ', flat lay, tabletop, top-down view, coiled chain, chain laid flat, jewelry box, angled perspective, asymmetrical drape, cropped chain, multiple necklaces, hands, neck skin, mannequin face, busy background' : '';
+  const _necklaceNegSuffix = resolvedType === 'necklace' ? ', flat lay, tabletop, top-down view, coiled chain, chain laid flat, jewelry box, angled perspective, asymmetrical drape, cropped chain, multiple necklaces, hands, neck skin, mannequin face, busy background, pendant, charm, hanging pendant, locket, dangling ornament, extra pendant, multiple chains, two necklaces, double chain, several chains, duplicate necklace, tangled chains' : '';
   const negativePrompt = `${_ringNegPrefix}${negJewelryTerms}, brooch, anklet, person, human, model, body, face, hands, text, watermark, logo, blurry, low quality, distorted${_necklaceNegSuffix}`;
 
   // Read all spec values fresh from the DOM at this exact click moment
@@ -2581,7 +2627,7 @@ async function startGeneration(isTweak) {
     console.log('[JWLZIFY] Gemini bracelet prompt:', fullPrompt);
   } else if (resolvedType === 'necklace') {
     const _hfDesc  = _buildHfJewelryDesc('necklace', LAB.material, LAB.gem, LAB.style, desc);
-    const _hfInput = `${_hfDesc}, necklace displayed as if worn, front-facing view photographed straight on, chain forms a clean symmetrical U-shape draped evenly down both sides, pendant centered at the bottom of the curve, ghost mannequin neck form, isolated single necklace full chain visible, vertical portrait orientation, light grey background, studio lighting, sharp focus, photorealistic, 8k`;
+    const _hfInput = `${_hfDesc}, necklace displayed as if worn, front-facing view photographed straight on, chain forms a clean symmetrical U-shape draped evenly down both sides, ghost mannequin neck form, isolated single necklace full chain visible, a single continuous chain only, no pendant, no charm, one necklace, vertical portrait orientation, light grey background, studio lighting, sharp focus, photorealistic, 8k`;
     _hfOverrides = { inputs: _hfInput, negative_prompt: _HF_NECKLACE_NEGATIVE, guidance_scale: 9.0, num_inference_steps: 30 };
     console.log('[JWLZIFY] necklace prompt (HF):', _hfInput);
     console.log('[JWLZIFY] necklace negative:', _HF_NECKLACE_NEGATIVE);
@@ -2702,7 +2748,7 @@ async function confirmAndGenerate() {
     .filter(([t]) => t !== LAB.type)
     .flatMap(([, syns]) => syns).join(', ');
   const _ringNegPrefixC     = LAB.type === 'ring' ? 'collage, grid, multiple panels, multiple angles, contact sheet, multiple rings, split screen, tiled, montage, two rings, several rings, ' : '';
-  const _necklaceNegSuffixC = LAB.type === 'necklace' ? ', flat lay, tabletop, top-down view, coiled chain, chain laid flat, jewelry box, angled perspective, asymmetrical drape, cropped chain, multiple necklaces, hands, neck skin, mannequin face, busy background' : '';
+  const _necklaceNegSuffixC = LAB.type === 'necklace' ? ', flat lay, tabletop, top-down view, coiled chain, chain laid flat, jewelry box, angled perspective, asymmetrical drape, cropped chain, multiple necklaces, hands, neck skin, mannequin face, busy background, pendant, charm, hanging pendant, locket, dangling ornament, extra pendant, multiple chains, two necklaces, double chain, several chains, duplicate necklace, tangled chains' : '';
   const negativePrompt = _ringNegPrefixC + negJewelryTerms + ', brooch, anklet, person, human, model, body, face, hands, text, watermark, logo, blurry, low quality, distorted' + _necklaceNegSuffixC;
 
   // HF-specific keyword-stacked overrides for ring / bracelet / necklace
@@ -2723,7 +2769,7 @@ async function confirmAndGenerate() {
     console.log('[JWLZIFY] Gemini bracelet prompt:', fullPrompt);
   } else if (LAB.type === 'necklace') {
     const _hfDesc  = _buildHfJewelryDesc('necklace', LAB.material, LAB.gem, LAB.style || 'Modern', userIdea);
-    const _hfInput = `${_hfDesc}, necklace displayed as if worn, front-facing view photographed straight on, chain forms a clean symmetrical U-shape draped evenly down both sides, pendant centered at the bottom of the curve, ghost mannequin neck form, isolated single necklace full chain visible, vertical portrait orientation, light grey background, studio lighting, sharp focus, photorealistic, 8k`;
+    const _hfInput = `${_hfDesc}, necklace displayed as if worn, front-facing view photographed straight on, chain forms a clean symmetrical U-shape draped evenly down both sides, ghost mannequin neck form, isolated single necklace full chain visible, a single continuous chain only, no pendant, no charm, one necklace, vertical portrait orientation, light grey background, studio lighting, sharp focus, photorealistic, 8k`;
     _hfOverridesC = { inputs: _hfInput, negative_prompt: _HF_NECKLACE_NEGATIVE, guidance_scale: 9.0, num_inference_steps: 30 };
     console.log('[JWLZIFY] necklace prompt (HF):', _hfInput);
     console.log('[JWLZIFY] necklace negative:', _HF_NECKLACE_NEGATIVE);
