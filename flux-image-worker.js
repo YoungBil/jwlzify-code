@@ -1,4 +1,4 @@
-// flux-image Cloudflare Worker — text-to-image via fal.ai
+// flux-image Cloudflare Worker — text-to-image + image-to-image via fal.ai
 // Deploy: wrangler deploy --config flux-image-wrangler.toml
 //
 // Required secret (never hardcoded here):
@@ -7,7 +7,8 @@
 // Response contract: raw image bytes + image/jpeg Content-Type
 // — matches hf-image-worker.js so ailab.html needs no changes on this side
 
-const FAL_MODEL = 'fal-ai/flux-2-pro'; // swap to flux-2-max, flux-pro, etc. here
+const FAL_MODEL_GEN  = 'fal-ai/flux-2-pro';        // txt2img — swap to flux-2-max etc. here
+const FAL_MODEL_EDIT = 'fal-ai/flux-2-pro/edit';    // img2img (refine) — swap independently here
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -44,6 +45,7 @@ export default {
 
     const prompt    = body.inputs || body.prompt || '';
     const imageSize = body.image_size || 'portrait_4_3';
+    const initImage = body.initImage || null;  // raw base64 string; presence triggers edit endpoint
 
     if (!prompt) {
       return new Response(JSON.stringify({ error: 'prompt is required' }), {
@@ -52,8 +54,27 @@ export default {
       });
     }
 
-    // POST to fal.ai synchronous endpoint
-    const falEndpoint = `https://fal.run/${FAL_MODEL}`;
+    // Branch: img2img edit vs. txt2img generation
+    const isEdit      = !!initImage;
+    const falModel    = isEdit ? FAL_MODEL_EDIT : FAL_MODEL_GEN;
+    const falEndpoint = `https://fal.run/${falModel}`;
+    const falBody     = isEdit
+      ? {
+          prompt,
+          image_url:             `data:image/png;base64,${initImage}`,
+          image_size:            imageSize,
+          output_format:         'jpeg',
+          enable_safety_checker: true,
+        }
+      : {
+          prompt,
+          image_size:            imageSize,
+          output_format:         'jpeg',
+          enable_safety_checker: true,
+        };
+
+    console.log(`[JWLZIFY] flux-image: calling ${falModel} | mode=${isEdit ? 'edit' : 'gen'}`);
+
     let falRes;
     try {
       falRes = await fetch(falEndpoint, {
@@ -62,12 +83,7 @@ export default {
           'Authorization': `Key ${env.FAL_KEY}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          prompt,
-          image_size:             imageSize,
-          output_format:          'jpeg',
-          enable_safety_checker:  true,
-        }),
+        body: JSON.stringify(falBody),
       });
     } catch (err) {
       console.error('[JWLZIFY] flux-image: upstream fetch failed:', err.message);
@@ -79,7 +95,7 @@ export default {
 
     if (!falRes.ok) {
       const errText = await falRes.text();
-      console.error(`[JWLZIFY] flux-image: fal returned ${falRes.status}:`, errText);
+      console.error(`[JWLZIFY] flux-image: fal returned ${falRes.status} (${falModel}):`, errText);
       return new Response(JSON.stringify({ error: `fal.ai error ${falRes.status}`, detail: errText }), {
         status: falRes.status,
         headers: { ...CORS, 'Content-Type': 'application/json' },
@@ -126,6 +142,7 @@ export default {
       });
     }
 
+    console.log(`[JWLZIFY] flux-image: SUCCESS | mode=${isEdit ? 'edit' : 'gen'}`);
     return new Response(imgRes.body, {
       headers: { ...CORS, 'Content-Type': 'image/jpeg' },
     });

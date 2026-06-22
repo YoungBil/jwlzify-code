@@ -1650,27 +1650,25 @@ async function _generateImage(prompt, negativePrompt, initImage, hfOverrides) {
     console.warn('[JWLZIFY] Gemini failed, trying Flux fallback:', e.message);
   }
 
-  // SECONDARY: Flux 2 Pro — txt2img only (skip for img2img/refine passes where initImage is set)
-  if (!initImage) {
-    try {
-      console.log('[JWLZIFY] calling Flux worker...');
-      const _fluxRes = await fetch(FLUX_WORKER_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          prompt:     hfOverrides.inputs || prompt,
-          image_size: 'portrait_4_3',
-        }),
-      });
-      console.log('[JWLZIFY] Flux worker response | status=' + _fluxRes.status);
-      if (!_fluxRes.ok) throw new Error('Flux HTTP ' + _fluxRes.status);
-      const _fluxBlob = await _fluxRes.blob();
-      if (_fluxBlob.size < 5000) throw new Error('Flux blob too small (' + _fluxBlob.size + ' bytes)');
-      console.log('[JWLZIFY] generated via Flux | blob size=' + _fluxBlob.size + ' bytes');
-      return URL.createObjectURL(_fluxBlob);
-    } catch(e) {
-      console.warn('[JWLZIFY] Flux failed, fell back to SDXL:', e.message);
-    }
+  // SECONDARY: Flux 2 Pro — txt2img (no initImage) or img2img edit (initImage present)
+  try {
+    const _fluxMode = initImage ? 'refine' : 'generate';
+    console.log('[JWLZIFY] calling Flux worker | mode=' + _fluxMode + '...');
+    const _fluxBody = { prompt: hfOverrides.inputs || prompt, image_size: 'portrait_4_3' };
+    if (initImage) _fluxBody.initImage = initImage;
+    const _fluxRes = await fetch(FLUX_WORKER_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(_fluxBody),
+    });
+    console.log('[JWLZIFY] Flux worker response | mode=' + _fluxMode + ' | status=' + _fluxRes.status);
+    if (!_fluxRes.ok) throw new Error('Flux HTTP ' + _fluxRes.status);
+    const _fluxBlob = await _fluxRes.blob();
+    if (_fluxBlob.size < 5000) throw new Error('Flux blob too small (' + _fluxBlob.size + ' bytes)');
+    console.log('[JWLZIFY] ' + (initImage ? 'refined via Flux' : 'generated via Flux') + ' | blob size=' + _fluxBlob.size + ' bytes');
+    return URL.createObjectURL(_fluxBlob);
+  } catch(e) {
+    console.warn('[JWLZIFY] ' + (initImage ? 'Flux refine failed, fell back to SDXL: ' : 'Flux failed, fell back to SDXL: ') + e.message);
   }
 
   // TERTIARY (or img2img): HuggingFace SDXL via Cloudflare Worker
