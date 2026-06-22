@@ -1595,6 +1595,8 @@ const _HF_NECKLACE_NEGATIVE  = 'flat lay, tabletop, top-down view, coiled chain,
 const _BRACELET_SINGLE_BAND   = 'ONE single bracelet band only. A single continuous loop. One unbroken band. Exactly one bracelet, not two, not a pair, not stacked, not double-banded. A single solitary bracelet shown as one closed oval loop facing the camera.';
 // Gemini-only extra instruction folded into the bracelet prompt.
 const _GEMINI_BRACELET_SINGLE = 'Generate exactly ONE single bracelet band. Do not show two bands, a double band, stacked bracelets, or a pair. One single continuous loop only.';
+// Flux 2 Pro worker — primary txt2img generator (swap model by updating flux-image-worker.js FAL_MODEL)
+const FLUX_WORKER_URL = 'https://flux-image.sarkd333.workers.dev';
 
 async function _generateImage(prompt, negativePrompt, initImage, hfOverrides) {
   hfOverrides = hfOverrides || {};
@@ -1645,10 +1647,33 @@ async function _generateImage(prompt, negativePrompt, initImage, hfOverrides) {
     return URL.createObjectURL(blob);
 
   } catch(e) {
-    console.warn('[JWLZIFY] Gemini failed, trying HF fallback:', e.message);
+    console.warn('[JWLZIFY] Gemini failed, trying Flux fallback:', e.message);
   }
 
-  // FALLBACK: HuggingFace via Cloudflare Worker
+  // SECONDARY: Flux 2 Pro — txt2img only (skip for img2img/refine passes where initImage is set)
+  if (!initImage) {
+    try {
+      console.log('[JWLZIFY] calling Flux worker...');
+      const _fluxRes = await fetch(FLUX_WORKER_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt:     hfOverrides.inputs || prompt,
+          image_size: 'portrait_4_3',
+        }),
+      });
+      console.log('[JWLZIFY] Flux worker response | status=' + _fluxRes.status);
+      if (!_fluxRes.ok) throw new Error('Flux HTTP ' + _fluxRes.status);
+      const _fluxBlob = await _fluxRes.blob();
+      if (_fluxBlob.size < 5000) throw new Error('Flux blob too small (' + _fluxBlob.size + ' bytes)');
+      console.log('[JWLZIFY] generated via Flux | blob size=' + _fluxBlob.size + ' bytes');
+      return URL.createObjectURL(_fluxBlob);
+    } catch(e) {
+      console.warn('[JWLZIFY] Flux failed, fell back to SDXL:', e.message);
+    }
+  }
+
+  // TERTIARY (or img2img): HuggingFace SDXL via Cloudflare Worker
   try {
     console.log('[JWLZIFY] calling HF worker...');
     const hfRes = await fetch(
