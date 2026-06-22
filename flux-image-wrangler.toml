@@ -1,0 +1,7 @@
+name = "flux-image"
+main = "flux-image-worker.js"
+compatibility_date = "2024-01-01"
+
+# No [ai] binding needed — this worker calls fal.ai over HTTP, not Cloudflare AI.
+# Set the FAL_KEY secret separately (never put it here):
+#   wrangler secret put FAL_KEY --config flux-image-wrangler.toml
