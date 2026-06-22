@@ -8,6 +8,7 @@
 <title>Jwlzify</title>
 <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
 <script>
@@ -112,12 +113,13 @@ tailwind.config = {
   border-color: rgba(60,100,116,0.12);
 }
 .coll-filter-btn.active {
-  background: #3c6474;
-  color: #fff;
+  background: #0B0F1A;
+  color: #C9A84C;
   border-color: transparent;
   font-weight: 600;
-  box-shadow: 0 4px 16px rgba(60,100,116,0.22);
+  box-shadow: 0 4px 16px rgba(11,15,26,0.28);
 }
+.coll-filter-btn.active span:last-child { opacity: 0.85 !important; color: #C9A84C; }
 
 /* ── Collection card images ── */
 .coll-img {
@@ -146,6 +148,144 @@ tailwind.config = {
   color: #C9A84C;
   text-transform: uppercase;
 }
+
+/* ── Image loading: skeleton shimmer + fade-in (prevents slow/janky feel) ── */
+.carousel-slide { position: relative; background: #eef1f3; }
+.carousel-slide::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: linear-gradient(100deg, #e9edf0 25%, #f6f8f9 50%, #e9edf0 75%);
+  background-size: 220% 100%;
+  animation: collShimmer 1.3s ease-in-out infinite;
+}
+.carousel-slide.img-ready::before { display: none; }
+@keyframes collShimmer {
+  0%   { background-position: 220% 0; }
+  100% { background-position: -120% 0; }
+}
+.coll-img {
+  position: relative;
+  z-index: 1;
+  opacity: 0;
+  transition: opacity 0.45s ease;
+}
+.coll-img.loaded { opacity: 1; }
+
+/* ── Specs modal ── */
+.specs-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(6, 9, 16, 0.72);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+.specs-modal-overlay.open { display: flex; }
+.specs-modal {
+  position: relative;
+  width: 100%;
+  max-width: 860px;
+  max-height: 90vh;
+  overflow-y: auto;
+  background: #0B0F1A;
+  color: #ECECEC;
+  border: 1px solid rgba(201,168,76,0.30);
+  border-radius: 18px;
+  box-shadow: 0 30px 80px rgba(0,0,0,0.55);
+  display: flex;
+  flex-direction: column;
+}
+@media (min-width: 720px) { .specs-modal { flex-direction: row; } }
+.specs-modal-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 5;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 1px solid rgba(201,168,76,0.35);
+  background: rgba(11,15,26,0.7);
+  color: #C9A84C;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.18s ease, transform 0.18s ease;
+}
+.specs-modal-close:hover { background: rgba(201,168,76,0.15); transform: rotate(90deg); }
+.specs-modal-img {
+  flex: 0 0 auto;
+  width: 100%;
+  background: #11151f;
+  border-radius: 18px 18px 0 0;
+}
+@media (min-width: 720px) {
+  .specs-modal-img { width: 44%; border-radius: 18px 0 0 18px; }
+}
+.specs-modal-img img { width: 100%; height: 100%; max-height: 340px; object-fit: cover; display: block; border-radius: inherit; }
+@media (min-width: 720px) { .specs-modal-img img { max-height: none; } }
+.specs-modal-body { flex: 1 1 auto; padding: 30px 32px 34px; }
+.specs-modal-eyebrow {
+  font-family: 'Inter', sans-serif;
+  font-size: 10px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: #C9A84C;
+}
+.specs-modal-title {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 34px;
+  font-weight: 600;
+  line-height: 1.12;
+  color: #ffffff;
+  margin: 8px 0 4px;
+}
+.specs-modal-handle {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  color: rgba(236,236,236,0.55);
+  margin-bottom: 22px;
+}
+.specs-list { list-style: none; margin: 0 0 26px; padding: 0; }
+.specs-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 11px 0;
+  border-bottom: 1px solid rgba(201,168,76,0.14);
+  font-family: 'Inter', sans-serif;
+  font-size: 14px;
+}
+.specs-list li .k { color: rgba(236,236,236,0.55); letter-spacing: 0.04em; }
+.specs-list li .v { color: #ECECEC; font-weight: 500; text-align: right; }
+.specs-list li .v.price { color: #C9A84C; font-weight: 600; }
+.specs-customize-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #0B0F1A;
+  background: #C9A84C;
+  border: none;
+  border-radius: 10px;
+  padding: 15px 30px;
+  cursor: pointer;
+  text-decoration: none;
+  transition: filter 0.18s ease, transform 0.18s ease;
+}
+.specs-customize-btn:hover { filter: brightness(1.08); transform: translateY(-1px); }
 
 </style>
 </head>
@@ -250,20 +390,20 @@ tailwind.config = {
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8" id="galleryGrid">
 
           <!-- ── CARD 1 — The Glacial Solitaire ── -->
-          <div class="col-card">
+          <div class="col-card" data-id="glacial-solitaire" data-category="ring">
             <div class="carousel-wrap" data-carousel>
               <button class="carousel-arrow carousel-prev" aria-label="Previous angle">
                 <span class="material-symbols-outlined" style="font-size:18px;color:#3c6474;">chevron_left</span>
               </button>
               <div class="carousel-track">
                 <div class="carousel-slide" style="height:290px;">
-                  <img class="coll-img" src="images/collections/glacial-solitaire-1.jpg" alt="The Glacial Solitaire — Front View" loading="lazy" onerror="collImgFallback(this)">
+                  <img class="coll-img" width="800" height="800" src="images/collections/glacial-solitaire-1.jpg" alt="The Glacial Solitaire — Front View" loading="lazy" onerror="collImgFallback(this)">
                 </div>
                 <div class="carousel-slide" style="height:290px;">
-                  <img class="coll-img" src="images/collections/glacial-solitaire-2.jpg" alt="The Glacial Solitaire — Profile" loading="lazy" onerror="collImgFallback(this)">
+                  <img class="coll-img" width="800" height="800" src="images/collections/glacial-solitaire-2.jpg" alt="The Glacial Solitaire — Profile" loading="lazy" onerror="collImgFallback(this)">
                 </div>
                 <div class="carousel-slide" style="height:290px;">
-                  <img class="coll-img" src="images/collections/glacial-solitaire-3.jpg" alt="The Glacial Solitaire — Detail" loading="lazy" onerror="collImgFallback(this)">
+                  <img class="coll-img" width="800" height="800" src="images/collections/glacial-solitaire-3.jpg" alt="The Glacial Solitaire — Detail" loading="lazy" onerror="collImgFallback(this)">
                 </div>
               </div>
               <button class="carousel-arrow carousel-next" aria-label="Next angle">
@@ -282,20 +422,20 @@ tailwind.config = {
           </div>
 
           <!-- ── CARD 2 — Cascade Pendant ── -->
-          <div class="col-card">
+          <div class="col-card" data-id="cascade-pendant" data-category="pendant">
             <div class="carousel-wrap" data-carousel>
               <button class="carousel-arrow carousel-prev" aria-label="Previous angle">
                 <span class="material-symbols-outlined" style="font-size:18px;color:#3c6474;">chevron_left</span>
               </button>
               <div class="carousel-track">
                 <div class="carousel-slide" style="height:290px;">
-                  <img class="coll-img" src="images/collections/cascade-pendant-1.jpg" alt="Cascade Pendant — Front View" loading="lazy" onerror="collImgFallback(this)">
+                  <img class="coll-img" width="800" height="800" src="images/collections/cascade-pendant-1.jpg" alt="Cascade Pendant — Front View" loading="lazy" onerror="collImgFallback(this)">
                 </div>
                 <div class="carousel-slide" style="height:290px;">
-                  <img class="coll-img" src="images/collections/cascade-pendant-2.jpg" alt="Cascade Pendant — Profile" loading="lazy" onerror="collImgFallback(this)">
+                  <img class="coll-img" width="800" height="800" src="images/collections/cascade-pendant-2.jpg" alt="Cascade Pendant — Profile" loading="lazy" onerror="collImgFallback(this)">
                 </div>
                 <div class="carousel-slide" style="height:290px;">
-                  <img class="coll-img" src="images/collections/cascade-pendant-3.jpg" alt="Cascade Pendant — Detail" loading="lazy" onerror="collImgFallback(this)">
+                  <img class="coll-img" width="800" height="800" src="images/collections/cascade-pendant-3.jpg" alt="Cascade Pendant — Detail" loading="lazy" onerror="collImgFallback(this)">
                 </div>
               </div>
               <button class="carousel-arrow carousel-next" aria-label="Next angle">
@@ -314,20 +454,20 @@ tailwind.config = {
           </div>
 
           <!-- ── CARD 3 — Nova Chandelier Earrings ── -->
-          <div class="col-card">
+          <div class="col-card" data-id="nova-chandelier-earrings" data-category="earring">
             <div class="carousel-wrap" data-carousel>
               <button class="carousel-arrow carousel-prev" aria-label="Previous angle">
                 <span class="material-symbols-outlined" style="font-size:18px;color:#3c6474;">chevron_left</span>
               </button>
               <div class="carousel-track">
                 <div class="carousel-slide" style="height:290px;">
-                  <img class="coll-img" src="images/collections/nova-chandelier-earrings-1.jpg" alt="Nova Chandelier Earrings — Front View" loading="lazy" onerror="collImgFallback(this)">
+                  <img class="coll-img" width="800" height="800" src="images/collections/nova-chandelier-earrings-1.jpg" alt="Nova Chandelier Earrings — Front View" loading="lazy" onerror="collImgFallback(this)">
                 </div>
                 <div class="carousel-slide" style="height:290px;">
-                  <img class="coll-img" src="images/collections/nova-chandelier-earrings-2.jpg" alt="Nova Chandelier Earrings — Profile" loading="lazy" onerror="collImgFallback(this)">
+                  <img class="coll-img" width="800" height="800" src="images/collections/nova-chandelier-earrings-2.jpg" alt="Nova Chandelier Earrings — Profile" loading="lazy" onerror="collImgFallback(this)">
                 </div>
                 <div class="carousel-slide" style="height:290px;">
-                  <img class="coll-img" src="images/collections/nova-chandelier-earrings-3.jpg" alt="Nova Chandelier Earrings — Detail" loading="lazy" onerror="collImgFallback(this)">
+                  <img class="coll-img" width="800" height="800" src="images/collections/nova-chandelier-earrings-3.jpg" alt="Nova Chandelier Earrings — Detail" loading="lazy" onerror="collImgFallback(this)">
                 </div>
               </div>
               <button class="carousel-arrow carousel-next" aria-label="Next angle">
@@ -346,20 +486,20 @@ tailwind.config = {
           </div>
 
           <!-- ── CARD 4 — Brutalist Cuff ── -->
-          <div class="col-card">
+          <div class="col-card" data-id="brutalist-cuff" data-category="bracelet">
             <div class="carousel-wrap" data-carousel>
               <button class="carousel-arrow carousel-prev" aria-label="Previous angle">
                 <span class="material-symbols-outlined" style="font-size:18px;color:#3c6474;">chevron_left</span>
               </button>
               <div class="carousel-track">
                 <div class="carousel-slide" style="height:290px;">
-                  <img class="coll-img" src="images/collections/brutalist-cuff-1.jpg" alt="Brutalist Cuff — Front View" loading="lazy" onerror="collImgFallback(this)">
+                  <img class="coll-img" width="800" height="800" src="images/collections/brutalist-cuff-1.jpg" alt="Brutalist Cuff — Front View" loading="lazy" onerror="collImgFallback(this)">
                 </div>
                 <div class="carousel-slide" style="height:290px;">
-                  <img class="coll-img" src="images/collections/brutalist-cuff-2.jpg" alt="Brutalist Cuff — Profile" loading="lazy" onerror="collImgFallback(this)">
+                  <img class="coll-img" width="800" height="800" src="images/collections/brutalist-cuff-2.jpg" alt="Brutalist Cuff — Profile" loading="lazy" onerror="collImgFallback(this)">
                 </div>
                 <div class="carousel-slide" style="height:290px;">
-                  <img class="coll-img" src="images/collections/brutalist-cuff-3.jpg" alt="Brutalist Cuff — Detail" loading="lazy" onerror="collImgFallback(this)">
+                  <img class="coll-img" width="800" height="800" src="images/collections/brutalist-cuff-3.jpg" alt="Brutalist Cuff — Detail" loading="lazy" onerror="collImgFallback(this)">
                 </div>
               </div>
               <button class="carousel-arrow carousel-next" aria-label="Next angle">
@@ -378,20 +518,20 @@ tailwind.config = {
           </div>
 
           <!-- ── CARD 5 — Celestial Stacker ── -->
-          <div class="col-card">
+          <div class="col-card" data-id="celestial-stacker" data-category="ring">
             <div class="carousel-wrap" data-carousel>
               <button class="carousel-arrow carousel-prev" aria-label="Previous angle">
                 <span class="material-symbols-outlined" style="font-size:18px;color:#3c6474;">chevron_left</span>
               </button>
               <div class="carousel-track">
                 <div class="carousel-slide" style="height:290px;">
-                  <img class="coll-img" src="images/collections/celestial-stacker-1.jpg" alt="Celestial Stacker — Front View" loading="lazy" onerror="collImgFallback(this)">
+                  <img class="coll-img" width="800" height="800" src="images/collections/celestial-stacker-1.jpg" alt="Celestial Stacker — Front View" loading="lazy" onerror="collImgFallback(this)">
                 </div>
                 <div class="carousel-slide" style="height:290px;">
-                  <img class="coll-img" src="images/collections/celestial-stacker-2.jpg" alt="Celestial Stacker — Profile" loading="lazy" onerror="collImgFallback(this)">
+                  <img class="coll-img" width="800" height="800" src="images/collections/celestial-stacker-2.jpg" alt="Celestial Stacker — Profile" loading="lazy" onerror="collImgFallback(this)">
                 </div>
                 <div class="carousel-slide" style="height:290px;">
-                  <img class="coll-img" src="images/collections/celestial-stacker-3.jpg" alt="Celestial Stacker — Detail" loading="lazy" onerror="collImgFallback(this)">
+                  <img class="coll-img" width="800" height="800" src="images/collections/celestial-stacker-3.jpg" alt="Celestial Stacker — Detail" loading="lazy" onerror="collImgFallback(this)">
                 </div>
               </div>
               <button class="carousel-arrow carousel-next" aria-label="Next angle">
@@ -410,20 +550,20 @@ tailwind.config = {
           </div>
 
           <!-- ── CARD 6 — Mirage Halo Ring ── -->
-          <div class="col-card">
+          <div class="col-card" data-id="mirage-halo-ring" data-category="ring">
             <div class="carousel-wrap" data-carousel>
               <button class="carousel-arrow carousel-prev" aria-label="Previous angle">
                 <span class="material-symbols-outlined" style="font-size:18px;color:#3c6474;">chevron_left</span>
               </button>
               <div class="carousel-track">
                 <div class="carousel-slide" style="height:290px;">
-                  <img class="coll-img" src="images/collections/mirage-halo-ring-1.jpg" alt="Mirage Halo Ring — Front View" loading="lazy" onerror="collImgFallback(this)">
+                  <img class="coll-img" width="800" height="800" src="images/collections/mirage-halo-ring-1.jpg" alt="Mirage Halo Ring — Front View" loading="lazy" onerror="collImgFallback(this)">
                 </div>
                 <div class="carousel-slide" style="height:290px;">
-                  <img class="coll-img" src="images/collections/mirage-halo-ring-2.jpg" alt="Mirage Halo Ring — Profile" loading="lazy" onerror="collImgFallback(this)">
+                  <img class="coll-img" width="800" height="800" src="images/collections/mirage-halo-ring-2.jpg" alt="Mirage Halo Ring — Profile" loading="lazy" onerror="collImgFallback(this)">
                 </div>
                 <div class="carousel-slide" style="height:290px;">
-                  <img class="coll-img" src="images/collections/mirage-halo-ring-3.jpg" alt="Mirage Halo Ring — Detail" loading="lazy" onerror="collImgFallback(this)">
+                  <img class="coll-img" width="800" height="800" src="images/collections/mirage-halo-ring-3.jpg" alt="Mirage Halo Ring — Detail" loading="lazy" onerror="collImgFallback(this)">
                 </div>
               </div>
               <button class="carousel-arrow carousel-next" aria-label="Next angle">
@@ -442,20 +582,20 @@ tailwind.config = {
           </div>
 
           <!-- ── CARD 7 — Chronos Edition ── -->
-          <div class="col-card">
+          <div class="col-card" data-id="chronos-edition" data-category="ring">
             <div class="carousel-wrap" data-carousel>
               <button class="carousel-arrow carousel-prev" aria-label="Previous angle">
                 <span class="material-symbols-outlined" style="font-size:18px;color:#3c6474;">chevron_left</span>
               </button>
               <div class="carousel-track">
                 <div class="carousel-slide" style="height:290px;">
-                  <img class="coll-img" src="images/collections/chronos-edition-1.jpg" alt="Chronos Edition — Front View" loading="lazy" onerror="collImgFallback(this)">
+                  <img class="coll-img" width="800" height="800" src="images/collections/chronos-edition-1.jpg" alt="Chronos Edition — Front View" loading="lazy" onerror="collImgFallback(this)">
                 </div>
                 <div class="carousel-slide" style="height:290px;">
-                  <img class="coll-img" src="images/collections/chronos-edition-2.jpg" alt="Chronos Edition — Profile" loading="lazy" onerror="collImgFallback(this)">
+                  <img class="coll-img" width="800" height="800" src="images/collections/chronos-edition-2.jpg" alt="Chronos Edition — Profile" loading="lazy" onerror="collImgFallback(this)">
                 </div>
                 <div class="carousel-slide" style="height:290px;">
-                  <img class="coll-img" src="images/collections/chronos-edition-3.jpg" alt="Chronos Edition — Detail" loading="lazy" onerror="collImgFallback(this)">
+                  <img class="coll-img" width="800" height="800" src="images/collections/chronos-edition-3.jpg" alt="Chronos Edition — Detail" loading="lazy" onerror="collImgFallback(this)">
                 </div>
               </div>
               <button class="carousel-arrow carousel-next" aria-label="Next angle">
@@ -474,20 +614,20 @@ tailwind.config = {
           </div>
 
           <!-- ── CARD 8 — Drift Bangle ── -->
-          <div class="col-card">
+          <div class="col-card" data-id="drift-bangle" data-category="bracelet">
             <div class="carousel-wrap" data-carousel>
               <button class="carousel-arrow carousel-prev" aria-label="Previous angle">
                 <span class="material-symbols-outlined" style="font-size:18px;color:#3c6474;">chevron_left</span>
               </button>
               <div class="carousel-track">
                 <div class="carousel-slide" style="height:290px;">
-                  <img class="coll-img" src="images/collections/drift-bangle-1.jpg" alt="Drift Bangle — Front View" loading="lazy" onerror="collImgFallback(this)">
+                  <img class="coll-img" width="800" height="800" src="images/collections/drift-bangle-1.jpg" alt="Drift Bangle — Front View" loading="lazy" onerror="collImgFallback(this)">
                 </div>
                 <div class="carousel-slide" style="height:290px;">
-                  <img class="coll-img" src="images/collections/drift-bangle-2.jpg" alt="Drift Bangle — Profile" loading="lazy" onerror="collImgFallback(this)">
+                  <img class="coll-img" width="800" height="800" src="images/collections/drift-bangle-2.jpg" alt="Drift Bangle — Profile" loading="lazy" onerror="collImgFallback(this)">
                 </div>
                 <div class="carousel-slide" style="height:290px;">
-                  <img class="coll-img" src="images/collections/drift-bangle-3.jpg" alt="Drift Bangle — Detail" loading="lazy" onerror="collImgFallback(this)">
+                  <img class="coll-img" width="800" height="800" src="images/collections/drift-bangle-3.jpg" alt="Drift Bangle — Detail" loading="lazy" onerror="collImgFallback(this)">
                 </div>
               </div>
               <button class="carousel-arrow carousel-next" aria-label="Next angle">
@@ -506,20 +646,20 @@ tailwind.config = {
           </div>
 
           <!-- ── CARD 9 — Aurora Pendant Set ── -->
-          <div class="col-card">
+          <div class="col-card" data-id="aurora-pendant-set" data-category="necklace">
             <div class="carousel-wrap" data-carousel>
               <button class="carousel-arrow carousel-prev" aria-label="Previous angle">
                 <span class="material-symbols-outlined" style="font-size:18px;color:#3c6474;">chevron_left</span>
               </button>
               <div class="carousel-track">
                 <div class="carousel-slide" style="height:290px;">
-                  <img class="coll-img" src="images/collections/aurora-pendant-set-1.jpg" alt="Aurora Pendant Set — Full Set" loading="lazy" onerror="collImgFallback(this)">
+                  <img class="coll-img" width="800" height="800" src="images/collections/aurora-pendant-set-1.jpg" alt="Aurora Pendant Set — Full Set" loading="lazy" onerror="collImgFallback(this)">
                 </div>
                 <div class="carousel-slide" style="height:290px;">
-                  <img class="coll-img" src="images/collections/aurora-pendant-set-2.jpg" alt="Aurora Pendant Set — Pendant" loading="lazy" onerror="collImgFallback(this)">
+                  <img class="coll-img" width="800" height="800" src="images/collections/aurora-pendant-set-2.jpg" alt="Aurora Pendant Set — Pendant" loading="lazy" onerror="collImgFallback(this)">
                 </div>
                 <div class="carousel-slide" style="height:290px;">
-                  <img class="coll-img" src="images/collections/aurora-pendant-set-3.jpg" alt="Aurora Pendant Set — Detail" loading="lazy" onerror="collImgFallback(this)">
+                  <img class="coll-img" width="800" height="800" src="images/collections/aurora-pendant-set-3.jpg" alt="Aurora Pendant Set — Detail" loading="lazy" onerror="collImgFallback(this)">
                 </div>
               </div>
               <button class="carousel-arrow carousel-next" aria-label="Next angle">
@@ -538,20 +678,20 @@ tailwind.config = {
           </div>
 
           <!-- ── CARD 10 — Lumière Chain Set ── -->
-          <div class="col-card">
+          <div class="col-card" data-id="lumiere-chain-set" data-category="necklace">
             <div class="carousel-wrap" data-carousel>
               <button class="carousel-arrow carousel-prev" aria-label="Previous angle">
                 <span class="material-symbols-outlined" style="font-size:18px;color:#3c6474;">chevron_left</span>
               </button>
               <div class="carousel-track">
                 <div class="carousel-slide" style="height:290px;">
-                  <img class="coll-img" src="images/collections/lumiere-chain-set-1.jpg" alt="Lumière Chain Set — Full Set" loading="lazy" onerror="collImgFallback(this)">
+                  <img class="coll-img" width="800" height="800" src="images/collections/lumiere-chain-set-1.jpg" alt="Lumière Chain Set — Full Set" loading="lazy" onerror="collImgFallback(this)">
                 </div>
                 <div class="carousel-slide" style="height:290px;">
-                  <img class="coll-img" src="images/collections/lumiere-chain-set-2.jpg" alt="Lumière Chain Set — Clasp" loading="lazy" onerror="collImgFallback(this)">
+                  <img class="coll-img" width="800" height="800" src="images/collections/lumiere-chain-set-2.jpg" alt="Lumière Chain Set — Clasp" loading="lazy" onerror="collImgFallback(this)">
                 </div>
                 <div class="carousel-slide" style="height:290px;">
-                  <img class="coll-img" src="images/collections/lumiere-chain-set-3.jpg" alt="Lumière Chain Set — Detail" loading="lazy" onerror="collImgFallback(this)">
+                  <img class="coll-img" width="800" height="800" src="images/collections/lumiere-chain-set-3.jpg" alt="Lumière Chain Set — Detail" loading="lazy" onerror="collImgFallback(this)">
                 </div>
               </div>
               <button class="carousel-arrow carousel-next" aria-label="Next angle">
@@ -570,20 +710,20 @@ tailwind.config = {
           </div>
 
           <!-- ── CARD 11 — Solstice Layering Set ── -->
-          <div class="col-card">
+          <div class="col-card" data-id="solstice-layering-set" data-category="necklace">
             <div class="carousel-wrap" data-carousel>
               <button class="carousel-arrow carousel-prev" aria-label="Previous angle">
                 <span class="material-symbols-outlined" style="font-size:18px;color:#3c6474;">chevron_left</span>
               </button>
               <div class="carousel-track">
                 <div class="carousel-slide" style="height:290px;">
-                  <img class="coll-img" src="images/collections/solstice-layering-set-1.jpg" alt="Solstice Layering Set — Full Set" loading="lazy" onerror="collImgFallback(this)">
+                  <img class="coll-img" width="800" height="800" src="images/collections/solstice-layering-set-1.jpg" alt="Solstice Layering Set — Full Set" loading="lazy" onerror="collImgFallback(this)">
                 </div>
                 <div class="carousel-slide" style="height:290px;">
-                  <img class="coll-img" src="images/collections/solstice-layering-set-2.jpg" alt="Solstice Layering Set — Layered" loading="lazy" onerror="collImgFallback(this)">
+                  <img class="coll-img" width="800" height="800" src="images/collections/solstice-layering-set-2.jpg" alt="Solstice Layering Set — Layered" loading="lazy" onerror="collImgFallback(this)">
                 </div>
                 <div class="carousel-slide" style="height:290px;">
-                  <img class="coll-img" src="images/collections/solstice-layering-set-3.jpg" alt="Solstice Layering Set — Detail" loading="lazy" onerror="collImgFallback(this)">
+                  <img class="coll-img" width="800" height="800" src="images/collections/solstice-layering-set-3.jpg" alt="Solstice Layering Set — Detail" loading="lazy" onerror="collImgFallback(this)">
                 </div>
               </div>
               <button class="carousel-arrow carousel-next" aria-label="Next angle">
@@ -602,20 +742,20 @@ tailwind.config = {
           </div>
 
           <!-- ── CARD 12 — Velvet Collar Set ── -->
-          <div class="col-card">
+          <div class="col-card" data-id="velvet-collar-set" data-category="necklace">
             <div class="carousel-wrap" data-carousel>
               <button class="carousel-arrow carousel-prev" aria-label="Previous angle">
                 <span class="material-symbols-outlined" style="font-size:18px;color:#3c6474;">chevron_left</span>
               </button>
               <div class="carousel-track">
                 <div class="carousel-slide" style="height:290px;">
-                  <img class="coll-img" src="images/collections/velvet-collar-set-1.jpg" alt="Velvet Collar Set — Full Set" loading="lazy" onerror="collImgFallback(this)">
+                  <img class="coll-img" width="800" height="800" src="images/collections/velvet-collar-set-1.jpg" alt="Velvet Collar Set — Full Set" loading="lazy" onerror="collImgFallback(this)">
                 </div>
                 <div class="carousel-slide" style="height:290px;">
-                  <img class="coll-img" src="images/collections/velvet-collar-set-2.jpg" alt="Velvet Collar Set — Clasp" loading="lazy" onerror="collImgFallback(this)">
+                  <img class="coll-img" width="800" height="800" src="images/collections/velvet-collar-set-2.jpg" alt="Velvet Collar Set — Clasp" loading="lazy" onerror="collImgFallback(this)">
                 </div>
                 <div class="carousel-slide" style="height:290px;">
-                  <img class="coll-img" src="images/collections/velvet-collar-set-3.jpg" alt="Velvet Collar Set — Detail" loading="lazy" onerror="collImgFallback(this)">
+                  <img class="coll-img" width="800" height="800" src="images/collections/velvet-collar-set-3.jpg" alt="Velvet Collar Set — Detail" loading="lazy" onerror="collImgFallback(this)">
                 </div>
               </div>
               <button class="carousel-arrow carousel-next" aria-label="Next angle">
@@ -718,6 +858,30 @@ tailwind.config = {
   </div>
 </footer>
 
+<!-- ════════════════════════════
+     SPECS MODAL
+════════════════════════════ -->
+<div class="specs-modal-overlay" id="specsModal" role="dialog" aria-modal="true" aria-labelledby="specsModalTitle">
+  <div class="specs-modal">
+    <button class="specs-modal-close" id="specsModalClose" aria-label="Close">
+      <span class="material-symbols-outlined" style="font-size:20px;">close</span>
+    </button>
+    <div class="specs-modal-img">
+      <img id="specsModalImg" src="" alt="">
+    </div>
+    <div class="specs-modal-body">
+      <p class="specs-modal-eyebrow">Community Masterpiece</p>
+      <h2 class="specs-modal-title" id="specsModalTitle">—</h2>
+      <p class="specs-modal-handle" id="specsModalHandle">—</p>
+      <ul class="specs-list" id="specsModalList"></ul>
+      <a class="specs-customize-btn" id="specsCustomizeBtn" href="ailab.html">
+        <span class="material-symbols-outlined" style="font-size:16px;">auto_awesome</span>
+        Customize This Design
+      </a>
+    </div>
+  </div>
+</div>
+
 <script>
   document.getElementById('siteHeader').classList.add('nav-visible');
 </script>
@@ -732,6 +896,7 @@ tailwind.config = {
 function collImgFallback(img) {
   var slide = img.closest('.carousel-slide');
   if (!slide) return;
+  slide.classList.add('img-ready'); // stop the shimmer
   slide.innerHTML =
     '<div class="coll-img-fallback">' +
       '<span class="material-symbols-outlined">diamond</span>' +
@@ -739,12 +904,74 @@ function collImgFallback(img) {
     '</div>';
 }
 
-// ── Filter buttons ──
+// ── Specifications for each design (keyed by data-id) ──
+var COLLECTION_SPECS = {
+  'glacial-solitaire':        { type: 'Ring',        material: 'Platinum',          karat: 'PT950',  stone: 'Round Brilliant Diamond', stoneSize: '1.50 ct',          style: 'Modern Solitaire',     weight: '4.5 g',  priceRange: '$8,400 – $9,200' },
+  'cascade-pendant':          { type: 'Pendant',     material: '18k White Gold',     karat: '18k',    stone: 'Pavé Diamonds',           stoneSize: '1.20 ct total',    style: 'Contemporary Cascade', weight: '6.0 g',  priceRange: '$4,200 – $4,800' },
+  'nova-chandelier-earrings': { type: 'Earrings',    material: '18k White Gold',     karat: '18k',    stone: 'Aquamarine & Diamond',    stoneSize: '6.0 ct / 1.4 ct',  style: 'Chandelier · Maximalist', weight: '9.0 g', priceRange: '$5,600 – $6,400' },
+  'brutalist-cuff':           { type: 'Bracelet',    material: '18k Yellow Gold',    karat: '18k',    stone: 'None',                    stoneSize: '—',                style: 'Brutalist Sculptural', weight: '38 g',   priceRange: '$7,900 – $8,700' },
+  'celestial-stacker':        { type: 'Ring',        material: '18k Yellow Gold',    karat: '18k',    stone: 'Pavé Diamonds',           stoneSize: '0.30 ct total',    style: 'Celestial · Stacking', weight: '3.0 g',  priceRange: '$1,900 – $2,300' },
+  'mirage-halo-ring':         { type: 'Ring',        material: '18k Rose Gold',      karat: '18k',    stone: 'Oval Diamond + Halo',     stoneSize: '1.00 ct center',   style: 'Halo',                 weight: '4.2 g',  priceRange: '$6,200 – $6,900' },
+  'chronos-edition':          { type: 'Ring',        material: 'Titanium & Onyx',    karat: '—',      stone: 'Black Onyx',              stoneSize: '—',                style: 'Architectural Signet', weight: '12 g',   priceRange: '$1,200 – $1,500' },
+  'drift-bangle':             { type: 'Bracelet',    material: '18k White Gold',     karat: '18k',    stone: 'None',                    stoneSize: '—',                style: 'Organic Sculptural',   weight: '22 g',   priceRange: '$5,100 – $5,700' },
+  'aurora-pendant-set':       { type: 'Necklace',    material: '18k White Gold',     karat: '18k',    stone: 'Sapphire & Diamond',      stoneSize: '2.20 ct sapphire', style: 'Pendant Necklace',     weight: '10 g',   priceRange: '$6,800 – $7,500' },
+  'lumiere-chain-set':        { type: 'Necklace',    material: '18k Yellow Gold',    karat: '18k',    stone: 'None',                    stoneSize: '—',                style: 'Layered Chain',        weight: '16 g',   priceRange: '$3,400 – $3,900' },
+  'solstice-layering-set':    { type: 'Necklace',    material: '18k Gold',           karat: '18k',    stone: 'Diamond Stations',        stoneSize: '0.50 ct total',    style: 'Layered',              weight: '18 g',   priceRange: '$4,600 – $5,200' },
+  'velvet-collar-set':        { type: 'Necklace',    material: '18k White Gold',     karat: '18k',    stone: 'Channel-set Diamonds',    stoneSize: '8.0 ct total',     style: 'Collar · Choker',      weight: '45 g',   priceRange: '$18,500 – $21,000' }
+};
+
+// ── Category filtering ──
+var FILTER_TO_CATEGORY = {
+  'rings': 'ring',
+  'pendants': 'pendant',
+  'earrings': 'earring',
+  'bracelets': 'bracelet',
+  'necklace-sets': 'necklace'
+};
+var allCards = Array.prototype.slice.call(document.querySelectorAll('#galleryGrid .col-card'));
+
+// Wire the sidebar counts to the real number of items in each category.
+document.querySelectorAll('.coll-filter-btn').forEach(function(btn) {
+  var category = FILTER_TO_CATEGORY[btn.getAttribute('data-filter')];
+  var n = allCards.filter(function(c) { return c.getAttribute('data-category') === category; }).length;
+  var countSpan = btn.querySelector('span:last-child');
+  if (countSpan) countSpan.textContent = n;
+});
+
+function applyFilter(category) {
+  var count = 0;
+  allCards.forEach(function(card) {
+    var match = card.getAttribute('data-category') === category;
+    card.style.display = match ? '' : 'none';
+    if (match) count++;
+  });
+  console.log('[Collections] category selected:', category, '| items shown:', count);
+}
+
 document.getElementById('filterBtns').addEventListener('click', function(e) {
-  const btn = e.target.closest('.coll-filter-btn');
+  var btn = e.target.closest('.coll-filter-btn');
   if (!btn) return;
   document.querySelectorAll('.coll-filter-btn').forEach(function(b) { b.classList.remove('active'); });
   btn.classList.add('active');
+  applyFilter(FILTER_TO_CATEGORY[btn.getAttribute('data-filter')]);
+});
+
+// Default view on load: Rings
+applyFilter('ring');
+
+// ── Image load: fade in + drop the shimmer (and log) ──
+function collImgLoaded(img) {
+  img.classList.add('loaded');
+  var slide = img.closest('.carousel-slide');
+  if (slide) slide.classList.add('img-ready');
+  console.log('[Collections] image loaded:', img.getAttribute('src'));
+}
+document.querySelectorAll('.coll-img').forEach(function(img) {
+  if (img.complete && img.naturalWidth > 0) {
+    collImgLoaded(img);
+  } else {
+    img.addEventListener('load', function() { collImgLoaded(img); });
+  }
 });
 
 // ── Carousels ──
@@ -768,6 +995,66 @@ document.querySelectorAll('[data-carousel]').forEach(function(wrap) {
     dot.addEventListener('click', function(e) { e.stopPropagation(); goTo(i); });
   });
 });
+
+// ── Specs modal ──
+var specsModal       = document.getElementById('specsModal');
+var specsModalImg    = document.getElementById('specsModalImg');
+var specsModalTitle  = document.getElementById('specsModalTitle');
+var specsModalHandle = document.getElementById('specsModalHandle');
+var specsModalList   = document.getElementById('specsModalList');
+var specsCustomize   = document.getElementById('specsCustomizeBtn');
+
+var SPEC_ROWS = [
+  ['Type', 'type'], ['Material', 'material'], ['Karat / Purity', 'karat'],
+  ['Stone', 'stone'], ['Stone Size', 'stoneSize'], ['Style', 'style'],
+  ['Weight', 'weight'], ['Price Range', 'priceRange']
+];
+
+function openSpecs(card) {
+  var id = card.getAttribute('data-id');
+  var specs = COLLECTION_SPECS[id];
+  if (!specs) return;
+  var nameEl = card.querySelector('p[style*="Playfair"]');
+  var handleEl = card.querySelector('.label');
+  var name = nameEl ? nameEl.textContent.trim() : id;
+  var handle = handleEl ? handleEl.textContent.trim() : '';
+  var firstImg = card.querySelector('.coll-img');
+  var src = firstImg ? firstImg.getAttribute('src') : 'images/collections/' + id + '-1.jpg';
+
+  specsModalImg.setAttribute('src', src);
+  specsModalImg.setAttribute('alt', name);
+  specsModalTitle.textContent = name;
+  specsModalHandle.textContent = handle;
+  specsCustomize.setAttribute('href', 'ailab.html?type=' + encodeURIComponent(specs.type.toLowerCase()));
+
+  specsModalList.innerHTML = SPEC_ROWS.map(function(row) {
+    var val = specs[row[1]];
+    if (val === undefined || val === null || val === '') return '';
+    var vClass = row[1] === 'priceRange' ? 'v price' : 'v';
+    return '<li><span class="k">' + row[0] + '</span><span class="' + vClass + '">' + val + '</span></li>';
+  }).join('');
+
+  specsModal.classList.add('open');
+  document.body.style.overflow = 'hidden';
+  console.log('[Collections] opened specs for:', name);
+}
+
+function closeSpecs() {
+  specsModal.classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+allCards.forEach(function(card) {
+  card.addEventListener('click', function(e) {
+    // Ignore clicks on carousel controls (they stopPropagation, but guard anyway)
+    if (e.target.closest('.carousel-arrow') || e.target.closest('.carousel-dot')) return;
+    openSpecs(card);
+  });
+});
+
+document.getElementById('specsModalClose').addEventListener('click', closeSpecs);
+specsModal.addEventListener('click', function(e) { if (e.target === specsModal) closeSpecs(); });
+document.addEventListener('keydown', function(e) { if (e.key === 'Escape' && specsModal.classList.contains('open')) closeSpecs(); });
 </script>
 </body>
 </html>
