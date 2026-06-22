@@ -119,6 +119,34 @@ tailwind.config = {
   box-shadow: 0 4px 16px rgba(60,100,116,0.22);
 }
 
+/* ── Collection card images ── */
+.coll-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  background: #0B0F1A;
+}
+/* Subtle branded fallback shown if an image fails to load */
+.coll-img-fallback {
+  height: 100%;
+  width: 100%;
+  background: #0B0F1A;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.coll-img-fallback .material-symbols-outlined { font-size: 46px; color: #C9A84C; }
+.coll-img-fallback span:last-child {
+  font-family: 'Playfair Display', serif;
+  font-size: 11px;
+  letter-spacing: 0.3em;
+  color: #C9A84C;
+  text-transform: uppercase;
+}
+
 </style>
 </head>
 <body class="text-[#1b1c1c] min-h-screen" style="background-image:url('community%20page%20pic.png');background-size:cover;background-position:center top;background-attachment:fixed;background-repeat:no-repeat;">
@@ -228,17 +256,14 @@ tailwind.config = {
                 <span class="material-symbols-outlined" style="font-size:18px;color:#3c6474;">chevron_left</span>
               </button>
               <div class="carousel-track">
-                <div class="carousel-slide" style="height:290px;background:linear-gradient(135deg,#b9e2f5 0%,#ddeaf1 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;">
-                  <span class="material-symbols-outlined" style="font-size:52px;color:rgba(60,100,116,0.18);">diamond</span>
-                  <span style="font-family:'Inter',sans-serif;font-size:9px;letter-spacing:0.22em;color:rgba(60,100,116,0.32);margin-top:10px;text-transform:uppercase;">Front View</span>
+                <div class="carousel-slide" style="height:290px;">
+                  <img class="coll-img" src="images/collections/glacial-solitaire-1.jpg" alt="The Glacial Solitaire — Front View" loading="lazy" onerror="collImgFallback(this)">
                 </div>
-                <div class="carousel-slide" style="height:290px;background:linear-gradient(135deg,#a4cddf 0%,#c8dce8 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;">
-                  <span class="material-symbols-outlined" style="font-size:52px;color:rgba(60,100,116,0.18);">diamond</span>
-                  <span style="font-family:'Inter',sans-serif;font-size:9px;letter-spacing:0.22em;color:rgba(60,100,116,0.32);margin-top:10px;text-transform:uppercase;">Profile</span>
+                <div class="carousel-slide" style="height:290px;">
+                  <img class="coll-img" src="images/collections/glacial-solitaire-2.jpg" alt="The Glacial Solitaire — Profile" loading="lazy" onerror="collImgFallback(this)">
                 </div>
-                <div class="carousel-slide" style="height:290px;background:linear-gradient(135deg,#8fb8cc 0%,#b9d4e0 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;">
-                  <span class="material-symbols-outlined" style="font-size:52px;color:rgba(60,100,116,0.18);">diamond</span>
-                  <span style="font-family:'Inter',sans-serif;font-size:9px;letter-spacing:0.22em;color:rgba(60,100,116,0.32);margin-top:10px;text-transform:uppercase;">Detail</span>
+                <div class="carousel-slide" style="height:290px;">
+                  <img class="coll-img" src="images/collections/glacial-solitaire-3.jpg" alt="The Glacial Solitaire — Detail" loading="lazy" onerror="collImgFallback(this)">
                 </div>
               </div>
               <button class="carousel-arrow carousel-next" aria-label="Next angle">
@@ -263,17 +288,14 @@ tailwind.config = {
                 <span class="material-symbols-outlined" style="font-size:18px;color:#3c6474;">chevron_left</span>
               </button>
               <div class="carousel-track">
-                <div class="carousel-slide" style="height:290px;background:linear-gradient(160deg,#c8dce8 0%,#e8f3f8 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;">
-                  <span class="material-symbols-outlined" style="font-size:52px;color:rgba(60,100,116,0.18);">radio_button_unchecked</span>
-                  <span style="font-family:'Inter',sans-serif;font-size:9px;letter-spacing:0.22em;color:rgba(60,100,116,0.32);margin-top:10px;text-transform:uppercase;">Front View</span>
+                <div class="carousel-slide" style="height:290px;">
+                  <img class="coll-img" src="images/collections/cascade-pendant-1.jpg" alt="Cascade Pendant — Front View" loading="lazy" onerror="collImgFallback(this)">
                 </div>
-                <div class="carousel-slide" style="height:290px;background:linear-gradient(160deg,#a4cddf 0%,#cfe4ed 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;">
-                  <span class="material-symbols-outlined" style="font-size:52px;color:rgba(60,100,116,0.18);">radio_button_unchecked</span>
-                  <span style="font-family:'Inter',sans-serif;font-size:9px;letter-spacing:0.22em;color:rgba(60,100,116,0.32);margin-top:10px;text-transform:uppercase;">Profile</span>
+                <div class="carousel-slide" style="height:290px;">
+                  <img class="coll-img" src="images/collections/cascade-pendant-2.jpg" alt="Cascade Pendant — Profile" loading="lazy" onerror="collImgFallback(this)">
                 </div>
-                <div class="carousel-slide" style="height:290px;background:linear-gradient(160deg,#8fb8cc 0%,#b2cfd9 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;">
-                  <span class="material-symbols-outlined" style="font-size:52px;color:rgba(60,100,116,0.18);">radio_button_unchecked</span>
-                  <span style="font-family:'Inter',sans-serif;font-size:9px;letter-spacing:0.22em;color:rgba(60,100,116,0.32);margin-top:10px;text-transform:uppercase;">Detail</span>
+                <div class="carousel-slide" style="height:290px;">
+                  <img class="coll-img" src="images/collections/cascade-pendant-3.jpg" alt="Cascade Pendant — Detail" loading="lazy" onerror="collImgFallback(this)">
                 </div>
               </div>
               <button class="carousel-arrow carousel-next" aria-label="Next angle">
@@ -298,17 +320,14 @@ tailwind.config = {
                 <span class="material-symbols-outlined" style="font-size:18px;color:#3c6474;">chevron_left</span>
               </button>
               <div class="carousel-track">
-                <div class="carousel-slide" style="height:290px;background:linear-gradient(150deg,#b9e2f5 0%,#d4ecf5 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;">
-                  <span class="material-symbols-outlined" style="font-size:52px;color:rgba(60,100,116,0.18);">hearing</span>
-                  <span style="font-family:'Inter',sans-serif;font-size:9px;letter-spacing:0.22em;color:rgba(60,100,116,0.32);margin-top:10px;text-transform:uppercase;">Front View</span>
+                <div class="carousel-slide" style="height:290px;">
+                  <img class="coll-img" src="images/collections/nova-chandelier-earrings-1.jpg" alt="Nova Chandelier Earrings — Front View" loading="lazy" onerror="collImgFallback(this)">
                 </div>
-                <div class="carousel-slide" style="height:290px;background:linear-gradient(150deg,#a4cddf 0%,#bdd8e6 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;">
-                  <span class="material-symbols-outlined" style="font-size:52px;color:rgba(60,100,116,0.18);">hearing</span>
-                  <span style="font-family:'Inter',sans-serif;font-size:9px;letter-spacing:0.22em;color:rgba(60,100,116,0.32);margin-top:10px;text-transform:uppercase;">Profile</span>
+                <div class="carousel-slide" style="height:290px;">
+                  <img class="coll-img" src="images/collections/nova-chandelier-earrings-2.jpg" alt="Nova Chandelier Earrings — Profile" loading="lazy" onerror="collImgFallback(this)">
                 </div>
-                <div class="carousel-slide" style="height:290px;background:linear-gradient(150deg,#8fb8cc 0%,#a8cbda 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;">
-                  <span class="material-symbols-outlined" style="font-size:52px;color:rgba(60,100,116,0.18);">hearing</span>
-                  <span style="font-family:'Inter',sans-serif;font-size:9px;letter-spacing:0.22em;color:rgba(60,100,116,0.32);margin-top:10px;text-transform:uppercase;">Detail</span>
+                <div class="carousel-slide" style="height:290px;">
+                  <img class="coll-img" src="images/collections/nova-chandelier-earrings-3.jpg" alt="Nova Chandelier Earrings — Detail" loading="lazy" onerror="collImgFallback(this)">
                 </div>
               </div>
               <button class="carousel-arrow carousel-next" aria-label="Next angle">
@@ -333,17 +352,14 @@ tailwind.config = {
                 <span class="material-symbols-outlined" style="font-size:18px;color:#3c6474;">chevron_left</span>
               </button>
               <div class="carousel-track">
-                <div class="carousel-slide" style="height:290px;background:linear-gradient(120deg,#b9e2f5 0%,#ddeaf1 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;">
-                  <span class="material-symbols-outlined" style="font-size:52px;color:rgba(60,100,116,0.18);">watch</span>
-                  <span style="font-family:'Inter',sans-serif;font-size:9px;letter-spacing:0.22em;color:rgba(60,100,116,0.32);margin-top:10px;text-transform:uppercase;">Front View</span>
+                <div class="carousel-slide" style="height:290px;">
+                  <img class="coll-img" src="images/collections/brutalist-cuff-1.jpg" alt="Brutalist Cuff — Front View" loading="lazy" onerror="collImgFallback(this)">
                 </div>
-                <div class="carousel-slide" style="height:290px;background:linear-gradient(120deg,#a4cddf 0%,#c8dce8 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;">
-                  <span class="material-symbols-outlined" style="font-size:52px;color:rgba(60,100,116,0.18);">watch</span>
-                  <span style="font-family:'Inter',sans-serif;font-size:9px;letter-spacing:0.22em;color:rgba(60,100,116,0.32);margin-top:10px;text-transform:uppercase;">Profile</span>
+                <div class="carousel-slide" style="height:290px;">
+                  <img class="coll-img" src="images/collections/brutalist-cuff-2.jpg" alt="Brutalist Cuff — Profile" loading="lazy" onerror="collImgFallback(this)">
                 </div>
-                <div class="carousel-slide" style="height:290px;background:linear-gradient(120deg,#8fb8cc 0%,#b9d4e0 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;">
-                  <span class="material-symbols-outlined" style="font-size:52px;color:rgba(60,100,116,0.18);">watch</span>
-                  <span style="font-family:'Inter',sans-serif;font-size:9px;letter-spacing:0.22em;color:rgba(60,100,116,0.32);margin-top:10px;text-transform:uppercase;">Detail</span>
+                <div class="carousel-slide" style="height:290px;">
+                  <img class="coll-img" src="images/collections/brutalist-cuff-3.jpg" alt="Brutalist Cuff — Detail" loading="lazy" onerror="collImgFallback(this)">
                 </div>
               </div>
               <button class="carousel-arrow carousel-next" aria-label="Next angle">
@@ -368,17 +384,14 @@ tailwind.config = {
                 <span class="material-symbols-outlined" style="font-size:18px;color:#3c6474;">chevron_left</span>
               </button>
               <div class="carousel-track">
-                <div class="carousel-slide" style="height:290px;background:linear-gradient(170deg,#c0e9fc 0%,#ddeaf1 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;">
-                  <span class="material-symbols-outlined" style="font-size:52px;color:rgba(60,100,116,0.18);">auto_awesome</span>
-                  <span style="font-family:'Inter',sans-serif;font-size:9px;letter-spacing:0.22em;color:rgba(60,100,116,0.32);margin-top:10px;text-transform:uppercase;">Front View</span>
+                <div class="carousel-slide" style="height:290px;">
+                  <img class="coll-img" src="images/collections/celestial-stacker-1.jpg" alt="Celestial Stacker — Front View" loading="lazy" onerror="collImgFallback(this)">
                 </div>
-                <div class="carousel-slide" style="height:290px;background:linear-gradient(170deg,#a4cddf 0%,#c8dce8 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;">
-                  <span class="material-symbols-outlined" style="font-size:52px;color:rgba(60,100,116,0.18);">auto_awesome</span>
-                  <span style="font-family:'Inter',sans-serif;font-size:9px;letter-spacing:0.22em;color:rgba(60,100,116,0.32);margin-top:10px;text-transform:uppercase;">Profile</span>
+                <div class="carousel-slide" style="height:290px;">
+                  <img class="coll-img" src="images/collections/celestial-stacker-2.jpg" alt="Celestial Stacker — Profile" loading="lazy" onerror="collImgFallback(this)">
                 </div>
-                <div class="carousel-slide" style="height:290px;background:linear-gradient(170deg,#8fb8cc 0%,#aec8d8 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;">
-                  <span class="material-symbols-outlined" style="font-size:52px;color:rgba(60,100,116,0.18);">auto_awesome</span>
-                  <span style="font-family:'Inter',sans-serif;font-size:9px;letter-spacing:0.22em;color:rgba(60,100,116,0.32);margin-top:10px;text-transform:uppercase;">Detail</span>
+                <div class="carousel-slide" style="height:290px;">
+                  <img class="coll-img" src="images/collections/celestial-stacker-3.jpg" alt="Celestial Stacker — Detail" loading="lazy" onerror="collImgFallback(this)">
                 </div>
               </div>
               <button class="carousel-arrow carousel-next" aria-label="Next angle">
@@ -403,17 +416,14 @@ tailwind.config = {
                 <span class="material-symbols-outlined" style="font-size:18px;color:#3c6474;">chevron_left</span>
               </button>
               <div class="carousel-track">
-                <div class="carousel-slide" style="height:290px;background:linear-gradient(145deg,#b9e2f5 0%,#e2f1f8 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;">
-                  <span class="material-symbols-outlined" style="font-size:52px;color:rgba(60,100,116,0.18);">diamond</span>
-                  <span style="font-family:'Inter',sans-serif;font-size:9px;letter-spacing:0.22em;color:rgba(60,100,116,0.32);margin-top:10px;text-transform:uppercase;">Front View</span>
+                <div class="carousel-slide" style="height:290px;">
+                  <img class="coll-img" src="images/collections/mirage-halo-ring-1.jpg" alt="Mirage Halo Ring — Front View" loading="lazy" onerror="collImgFallback(this)">
                 </div>
-                <div class="carousel-slide" style="height:290px;background:linear-gradient(145deg,#a4cddf 0%,#c4dae4 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;">
-                  <span class="material-symbols-outlined" style="font-size:52px;color:rgba(60,100,116,0.18);">diamond</span>
-                  <span style="font-family:'Inter',sans-serif;font-size:9px;letter-spacing:0.22em;color:rgba(60,100,116,0.32);margin-top:10px;text-transform:uppercase;">Profile</span>
+                <div class="carousel-slide" style="height:290px;">
+                  <img class="coll-img" src="images/collections/mirage-halo-ring-2.jpg" alt="Mirage Halo Ring — Profile" loading="lazy" onerror="collImgFallback(this)">
                 </div>
-                <div class="carousel-slide" style="height:290px;background:linear-gradient(145deg,#8fb8cc 0%,#b0cad5 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;">
-                  <span class="material-symbols-outlined" style="font-size:52px;color:rgba(60,100,116,0.18);">diamond</span>
-                  <span style="font-family:'Inter',sans-serif;font-size:9px;letter-spacing:0.22em;color:rgba(60,100,116,0.32);margin-top:10px;text-transform:uppercase;">Detail</span>
+                <div class="carousel-slide" style="height:290px;">
+                  <img class="coll-img" src="images/collections/mirage-halo-ring-3.jpg" alt="Mirage Halo Ring — Detail" loading="lazy" onerror="collImgFallback(this)">
                 </div>
               </div>
               <button class="carousel-arrow carousel-next" aria-label="Next angle">
@@ -438,17 +448,14 @@ tailwind.config = {
                 <span class="material-symbols-outlined" style="font-size:18px;color:#3c6474;">chevron_left</span>
               </button>
               <div class="carousel-track">
-                <div class="carousel-slide" style="height:290px;background:linear-gradient(125deg,#b9e2f5 0%,#ddeaf1 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;">
-                  <span class="material-symbols-outlined" style="font-size:52px;color:rgba(60,100,116,0.18);">schedule</span>
-                  <span style="font-family:'Inter',sans-serif;font-size:9px;letter-spacing:0.22em;color:rgba(60,100,116,0.32);margin-top:10px;text-transform:uppercase;">Front View</span>
+                <div class="carousel-slide" style="height:290px;">
+                  <img class="coll-img" src="images/collections/chronos-edition-1.jpg" alt="Chronos Edition — Front View" loading="lazy" onerror="collImgFallback(this)">
                 </div>
-                <div class="carousel-slide" style="height:290px;background:linear-gradient(125deg,#a4cddf 0%,#c8dce8 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;">
-                  <span class="material-symbols-outlined" style="font-size:52px;color:rgba(60,100,116,0.18);">schedule</span>
-                  <span style="font-family:'Inter',sans-serif;font-size:9px;letter-spacing:0.22em;color:rgba(60,100,116,0.32);margin-top:10px;text-transform:uppercase;">Profile</span>
+                <div class="carousel-slide" style="height:290px;">
+                  <img class="coll-img" src="images/collections/chronos-edition-2.jpg" alt="Chronos Edition — Profile" loading="lazy" onerror="collImgFallback(this)">
                 </div>
-                <div class="carousel-slide" style="height:290px;background:linear-gradient(125deg,#8fb8cc 0%,#b9d4e0 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;">
-                  <span class="material-symbols-outlined" style="font-size:52px;color:rgba(60,100,116,0.18);">schedule</span>
-                  <span style="font-family:'Inter',sans-serif;font-size:9px;letter-spacing:0.22em;color:rgba(60,100,116,0.32);margin-top:10px;text-transform:uppercase;">Detail</span>
+                <div class="carousel-slide" style="height:290px;">
+                  <img class="coll-img" src="images/collections/chronos-edition-3.jpg" alt="Chronos Edition — Detail" loading="lazy" onerror="collImgFallback(this)">
                 </div>
               </div>
               <button class="carousel-arrow carousel-next" aria-label="Next angle">
@@ -473,17 +480,14 @@ tailwind.config = {
                 <span class="material-symbols-outlined" style="font-size:18px;color:#3c6474;">chevron_left</span>
               </button>
               <div class="carousel-track">
-                <div class="carousel-slide" style="height:290px;background:linear-gradient(155deg,#c8dce8 0%,#e8f4f8 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;">
-                  <span class="material-symbols-outlined" style="font-size:52px;color:rgba(60,100,116,0.18);">watch</span>
-                  <span style="font-family:'Inter',sans-serif;font-size:9px;letter-spacing:0.22em;color:rgba(60,100,116,0.32);margin-top:10px;text-transform:uppercase;">Front View</span>
+                <div class="carousel-slide" style="height:290px;">
+                  <img class="coll-img" src="images/collections/drift-bangle-1.jpg" alt="Drift Bangle — Front View" loading="lazy" onerror="collImgFallback(this)">
                 </div>
-                <div class="carousel-slide" style="height:290px;background:linear-gradient(155deg,#a4cddf 0%,#cde0ea 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;">
-                  <span class="material-symbols-outlined" style="font-size:52px;color:rgba(60,100,116,0.18);">watch</span>
-                  <span style="font-family:'Inter',sans-serif;font-size:9px;letter-spacing:0.22em;color:rgba(60,100,116,0.32);margin-top:10px;text-transform:uppercase;">Profile</span>
+                <div class="carousel-slide" style="height:290px;">
+                  <img class="coll-img" src="images/collections/drift-bangle-2.jpg" alt="Drift Bangle — Profile" loading="lazy" onerror="collImgFallback(this)">
                 </div>
-                <div class="carousel-slide" style="height:290px;background:linear-gradient(155deg,#8fb8cc 0%,#b5cdd9 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;">
-                  <span class="material-symbols-outlined" style="font-size:52px;color:rgba(60,100,116,0.18);">watch</span>
-                  <span style="font-family:'Inter',sans-serif;font-size:9px;letter-spacing:0.22em;color:rgba(60,100,116,0.32);margin-top:10px;text-transform:uppercase;">Detail</span>
+                <div class="carousel-slide" style="height:290px;">
+                  <img class="coll-img" src="images/collections/drift-bangle-3.jpg" alt="Drift Bangle — Detail" loading="lazy" onerror="collImgFallback(this)">
                 </div>
               </div>
               <button class="carousel-arrow carousel-next" aria-label="Next angle">
@@ -508,17 +512,14 @@ tailwind.config = {
                 <span class="material-symbols-outlined" style="font-size:18px;color:#3c6474;">chevron_left</span>
               </button>
               <div class="carousel-track">
-                <div class="carousel-slide" style="height:290px;background:linear-gradient(140deg,#b9e2f5 0%,#d8eef8 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;">
-                  <span class="material-symbols-outlined" style="font-size:52px;color:rgba(60,100,116,0.18);">link</span>
-                  <span style="font-family:'Inter',sans-serif;font-size:9px;letter-spacing:0.22em;color:rgba(60,100,116,0.32);margin-top:10px;text-transform:uppercase;">Full Set</span>
+                <div class="carousel-slide" style="height:290px;">
+                  <img class="coll-img" src="images/collections/aurora-pendant-set-1.jpg" alt="Aurora Pendant Set — Full Set" loading="lazy" onerror="collImgFallback(this)">
                 </div>
-                <div class="carousel-slide" style="height:290px;background:linear-gradient(140deg,#a4cddf 0%,#c0dcea 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;">
-                  <span class="material-symbols-outlined" style="font-size:52px;color:rgba(60,100,116,0.18);">link</span>
-                  <span style="font-family:'Inter',sans-serif;font-size:9px;letter-spacing:0.22em;color:rgba(60,100,116,0.32);margin-top:10px;text-transform:uppercase;">Pendant</span>
+                <div class="carousel-slide" style="height:290px;">
+                  <img class="coll-img" src="images/collections/aurora-pendant-set-2.jpg" alt="Aurora Pendant Set — Pendant" loading="lazy" onerror="collImgFallback(this)">
                 </div>
-                <div class="carousel-slide" style="height:290px;background:linear-gradient(140deg,#8fb8cc 0%,#aac9d8 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;">
-                  <span class="material-symbols-outlined" style="font-size:52px;color:rgba(60,100,116,0.18);">link</span>
-                  <span style="font-family:'Inter',sans-serif;font-size:9px;letter-spacing:0.22em;color:rgba(60,100,116,0.32);margin-top:10px;text-transform:uppercase;">Detail</span>
+                <div class="carousel-slide" style="height:290px;">
+                  <img class="coll-img" src="images/collections/aurora-pendant-set-3.jpg" alt="Aurora Pendant Set — Detail" loading="lazy" onerror="collImgFallback(this)">
                 </div>
               </div>
               <button class="carousel-arrow carousel-next" aria-label="Next angle">
@@ -543,17 +544,14 @@ tailwind.config = {
                 <span class="material-symbols-outlined" style="font-size:18px;color:#3c6474;">chevron_left</span>
               </button>
               <div class="carousel-track">
-                <div class="carousel-slide" style="height:290px;background:linear-gradient(160deg,#c4dff0 0%,#e2f2f9 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;">
-                  <span class="material-symbols-outlined" style="font-size:52px;color:rgba(60,100,116,0.18);">radio_button_unchecked</span>
-                  <span style="font-family:'Inter',sans-serif;font-size:9px;letter-spacing:0.22em;color:rgba(60,100,116,0.32);margin-top:10px;text-transform:uppercase;">Full Set</span>
+                <div class="carousel-slide" style="height:290px;">
+                  <img class="coll-img" src="images/collections/lumiere-chain-set-1.jpg" alt="Lumière Chain Set — Full Set" loading="lazy" onerror="collImgFallback(this)">
                 </div>
-                <div class="carousel-slide" style="height:290px;background:linear-gradient(160deg,#a4cddf 0%,#c8dce8 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;">
-                  <span class="material-symbols-outlined" style="font-size:52px;color:rgba(60,100,116,0.18);">radio_button_unchecked</span>
-                  <span style="font-family:'Inter',sans-serif;font-size:9px;letter-spacing:0.22em;color:rgba(60,100,116,0.32);margin-top:10px;text-transform:uppercase;">Clasp</span>
+                <div class="carousel-slide" style="height:290px;">
+                  <img class="coll-img" src="images/collections/lumiere-chain-set-2.jpg" alt="Lumière Chain Set — Clasp" loading="lazy" onerror="collImgFallback(this)">
                 </div>
-                <div class="carousel-slide" style="height:290px;background:linear-gradient(160deg,#8fb8cc 0%,#b2ceda 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;">
-                  <span class="material-symbols-outlined" style="font-size:52px;color:rgba(60,100,116,0.18);">radio_button_unchecked</span>
-                  <span style="font-family:'Inter',sans-serif;font-size:9px;letter-spacing:0.22em;color:rgba(60,100,116,0.32);margin-top:10px;text-transform:uppercase;">Detail</span>
+                <div class="carousel-slide" style="height:290px;">
+                  <img class="coll-img" src="images/collections/lumiere-chain-set-3.jpg" alt="Lumière Chain Set — Detail" loading="lazy" onerror="collImgFallback(this)">
                 </div>
               </div>
               <button class="carousel-arrow carousel-next" aria-label="Next angle">
@@ -578,17 +576,14 @@ tailwind.config = {
                 <span class="material-symbols-outlined" style="font-size:18px;color:#3c6474;">chevron_left</span>
               </button>
               <div class="carousel-track">
-                <div class="carousel-slide" style="height:290px;background:linear-gradient(130deg,#b9e2f5 0%,#ddeaf1 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;">
-                  <span class="material-symbols-outlined" style="font-size:52px;color:rgba(60,100,116,0.18);">auto_awesome</span>
-                  <span style="font-family:'Inter',sans-serif;font-size:9px;letter-spacing:0.22em;color:rgba(60,100,116,0.32);margin-top:10px;text-transform:uppercase;">Full Set</span>
+                <div class="carousel-slide" style="height:290px;">
+                  <img class="coll-img" src="images/collections/solstice-layering-set-1.jpg" alt="Solstice Layering Set — Full Set" loading="lazy" onerror="collImgFallback(this)">
                 </div>
-                <div class="carousel-slide" style="height:290px;background:linear-gradient(130deg,#a4cddf 0%,#c8dce8 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;">
-                  <span class="material-symbols-outlined" style="font-size:52px;color:rgba(60,100,116,0.18);">auto_awesome</span>
-                  <span style="font-family:'Inter',sans-serif;font-size:9px;letter-spacing:0.22em;color:rgba(60,100,116,0.32);margin-top:10px;text-transform:uppercase;">Layered</span>
+                <div class="carousel-slide" style="height:290px;">
+                  <img class="coll-img" src="images/collections/solstice-layering-set-2.jpg" alt="Solstice Layering Set — Layered" loading="lazy" onerror="collImgFallback(this)">
                 </div>
-                <div class="carousel-slide" style="height:290px;background:linear-gradient(130deg,#8fb8cc 0%,#b4cdd9 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;">
-                  <span class="material-symbols-outlined" style="font-size:52px;color:rgba(60,100,116,0.18);">auto_awesome</span>
-                  <span style="font-family:'Inter',sans-serif;font-size:9px;letter-spacing:0.22em;color:rgba(60,100,116,0.32);margin-top:10px;text-transform:uppercase;">Detail</span>
+                <div class="carousel-slide" style="height:290px;">
+                  <img class="coll-img" src="images/collections/solstice-layering-set-3.jpg" alt="Solstice Layering Set — Detail" loading="lazy" onerror="collImgFallback(this)">
                 </div>
               </div>
               <button class="carousel-arrow carousel-next" aria-label="Next angle">
@@ -613,17 +608,14 @@ tailwind.config = {
                 <span class="material-symbols-outlined" style="font-size:18px;color:#3c6474;">chevron_left</span>
               </button>
               <div class="carousel-track">
-                <div class="carousel-slide" style="height:290px;background:linear-gradient(150deg,#c0e4f2 0%,#dceef8 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;">
-                  <span class="material-symbols-outlined" style="font-size:52px;color:rgba(60,100,116,0.18);">diamond</span>
-                  <span style="font-family:'Inter',sans-serif;font-size:9px;letter-spacing:0.22em;color:rgba(60,100,116,0.32);margin-top:10px;text-transform:uppercase;">Full Set</span>
+                <div class="carousel-slide" style="height:290px;">
+                  <img class="coll-img" src="images/collections/velvet-collar-set-1.jpg" alt="Velvet Collar Set — Full Set" loading="lazy" onerror="collImgFallback(this)">
                 </div>
-                <div class="carousel-slide" style="height:290px;background:linear-gradient(150deg,#a4cddf 0%,#c4d9e5 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;">
-                  <span class="material-symbols-outlined" style="font-size:52px;color:rgba(60,100,116,0.18);">diamond</span>
-                  <span style="font-family:'Inter',sans-serif;font-size:9px;letter-spacing:0.22em;color:rgba(60,100,116,0.32);margin-top:10px;text-transform:uppercase;">Clasp</span>
+                <div class="carousel-slide" style="height:290px;">
+                  <img class="coll-img" src="images/collections/velvet-collar-set-2.jpg" alt="Velvet Collar Set — Clasp" loading="lazy" onerror="collImgFallback(this)">
                 </div>
-                <div class="carousel-slide" style="height:290px;background:linear-gradient(150deg,#8fb8cc 0%,#aec9d6 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;">
-                  <span class="material-symbols-outlined" style="font-size:52px;color:rgba(60,100,116,0.18);">diamond</span>
-                  <span style="font-family:'Inter',sans-serif;font-size:9px;letter-spacing:0.22em;color:rgba(60,100,116,0.32);margin-top:10px;text-transform:uppercase;">Detail</span>
+                <div class="carousel-slide" style="height:290px;">
+                  <img class="coll-img" src="images/collections/velvet-collar-set-3.jpg" alt="Velvet Collar Set — Detail" loading="lazy" onerror="collImgFallback(this)">
                 </div>
               </div>
               <button class="carousel-arrow carousel-next" aria-label="Next angle">
@@ -736,6 +728,17 @@ tailwind.config = {
      SCRIPTS
 ════════════════════════════ -->
 <script>
+// ── Image fallback (subtle branded placeholder instead of broken-image icon) ──
+function collImgFallback(img) {
+  var slide = img.closest('.carousel-slide');
+  if (!slide) return;
+  slide.innerHTML =
+    '<div class="coll-img-fallback">' +
+      '<span class="material-symbols-outlined">diamond</span>' +
+      '<span>Jwlzify</span>' +
+    '</div>';
+}
+
 // ── Filter buttons ──
 document.getElementById('filterBtns').addEventListener('click', function(e) {
   const btn = e.target.closest('.coll-filter-btn');
