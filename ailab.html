@@ -3895,8 +3895,8 @@ function updateHandlePosition() {
   if (!canvas || !container || !handle || canvas.style.display === 'none') return;
   const c = container.getBoundingClientRect();
   const r = canvas.getBoundingClientRect();
-  handle.style.left = (r.left - c.left + canvas.width / 2 - 7) + 'px';
-  handle.style.top  = (r.bottom - c.top - 7) + 'px';
+  handle.style.left = (r.right - c.left - 7) + 'px';
+  handle.style.top  = (r.top   - c.top  - 7) + 'px';
 }
 
 // Drag and resize — set up once when the script parses (DOM is ready at this point)
@@ -4919,11 +4919,11 @@ function _ringRenderLoop() {
     ctx.drawImage(latestCutoutImage, 0, 0, W, H);
   }
 
-  // Layer 4: drag handle dot at ring center
+  // Layer 4: drag handle dot at top-right corner of ring
   if (_ringMaskedCanvas) {
     ctx.save();
     ctx.beginPath();
-    ctx.arc(ringX, ringY, 5, 0, Math.PI * 2);
+    ctx.arc(ringX + ringSize / 2 + 4, ringY - ringSize / 2 - 4, 5, 0, Math.PI * 2);
     ctx.fillStyle = '#C9A84C';
     ctx.fill();
     ctx.strokeStyle = 'rgba(255,255,255,0.8)';
@@ -5222,8 +5222,8 @@ function updateRingResizeHandle() {
   if (!img || !handle) return;
   const c = document.getElementById('tryon-container').getBoundingClientRect();
   const r = img.getBoundingClientRect();
-  handle.style.left = (r.right  - c.left - 7) + 'px';
-  handle.style.top  = (r.bottom - c.top  - 7) + 'px';
+  handle.style.left = (r.right - c.left - 7) + 'px';
+  handle.style.top  = (r.top   - c.top  - 7) + 'px';
 }
 
 function saveRingTryOnPhoto() {
@@ -5308,13 +5308,13 @@ function updateEarringHandles() {
 
   if (leftEl && leftEl.style.display !== 'none') {
     const r = leftEl.getBoundingClientRect();
-    leftHandle.style.left = (r.right  - c.left - 6) + 'px';
-    leftHandle.style.top  = (r.bottom - c.top  - 6) + 'px';
+    leftHandle.style.left = (r.right - c.left - 6) + 'px';
+    leftHandle.style.top  = (r.top   - c.top  - 6) + 'px';
   }
   if (rightEl && rightEl.style.display !== 'none') {
     const r = rightEl.getBoundingClientRect();
-    rightHandle.style.left = (r.right  - c.left - 6) + 'px';
-    rightHandle.style.top  = (r.bottom - c.top  - 6) + 'px';
+    rightHandle.style.left = (r.right - c.left - 6) + 'px';
+    rightHandle.style.top  = (r.top   - c.top  - 6) + 'px';
   }
 }
 
@@ -5493,8 +5493,8 @@ function updateNecklaceResizeHandle() {
   if (!img || !handle) return;
   const c = document.getElementById('tryon-container').getBoundingClientRect();
   const r = img.getBoundingClientRect();
-  handle.style.left = (r.right  - c.left - 7) + 'px';
-  handle.style.top  = (r.bottom - c.top  - 7) + 'px';
+  handle.style.left = (r.right - c.left - 7) + 'px';
+  handle.style.top  = (r.top   - c.top  - 7) + 'px';
 }
 
 let necklaceDragging = false;
@@ -5560,8 +5560,8 @@ function updateBraceletResizeHandle() {
   if (!img || !handle) return;
   const c = document.getElementById('tryon-container').getBoundingClientRect();
   const r = img.getBoundingClientRect();
-  handle.style.left = (r.right  - c.left - 7) + 'px';
-  handle.style.top  = (r.bottom - c.top  - 7) + 'px';
+  handle.style.left = (r.right - c.left - 7) + 'px';
+  handle.style.top  = (r.top   - c.top  - 7) + 'px';
 }
 
 let braceletDragging = false;
