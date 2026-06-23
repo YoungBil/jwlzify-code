@@ -116,13 +116,28 @@
   }
   exploreBtn.addEventListener('click', function () { expanded ? collapse() : expand(); });
 
+  // ── Scroll to the top of the collections section (accounts for sticky header) ──
+  function scrollToCollectionsTop() {
+    var section = grid.closest('section');
+    var header = document.getElementById('siteHeader');
+    var offset = header ? header.offsetHeight : 0;
+    if (section) {
+      var top = section.getBoundingClientRect().top + window.pageYOffset - offset - 12;
+      window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+    } else {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }
+
   // ── Tabs ──
   filterBtns.addEventListener('click', function (e) {
     var btn = e.target.closest('.coll-filter-btn');
     if (!btn) return;
     Array.prototype.forEach.call(filterBtns.querySelectorAll('.coll-filter-btn'), function (b) { b.classList.remove('active'); });
     btn.classList.add('active');
-    render(FILTER_TO_CATEGORY[btn.getAttribute('data-filter')]);
+    render(FILTER_TO_CATEGORY[btn.getAttribute('data-filter')]); // resets to first 6 + button
+    scrollToCollectionsTop();
+    console.log('[Collections] category changed, scrolled to top');
   });
 
   // ── Spec modal ──

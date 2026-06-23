@@ -101,7 +101,8 @@ function frontClause(type) {
 }
 
 // Product-only framing for pieces SDXL likes to put on a model (earrings -> ears,
-// necklaces/chokers -> neck). SDXL obeys the positive prompt better than negatives.
+// necklaces/chokers -> neck). SDXL obeys the positive prompt better than negatives,
+// so we describe an explicit flat-lay product shot with NO body and NO mannequin.
 function productOnlyClause(type) {
   if (type === 'earrings') {
     return 'A matching pair of earrings arranged side by side, lying flat on a seamless pure white surface, ' +
@@ -109,11 +110,19 @@ function productOnlyClause(type) {
       'nothing else. Absolutely no model, no person, no ear, no head, no face, no skin. ' +
       'Luxury jewelry catalogue flat-lay photography.';
   }
-  // necklace / collar
-  return 'The necklace shown by itself as an isolated product, draped over a plain white jewelry bust ' +
-    'display form with no head and no face, arranged in a clean symmetrical U-shape on a seamless white ' +
-    'surface. No model, no person, no neck, no skin, no head. Catalogue product photography, pure white background.';
+  // necklace / collar — flat-lay (no bust, no mannequin, no neck)
+  return 'The necklace by itself arranged in an elegant symmetrical loop, laid flat on a seamless pure white ' +
+    'surface, photographed straight from above as a top-down flat-lay product shot. Just the necklace on white, ' +
+    'nothing else. Absolutely no model, no person, no neck, no bust, no mannequin, no head, no skin. ' +
+    'Luxury jewelry catalogue flat-lay photography.';
 }
+
+// Hard product-only constraints appended to EVERY item (positive + negative).
+const NO_BODY_POS = 'isolated jewelry product only, on a plain seamless studio background, no person, ' +
+  'no human, no model, no body parts, no hand, no finger, no neck, no ear, no wrist, product-only shot, ' +
+  'nothing being worn';
+const NO_BODY_NEG = 'person, human, model, face, hand, fingers, neck, ear, wrist, arm, skin, body part, ' +
+  'wearing, worn, mannequin, portrait';
 
 function buildPrompt(item) {
   const type = item.type;
@@ -131,10 +140,14 @@ function buildPrompt(item) {
     orient = frontClause(type);       neg = GENERIC_NEG;
   }
 
+  // Hard product-only constraints on EVERY item (no people / body parts).
+  neg = neg + ', ' + NO_BODY_NEG;
+
   const prompt = `Luxury ${item.desc}. ${orient} ${BASE_TAIL}`;
   // SDXL likes keyword-stacked, front-loaded prompts.
   const hfInput = `${item.desc}, front view, straight-on, centered, symmetrical, single item, ` +
-    'product photography, white background, studio lighting, sharp focus, photorealistic, 8k, highly detailed';
+    NO_BODY_POS + ', product photography, white background, studio lighting, sharp focus, ' +
+    'photorealistic, 8k, highly detailed';
 
   return {
     inputs: hfInput + ' Avoid: ' + neg,
