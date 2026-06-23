@@ -4853,29 +4853,10 @@ function _buildRingMask(img, srcType) {
   console.log('[TryOn] type:', type, '| mask direction:', maskDirection, '| hidden region:', region);
 }
 
-async function captureAndRemoveBg() {
-  const video = document.getElementById('tryon-video');
-  const ringCanvas = document.getElementById('ring-tryon-canvas');
-  if (!video || video.readyState < 2 || !ringCanvas) return;
-  const cap = document.createElement('canvas');
-  cap.width = ringCanvas.width;
-  cap.height = ringCanvas.height;
-  const capCtx = cap.getContext('2d');
-  capCtx.save();
-  capCtx.scale(-1, 1);
-  capCtx.drawImage(video, -cap.width, 0, cap.width, cap.height);
-  capCtx.restore();
-  // Convert frame to blob URL, run free flood-fill, then load the cutout
-  const frameUrl = await new Promise(r => cap.toBlob(b => r(URL.createObjectURL(b)), 'image/png'));
-  try {
-    const cleanUrl = await removePendantBackgroundCanvas(frameUrl);
-    URL.revokeObjectURL(frameUrl);
-    const img = new Image();
-    img.onload = () => { latestCutoutImage = img; URL.revokeObjectURL(cleanUrl); };
-    img.src = cleanUrl;
-  } catch (e) {
-    URL.revokeObjectURL(frameUrl);
-  }
+function captureAndRemoveBg() {
+  // No-op: camera frame is never background-removed.
+  // The live feed is drawn raw (Layer 1); only the jewelry overlay
+  // has its background removed (once, when the piece loads).
 }
 
 function _ringRenderLoop() {
@@ -5112,12 +5093,10 @@ function initTryOn(cfg) {
   if (_ringRafId) cancelAnimationFrame(_ringRafId);
   _ringRafId = requestAnimationFrame(_ringRenderLoop);
 
-  // Start webcam hand-cutout interval (hide loading overlay first)
+  // Hide loading overlay — render loop drives the live feed directly
   const loadingEl = document.getElementById('ring-tryon-loading');
   if (loadingEl) loadingEl.style.display = 'none';
-  if (_bgRemovalInterval) clearInterval(_bgRemovalInterval);
-  captureAndRemoveBg();
-  _bgRemovalInterval = setInterval(captureAndRemoveBg, 2000);
+  if (_bgRemovalInterval) { clearInterval(_bgRemovalInterval); _bgRemovalInterval = null; }
 
   // ── Ring image loading: original first, transparent swap when ready ──
   const _srcToUse = imageUrl || _RING_FALLBACK_URL;
