@@ -25,9 +25,12 @@
   // Tone of the original render → a sensible default locked metal (image is representative;
   // the metal is switchable in the modal between all three).
   var TONE_PREV = ['Yellow', 'White', 'Rose', 'Platinum']; // old idx%4 tone order
-  var STONES = [
-    'Round Brilliant Diamond', 'Pavé Diamonds', 'Blue Sapphire', 'Colombian Emerald',
-    'Aquamarine', 'Pink Morganite', 'Ruby', 'South Sea Pearl', 'Black Onyx', 'Yellow Diamond'
+  // Stone types are LOCKED to the AI Lab's three options so each piece maps to a
+  // correct profit tier (925+moissanite=150%, gold+natural=70%, otherwise 100%).
+  var STONE_TYPES = [
+    { code: 'lab_diamond',     label: 'Lab Diamond' },
+    { code: 'natural_diamond', label: 'Natural Diamond VS/VVS' },
+    { code: 'moissanite_vvsd', label: 'Moissanite VVSD' }
   ];
 
   // Per-category configuration: generator type, product-only framing, label, style pool,
@@ -90,7 +93,6 @@
     var idx = i - 1;
     var name = cfg.names[idx];
     var style = cfg.styles[idx % cfg.styles.length];
-    var stone = noStoneFor(category, style) ? 'None' : STONES[(idx * 3 + CAT_ORDER.indexOf(category)) % STONES.length];
 
     // Default locked metal (switchable in modal): white/platinum tones → 925 silver,
     // yellow → 14k gold, rose → 10k gold. All three options are represented.
@@ -104,17 +106,20 @@
     var grams = Math.round((cfg.weightBase + idx * (category === 'bracelet' || category === 'necklace' ? 1.6 : 0.6)) * 10) / 10;
     var weightStr = grams + ' g';
 
-    var stoneCode, stoneSize, gemPhrase, carats, stoneCount;
-    if (stone === 'None') {
-      stoneCode = 'none'; carats = 0; stoneCount = 0; stoneSize = '—';
+    // Locked stone type → correct profit tier. Plain styles carry no stone.
+    var hasStone = !noStoneFor(category, style);
+    var stoneType, stoneLabel, stoneSize, gemPhrase, carats, stoneCount;
+    if (!hasStone) {
+      stoneType = 'none'; stoneLabel = 'None'; carats = 0; stoneCount = 0; stoneSize = '—';
       gemPhrase = 'polished plain ' + metal.display.toLowerCase() + ', no stones';
     } else {
-      stoneCode = 'lab_diamond'; // AI Lab rate $2/ct; profit margin stays default 1.0
+      var st = STONE_TYPES[(idx + CAT_ORDER.indexOf(category)) % STONE_TYPES.length];
+      stoneType = st.code; stoneLabel = st.label;
       carats = Math.round((0.4 + (idx % 6) * 0.45) * 100) / 100;
-      var isPave = stone.indexOf('Pav') !== -1 || style === 'Pavé Eternity' || style === 'Tennis' || style === 'Station';
+      var isPave = style === 'Pavé Eternity' || style === 'Tennis' || style === 'Station';
       stoneCount = isPave ? Math.max(2, Math.round(carats / 0.15)) : 1;
       stoneSize = carats.toFixed(2) + ' ct' + (isPave ? ' total' : '');
-      gemPhrase = 'featuring ' + (isPave ? stoneSize + ' of ' + stone.toLowerCase() : 'a ' + stoneSize + ' ' + stone.toLowerCase());
+      gemPhrase = 'featuring ' + (isPave ? stoneSize + ' of ' + stoneLabel.toLowerCase() : 'a ' + stoneSize + ' ' + stoneLabel.toLowerCase());
     }
 
     // SDXL description (front-facing, single item; orientation clause added by generator)
@@ -134,8 +139,8 @@
         material: metal.display, // '925 Sterling Silver' | '10k Gold' | '14k Gold'
         metalCode: metalCode,    // '925silver' | '10ctgold' | '14ctgold'
         karat: metal.karat,      // '925' | '10k' | '14k'
-        stone: stone,
-        stoneCode: stoneCode,    // 'lab_diamond' | 'none'
+        stone: stoneLabel,       // 'Lab Diamond' | 'Natural Diamond VS/VVS' | 'Moissanite VVSD' | 'None'
+        stoneType: stoneType,    // 'lab_diamond' | 'natural_diamond' | 'moissanite_vvsd' | 'none'
         stoneSize: stoneSize,
         carats: carats,          // numeric total carats
         stoneCount: stoneCount,

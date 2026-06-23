@@ -39,15 +39,18 @@
   function computePrice(item, metalCode) {
     var s = item.specs || {};
     var mc = metalCode || s.metalCode;
-    if (!P || !P.priceForSpec) return null;
-    var price = Math.round(P.priceForSpec({
-      metalCode: mc, grams: s.grams, stoneCode: s.stoneCode,
+    if (!P || !P.priceDetail) return null;
+    // FULL AI Lab formula: baseCost (metal + stone) + 20% labour + tiered profit.
+    var r = P.priceDetail({
+      metalCode: mc, grams: s.grams, stoneCode: s.stoneType,
       jewelryType: s.jewelryType, carats: s.carats, stoneCount: s.stoneCount
-    }));
-    console.log('[Collections] price calc | item:', item.id, '| metal:', mc, '| price:', price);
+    });
+    var price = Math.round(r.finalPrice);
+    console.log('[Collections] price | item:', item.id, '| metal:', mc, '| stone:', s.stoneType,
+      '| profit tier:', r.profitRate, '| finalPrice:', price);
     if (price < 50 || price > 100000) {
       console.warn('[Collections] price OUT OF SANE RANGE:', item.id, '| metal:', mc, '| price:', price,
-        '| inputs:', JSON.stringify({ grams: s.grams, carats: s.carats, stone: s.stoneCode }));
+        '| inputs:', JSON.stringify({ grams: s.grams, carats: s.carats, stone: s.stoneType }));
     }
     return price;
   }

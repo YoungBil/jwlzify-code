@@ -112,12 +112,14 @@
     return {
       metalGrams: weights.metalGrams, stoneCarats: stoneCarats, metalPerGram: metalPerGram,
       metalCost: metalCost, stoneCost: stoneCost, baseCost: baseCost,
+      labourRate: labourRate, profitRate: profitRate,
       labourCost: labourCost, profitCost: profitCost, finalPrice: finalPrice
     };
   }
 
-  // Clean-parameter wrapper for collection items (does not clobber AI Lab's global).
-  function priceForSpec(o) {
+  // Clean-parameter wrapper returning the FULL result (finalPrice, profitRate, breakdown).
+  // Does not clobber the AI Lab's global jwlSpecifications.
+  function priceDetail(o) {
     var prev = root.jwlSpecifications;
     root.jwlSpecifications = {
       metalGrams: o.grams || 0, totalCarats: o.carats || 0,
@@ -125,14 +127,17 @@
     };
     var r = calculatePrice(o.metalCode, o.stoneCode, o.jewelryType, o.carats || 0);
     root.jwlSpecifications = prev; // restore
-    return r.finalPrice;
+    return r;
   }
+  // Back-compat: just the final price (base + labour + tiered profit).
+  function priceForSpec(o) { return priceDetail(o).finalPrice; }
 
   root.JWLZ_PRICING = {
     spotPrices: spotPrices,
     fetchSpotPrices: fetchSpotPrices,
     calculatePrice: calculatePrice,
     priceForSpec: priceForSpec,
+    priceDetail: priceDetail,
     KARAT_PURITY: KARAT_PURITY
   };
 })(typeof window !== 'undefined' ? window : this);

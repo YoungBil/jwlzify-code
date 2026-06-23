@@ -333,6 +333,10 @@ tailwind.config = {
 }
 .specs-metal-btn:hover { border-color: rgba(201,168,76,0.6); }
 .specs-metal-btn.active { background: #C9A84C; color: #0B0F1A; border-color: #C9A84C; font-weight: 600; }
+.specs-price-label {
+  font-family: 'Inter', sans-serif; font-size: 10px; letter-spacing: 0.18em;
+  text-transform: uppercase; color: rgba(236,236,236,0.5); margin-bottom: 2px;
+}
 .specs-price {
   font-family: 'Cormorant Garamond', serif; font-size: 30px; font-weight: 600;
   color: #C9A84C; margin-bottom: 22px;
@@ -541,6 +545,7 @@ tailwind.config = {
         <span class="specs-metal-label">Metal</span>
         <div class="specs-metal-select" id="specsMetalSelect"></div>
       </div>
+      <div class="specs-price-label">Total Cost</div>
       <div class="specs-price" id="specsPrice">—</div>
       <a class="specs-customize-btn" id="specsCustomizeBtn" href="ailab.html">
         <span class="material-symbols-outlined" style="font-size:16px;">auto_awesome</span>
