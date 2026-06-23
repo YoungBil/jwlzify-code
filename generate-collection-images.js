@@ -118,11 +118,11 @@ function productOnlyClause(type) {
 }
 
 // Hard product-only constraints appended to EVERY item (positive + negative).
-const NO_BODY_POS = 'isolated jewelry product only, on a plain seamless studio background, no person, ' +
-  'no human, no model, no body parts, no hand, no finger, no neck, no ear, no wrist, product-only shot, ' +
-  'nothing being worn';
-const NO_BODY_NEG = 'person, human, model, face, hand, fingers, neck, ear, wrist, arm, skin, body part, ' +
-  'wearing, worn, mannequin, portrait';
+const NO_BODY_POS = 'isolated jewelry product only, floating on a plain seamless studio background, ' +
+  'absolutely no person, no human, no model, no mannequin, no body parts, no ear, no neck, no chest, ' +
+  'no face, no hand, no wrist, no skin, product-only catalog shot, nothing being worn';
+const NO_BODY_NEG = 'person, human, model, mannequin, face, portrait, ear, neck, chest, shoulder, hand, ' +
+  'fingers, wrist, arm, skin, body part, wearing, worn, hair, lips, eyes';
 
 function buildPrompt(item) {
   const type = item.type;
