@@ -973,6 +973,19 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
         <!-- Ring try-on canvas -->
         <canvas id="ring-tryon-canvas"></canvas>
 
+        <!-- Bracelet wrist-alignment guide (shown only for bracelet try-on) -->
+        <div id="wrist-guide" style="display:none;position:absolute;inset:0;z-index:12;pointer-events:none;opacity:1;transition:opacity 0.8s ease;">
+          <p style="position:absolute;top:14px;left:0;right:0;margin:0;text-align:center;
+                    font-family:Inter,sans-serif;font-size:12px;font-weight:500;letter-spacing:0.06em;
+                    color:rgba(201,168,76,0.95);text-shadow:0 1px 5px rgba(0,0,0,0.65);">
+            Raise your wrist and align it here
+          </p>
+          <div style="position:absolute;left:50%;top:75%;transform:translate(-50%,-50%);
+                      width:62%;max-width:300px;height:120px;
+                      border:2px dashed rgba(201,168,76,0.55);border-radius:80px/52px;
+                      box-shadow:0 0 22px rgba(201,168,76,0.12) inset;"></div>
+        </div>
+
         <!-- Ring loading overlay -->
         <div id="ring-tryon-loading" style="display:none;position:absolute;inset:0;z-index:15;
              background:rgba(11,15,26,0.7);align-items:center;justify-content:center;flex-direction:column;gap:12px;">
@@ -1642,6 +1655,8 @@ const _HF_BRACELET_NEGATIVE  = 'flat lay, laid flat, spread out, scattered, disc
 const _HF_NECKLACE_NEGATIVE  = 'flat lay, tabletop, top-down view, coiled chain, chain laid flat, jewelry box, angled perspective, asymmetrical drape, cropped chain, multiple necklaces, hands, neck skin, mannequin face, busy background, blurry, deformed, pendant, charm, hanging pendant, locket, dangling ornament, extra pendant, multiple chains, two necklaces, double chain, several chains, duplicate necklace, tangled chains, center stone, centre stone, focal stone, solitaire, central gemstone, large center gem';
 // Single-band enforcement — bracelet only. Appended to BOTH Gemini and HF positive prompts.
 const _BRACELET_SINGLE_BAND   = 'ONE single bracelet band only. A single continuous loop. One unbroken band. Exactly one bracelet, not two, not a pair, not stacked, not double-banded. A single solitary bracelet shown as one closed oval loop facing the camera.';
+// Wrap-illusion negative for bracelet (face-on horizontal band; no body parts).
+const _HF_BRACELET_WRAP_NEG   = 'laid flat, flat lay, straight strip, two bracelets, double band, multiple bracelets, person, hand, wrist, skin, body part, collage, grid, deformed';
 // Gemini-only extra instruction folded into the bracelet prompt.
 const _GEMINI_BRACELET_SINGLE = 'Generate exactly ONE single bracelet band. Do not show two bands, a double band, stacked bracelets, or a pair. One single continuous loop only.';
 // Flux 2 Pro worker — primary txt2img generator (swap model by updating flux-image-worker.js FAL_MODEL)
@@ -2230,10 +2245,10 @@ function buildPrompt(type, material, gem, style, desc) {
   }
 
   if (type === 'bracelet') {
-    const _braceletShape = 'A single closed-loop bracelet shaped as one continuous oval band, photographed floating upright and facing the camera, presented exactly like a bangle held up to show its circular form. The full round shape of the bracelet is clearly visible as one connected loop. The decorative front of the bracelet faces the camera. Isolated on a plain white background.';
-    const _braceletOrient = 'CAMERA ANGLE: front-facing eye-level view. The bracelet is a complete closed oval band held upright facing the camera — like a bangle presented on edge. The decorative front face is at the top-center, fully visible. The band curves away from the camera at the bottom. Perfectly symmetrical left-to-right. Centered in frame with equal margins.';
-    const _braceletGemNeg = 'Show the bracelet as one complete connected oval loop facing the camera, like a bangle held up. Do not show it laid flat, scattered, spread out, or as disconnected pieces.';
-    return `luxury ${style} ${wPart}bracelet${descPart}, ${mDisp}, ${gemPart}, isolated fine jewelry product photograph, pure white seamless background, no shadows, professional diffuse studio lighting, hyper realistic, 8K ultra high definition, macro lens, sharp focus, precious metal gleam, gemstone sparkle and brilliance. ${_braceletShape} ${_braceletOrient} ${_BRACELET_SINGLE_BAND} ${_GEMINI_BRACELET_SINGLE} No humans. No person. No body parts. No hands. No wrist. No skin. No model. Product-only photography. The jewelry piece is the sole subject of the image. ${_braceletGemNeg}`;
+    // Face-on horizontal oval band so the bracelet can convincingly WRAP a raised wrist
+    // in webcam try-on (mirrors the ring's face-on approach, oriented for the wrist).
+    const _braceletShape = 'A single closed-loop bracelet viewed front-on as a horizontal oval band, the decorative front face toward the viewer, the band forming a clear loop — the kind of view you get looking at a bracelet on a wrist raised toward you. One single continuous band, isolated on a plain white studio background, no person, no body parts.';
+    return `luxury ${style} ${wPart}bracelet${descPart}, ${mDisp}, ${gemPart}, isolated fine jewelry product photograph, pure white seamless studio background, no shadows, professional diffuse studio lighting, hyper realistic, 8K ultra high definition, sharp focus, precious metal gleam, gemstone sparkle and brilliance. ${_braceletShape} ${_BRACELET_SINGLE_BAND} ${_GEMINI_BRACELET_SINGLE} No humans. No person. No body parts. No hands. No wrist. No skin. No model. Product-only photography. The jewelry piece is the sole subject of the image.`;
   }
 
   if (type === 'ring') {
@@ -2702,8 +2717,8 @@ async function startGeneration(isTweak) {
     console.log('[JWLZIFY] Gemini ring prompt:', fullPrompt);
   } else if (resolvedType === 'bracelet') {
     const _hfDesc  = _buildHfJewelryDesc('bracelet', LAB.material, LAB.gem, LAB.style, desc);
-    const _hfInput = `${_hfDesc}, single closed bangle, round bracelet loop, oval band shape, upright facing camera, one continuous loop, centered, symmetrical, product photography, white background, studio lighting, sharp focus, photorealistic, 8k. ${_BRACELET_SINGLE_BAND}`;
-    _hfOverrides = { inputs: _hfInput, negative_prompt: _HF_BRACELET_NEGATIVE, guidance_scale: 9.0, num_inference_steps: 30 };
+    const _hfInput = `${_hfDesc}, single closed-loop bracelet viewed front-on, horizontal oval band, decorative front face toward viewer, the band forming a clear loop, one single continuous band, isolated, plain white studio background, no person, no body parts, product photography, studio lighting, sharp focus, photorealistic, 8k. ${_BRACELET_SINGLE_BAND}`;
+    _hfOverrides = { inputs: _hfInput, negative_prompt: _HF_BRACELET_WRAP_NEG, guidance_scale: 9.0, num_inference_steps: 30 };
     console.log('[JWLZIFY] bracelet single-band prompt (HF):', _hfInput);
     console.log('[JWLZIFY] bracelet negative:', _HF_BRACELET_NEGATIVE);
     console.log('[JWLZIFY] Gemini bracelet prompt:', fullPrompt);
@@ -2857,8 +2872,8 @@ async function confirmAndGenerate() {
     console.log('[JWLZIFY] Gemini ring prompt:', fullPrompt);
   } else if (LAB.type === 'bracelet') {
     const _hfDesc  = _buildHfJewelryDesc('bracelet', LAB.material, LAB.gem, LAB.style || 'Modern', userIdea);
-    const _hfInput = `${_hfDesc}, single closed bangle, round bracelet loop, oval band shape, upright facing camera, one continuous loop, centered, symmetrical, product photography, white background, studio lighting, sharp focus, photorealistic, 8k. ${_BRACELET_SINGLE_BAND}`;
-    _hfOverridesC = { inputs: _hfInput, negative_prompt: _HF_BRACELET_NEGATIVE, guidance_scale: 9.0, num_inference_steps: 30 };
+    const _hfInput = `${_hfDesc}, single closed-loop bracelet viewed front-on, horizontal oval band, decorative front face toward viewer, the band forming a clear loop, one single continuous band, isolated, plain white studio background, no person, no body parts, product photography, studio lighting, sharp focus, photorealistic, 8k. ${_BRACELET_SINGLE_BAND}`;
+    _hfOverridesC = { inputs: _hfInput, negative_prompt: _HF_BRACELET_WRAP_NEG, guidance_scale: 9.0, num_inference_steps: 30 };
     console.log('[JWLZIFY] bracelet single-band prompt (HF):', _hfInput);
     console.log('[JWLZIFY] bracelet negative:', _HF_BRACELET_NEGATIVE);
     console.log('[JWLZIFY] Gemini bracelet prompt:', fullPrompt);
@@ -3992,6 +4007,8 @@ async function setupTryOn() {
   isTryOnActive = true;
   console.log('[JWLZIFY] try-on step reached, type:', LAB.type);
   if (!LAB.imageUrl) { goStep(5); return; }
+  _hideWristGuide();
+  var _wgReset = document.getElementById('wrist-guide'); if (_wgReset) _wgReset.style.display = 'none';
 
   startTryOnCamera();
   console.log('[JWLZIFY] try-on jewelry type:', LAB.type);
@@ -4938,6 +4955,7 @@ function _ringDragStart(e) {
     _ringIsDragging = true;
     _ringDragOffX   = x - ringX;
     _ringDragOffY   = y - ringY;
+    _hideWristGuide(); // fade the wrist guide once the user starts positioning
   }
 }
 
@@ -4954,6 +4972,13 @@ function _ringDragEnd() {
   _ringIsDragging = false;
 }
 
+
+let _wristGuideTimer = null;
+function _hideWristGuide() {
+  const g = document.getElementById('wrist-guide');
+  if (g) g.style.opacity = '0';
+  if (_wristGuideTimer) { clearTimeout(_wristGuideTimer); _wristGuideTimer = null; }
+}
 
 function loadRingForTryOn(imageUrl) {
   initTryOn({
@@ -4976,16 +5001,17 @@ function loadBraceletForTryOn(imageUrl) {
   initTryOn({
     imageUrl:      imageUrl,
     typeLabel:     'bracelet',
-    defaultSize:   200,            // bracelet
+    defaultSize:   200,            // bracelet — horizontal band over a raised wrist
     minSize:       100,
     maxSize:       360,
-    getDefaultY:   (H) => H * 0.75, // centred, slightly lower than the ring
-    hintText:      'Hold your wrist up to the camera · Drag to position · +/− to resize · Fit slider to tuck behind wrist',
+    getDefaultY:   (H) => H * 0.75, // lower-center, where a raised wrist sits
+    hintText:      'Raise your wrist to the camera and align with the guide · Drag to position · +/− to resize · slider to rotate',
     fitLabel:      'Fit on wrist',
-    maskDirection: 'hide-top',      // bracelet wraps AROUND the wrist → hide far arc (top)
-    fitMin:        25,              // slider 0.25–0.55
-    fitMax:        55,
-    fitDefault:    50,             // ~85% of range — slightly below max, hides the top background box on first frame
+    maskDirection: 'hide-top',      // bracelet wraps AROUND the wrist → hide TOP arc (behind wrist)
+    wristGuide:    true,            // show the wrist-alignment guide overlay
+    fitMin:        20,              // slider 0.20–0.50
+    fitMax:        50,
+    fitDefault:    35,             // hidden top 0–35%, fade 35–55%, visible 55–100% (front curve on near side)
   });
 }
 
@@ -5035,6 +5061,22 @@ function initTryOn(cfg) {
     hintEl.style.opacity = '1';
     hintEl.style.transition = 'opacity 1.5s ease';
     setTimeout(() => { if (hintEl) hintEl.style.opacity = '0'; }, 5000);
+  }
+
+  // Wrist-alignment guide overlay — bracelet only; fades after 6s (or on first drag).
+  const _wg = document.getElementById('wrist-guide');
+  if (_wg) {
+    if (cfg.wristGuide) {
+      _wg.style.display = 'block';
+      _wg.style.opacity = '1';
+      if (_wristGuideTimer) clearTimeout(_wristGuideTimer);
+      _wristGuideTimer = setTimeout(() => { if (_wg) _wg.style.opacity = '0'; }, 6000);
+      console.log('[Bracelet TryOn] wrist guide shown, hide-top mask, wrap illusion active');
+    } else {
+      _wg.style.display = 'none';
+      _wg.style.opacity = '1';
+      if (_wristGuideTimer) { clearTimeout(_wristGuideTimer); _wristGuideTimer = null; }
+    }
   }
 
   // Reset rotation and fit sliders
