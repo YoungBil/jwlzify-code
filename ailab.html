@@ -1656,7 +1656,7 @@ const _HF_NECKLACE_NEGATIVE  = 'flat lay, tabletop, top-down view, coiled chain,
 // Single-band enforcement — bracelet only. Appended to BOTH Gemini and HF positive prompts.
 const _BRACELET_SINGLE_BAND   = 'ONE single bracelet band only. A single continuous loop. One unbroken band. Exactly one bracelet, not two, not a pair, not stacked, not double-banded. A single solitary bracelet shown as one closed oval loop facing the camera.';
 // Head-on band negative for bracelet (front-facing horizontal loop; no body parts, no side/tilt).
-const _HF_BRACELET_WRAP_NEG   = 'laid flat, flat lay, straight strip, side view, angled, tilted, two bracelets, double band, multiple bracelets, person, hand, wrist, skin, collage, grid, deformed';
+const _HF_BRACELET_WRAP_NEG   = 'laid flat, flat lay, straight strip, side view, angled, tilted, angled down, slanted, diagonal, leaning, rotated, dutch angle, two bracelets, double band, multiple bracelets, person, hand, wrist, skin, collage, grid, deformed';
 // Gemini-only extra instruction folded into the bracelet prompt.
 const _GEMINI_BRACELET_SINGLE = 'Generate exactly ONE single bracelet band. Do not show two bands, a double band, stacked bracelets, or a pair. One single continuous loop only.';
 // Flux 2 Pro worker — primary txt2img generator (swap model by updating flux-image-worker.js FAL_MODEL)
@@ -2247,7 +2247,7 @@ function buildPrompt(type, material, gem, style, desc) {
   if (type === 'bracelet') {
     // Face-on horizontal oval band so the bracelet can convincingly WRAP a raised wrist
     // in webcam try-on (mirrors the ring's face-on approach, oriented for the wrist).
-    const _braceletShape = 'A single closed-loop bracelet viewed perfectly head-on as a horizontal oval band facing the camera, the front face of the bracelet pointing directly at the viewer, the band forming a clear symmetrical loop — the view you get looking straight at a bracelet on a wrist raised toward you. One single continuous band, isolated on plain white studio background, no person, no body parts.';
+    const _braceletShape = 'A single closed-loop bracelet viewed perfectly head-on as a horizontal oval band facing the camera, the front face of the bracelet pointing directly at the viewer, the band forming a clear symmetrical loop — the view you get looking straight at a bracelet on a wrist raised toward you. A perfectly horizontal level oval band, symmetrical left-to-right, not tilted, not angled down, the band sits flat and level like a horizontal ellipse viewed straight on. One single continuous band, isolated on plain white studio background, no person, no body parts.';
     return `luxury ${style} ${wPart}bracelet${descPart}, ${mDisp}, ${gemPart}, isolated fine jewelry product photograph, pure white seamless studio background, no shadows, professional diffuse studio lighting, hyper realistic, 8K ultra high definition, sharp focus, precious metal gleam, gemstone sparkle and brilliance. ${_braceletShape} ${_BRACELET_SINGLE_BAND} ${_GEMINI_BRACELET_SINGLE} No humans. No person. No body parts. No hands. No wrist. No skin. No model. Product-only photography. The jewelry piece is the sole subject of the image.`;
   }
 
@@ -5023,6 +5023,13 @@ function loadBraceletForTryOn(imageUrl) {
     fitMax:        50,
     fitDefault:    35,             // hidden top 0–35%, fade 35–55%, visible 55–100% (front curve on near side)
   });
+  // Start perfectly level (user can still adjust via the rotate slider). The bracelet
+  // uses the SAME background-removal path as the ring (shared initTryOn → removePendantBackgroundCanvas).
+  ringRotation = 0;
+  const _bRot = document.getElementById('ringRotateSlider');
+  if (_bRot) _bRot.value = '0';
+  console.log('[Bracelet] default rotation 0, horizontal band');
+  console.log('[Bracelet] cutout using identical method as ring');
 }
 
 // Shared, parameterized try-on used by BOTH ring and bracelet (and any future
