@@ -247,6 +247,39 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
 @keyframes arPulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
 #arLoading p { animation: arPulse 2.4s ease-in-out infinite; }
 
+/* ── Ring multi-angle gallery (refine step) ── */
+#ringAngleGallery { position:relative; width:100%; }
+.ring-gallery-viewport { overflow:hidden; width:100%; }
+#ringGalleryTrack { display:flex; transition:transform 0.45s cubic-bezier(.4,0,.2,1); }
+.ring-angle-slide { flex:0 0 100%; min-width:100%; }
+.ring-angle-slide img { width:100%; height:auto; display:block; min-height:400px; object-fit:cover; background:#e9e8e7; }
+.ring-gallery-arrow {
+  position:absolute; top:50%; transform:translateY(-50%);
+  width:40px; height:40px; border-radius:50%;
+  background:#0B0F1A; color:#C9A84C; border:1px solid rgba(201,168,76,0.5);
+  display:flex; align-items:center; justify-content:center; cursor:pointer;
+  transition:background 0.18s ease, transform 0.18s ease; padding:0;
+}
+.ring-gallery-arrow:hover { background:#1a2233; transform:translateY(-50%) scale(1.06); }
+.ring-gallery-arrow.prev { left:12px; }
+.ring-gallery-arrow.next { right:12px; }
+.ring-gallery-dots { position:absolute; bottom:14px; left:0; right:0; display:flex; justify-content:center; gap:8px; }
+.ring-gallery-dot {
+  width:8px; height:8px; border-radius:50%;
+  background:rgba(255,255,255,0.65); border:1px solid rgba(11,15,26,0.35);
+  cursor:pointer; padding:0; transition:all 0.2s ease;
+}
+.ring-gallery-dot.active { background:#C9A84C; border-color:#C9A84C; transform:scale(1.3); }
+.ring-gallery-caption {
+  position:absolute; top:12px; left:12px;
+  background:rgba(11,15,26,0.72); color:#C9A84C;
+  font-family:'Inter',sans-serif; font-size:10px; letter-spacing:0.16em; text-transform:uppercase;
+  padding:5px 11px; border-radius:6px;
+}
+/* Gold pulse loading dot (ring multi-angle generation) */
+@keyframes goldPulse { 0%,100%{ box-shadow:0 0 0 0 rgba(201,168,76,0.55); } 50%{ box-shadow:0 0 0 12px rgba(201,168,76,0); } }
+.gold-pulse-dot { width:14px; height:14px; border-radius:50%; background:#C9A84C; animation:goldPulse 1.4s ease-in-out infinite; margin:10px auto 0; }
+
 /* ── Ring try-on ── */
 #ring-tryon-canvas {
   position:absolute; top:0; left:0;
@@ -678,6 +711,20 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
           <img id="refineImg" src="" alt="Your AI jewelry design"
                class="w-full h-auto block"
                style="min-height:400px;object-fit:cover;">
+          <!-- Ring multi-angle swipeable gallery (rings only; populated by JS) -->
+          <div id="ringAngleGallery" style="display:none;">
+            <div class="ring-gallery-viewport">
+              <div id="ringGalleryTrack"></div>
+            </div>
+            <span class="ring-gallery-caption" id="ringGalleryCaption">Hero Angle</span>
+            <button class="ring-gallery-arrow prev" id="ringGalleryPrev" aria-label="Previous angle">
+              <span class="material-symbols-outlined" style="font-size:22px;">chevron_left</span>
+            </button>
+            <button class="ring-gallery-arrow next" id="ringGalleryNext" aria-label="Next angle">
+              <span class="material-symbols-outlined" style="font-size:22px;">chevron_right</span>
+            </button>
+            <div class="ring-gallery-dots" id="ringGalleryDots"></div>
+          </div>
           <!-- Generation loading overlay -->
           <div id="genLoadingOverlay" style="display:none;position:absolute;inset:0;background:rgba(249,248,248,0.88);align-items:center;justify-content:center;flex-direction:column;gap:14px;">
             <div style="width:52px;height:52px;border-radius:50%;border:3px solid #b9e2f5;border-top-color:#3c6474;animation:jwlz-spin 1s linear infinite;"></div>
@@ -1790,6 +1837,11 @@ function setGenLoading(on) {
     if (rBtn) rBtn.disabled = true;
     if (icon) icon.textContent = 'refresh';
     if (text) text.textContent = 'Creating your piece…';
+    // Reset loading copy to defaults (ring multi-angle flow overrides this afterward).
+    const _lm0 = document.getElementById('loadingMsg');
+    if (_lm0) _lm0.textContent = 'Reading your creative brief…';
+    if (loadOverlay) { const _p0 = loadOverlay.querySelector('p'); if (_p0) _p0.textContent = 'Creating your piece…'; }
+    const _gp0 = document.querySelector('.gold-pulse-dot'); if (_gp0) _gp0.remove();
     if (loadOverlay) loadOverlay.style.display = 'flex';
     if (errOverlay)  errOverlay.style.display  = 'none';
     if (previewPh)   previewPh.style.display   = 'none';
@@ -2669,6 +2721,14 @@ async function startGeneration(isTweak) {
 
   console.log('[JWLZIFY] generation prompt:', fullPrompt);
   console.log('[JWLZIFY] img2img:', initImage ? 'yes (initImage present)' : 'no (txt2img)');
+
+  // RING ONLY: generate 3 camera angles (head-on / hero / profile) instead of one image.
+  if (resolvedType === 'ring') {
+    const _ringCore = _buildHfJewelryDesc('ring', LAB.material, LAB.gem, LAB.style, desc);
+    _generateRingMultiAngle({ core: _ringCore, thisGen: thisGen, isTweak: isTweak, fullPromptForLog: fullPrompt });
+    return;
+  }
+
   _enqueueGen(() => _generateImage(fullPrompt, negativePrompt, initImage, _hfOverrides)).then((blobUrl) => {
     console.log('[JWLZIFY] setting image src to:', blobUrl?.slice(0, 50));
     if (!blobUrl) {
@@ -2816,6 +2876,14 @@ async function confirmAndGenerate() {
 
   console.log('[JWLZIFY] generation prompt:', fullPrompt);
   console.log('[JWLZIFY] negative prompt:', negativePrompt);
+
+  // RING ONLY: generate 3 camera angles (head-on / hero / profile) instead of one image.
+  if (LAB.type === 'ring') {
+    const _ringCore = _buildHfJewelryDesc('ring', LAB.material, LAB.gem, LAB.style || 'Modern', userIdea);
+    _generateRingMultiAngle({ core: _ringCore, thisGen: thisGen, isTweak: false, fullPromptForLog: fullPrompt });
+    return;
+  }
+
   _enqueueGen(() => _generateImage(fullPrompt, negativePrompt, null, _hfOverridesC)).then(blobUrl => {
     if (!blobUrl) {
       if (thisGen !== generationId) return;
@@ -2843,6 +2911,183 @@ async function confirmAndGenerate() {
     const errOverlay = document.getElementById('genErrorOverlay');
     if (errOverlay) errOverlay.style.display = 'flex';
   });
+}
+
+/* ══════════════════════════════════════════════════════════
+   RING MULTI-ANGLE GENERATION + SWIPEABLE GALLERY (rings only)
+   - Generates 3 images of the SAME ring from 3 camera angles.
+   - ringAngles[0] = head-on/face-on (ALWAYS used by try-on).
+   - ringAngles[1] = three-quarter hero (default gallery view).
+   - ringAngles[2] = profile/side.
+   ══════════════════════════════════════════════════════════ */
+const RING_ANGLES = [
+  { cap: 'Head-On',
+    clause: 'TOP-DOWN FACE-ON VIEW: photographed looking straight down at the top face of the ring. The center stone and setting face directly toward the viewer, filling the center of the frame. The band curves away below and behind the setting. This is the view of a ring on a finger pointed up toward you. The decorative top/face is the focus, centered and symmetrical.',
+    hf: 'top-down face-on view, looking straight down at the top face of the ring, center stone facing the viewer, head-on, centered, symmetrical' },
+  { cap: 'Hero Angle',
+    clause: 'Three-quarter angle view, the classic flattering jewelry hero shot, showing the top, front, and side of the ring together, stone catching the light, sitting upright.',
+    hf: 'three-quarter angle hero view, showing the top front and side together, stone catching the light, sitting upright' },
+  { cap: 'Profile',
+    clause: 'Direct side profile view showing the band thickness, setting height, and side stones or detailing, ring upright in profile.',
+    hf: 'direct side profile view, showing band thickness, setting height and side detailing, ring upright in profile' },
+];
+const RING_GALLERY_HF_NEG = 'person, human, hand, fingers, body part, worn, multiple rings, two rings, collage, grid, blurry, deformed, asymmetrical';
+
+let _ringGalleryUrls  = [];   // [{url, cap, orig}] of the angles that succeeded
+let _ringGalleryIndex = 0;
+let _ringGalleryWired = false;
+
+// Update the generation loading copy + gold pulse for the multi-angle ring flow.
+function _setRingLoadingMsg() {
+  const lm = document.getElementById('loadingMsg');
+  if (lm) lm.textContent = 'Generating your design from multiple angles…';
+  const ov = document.getElementById('genLoadingOverlay');
+  if (ov) { const p = ov.querySelector('p'); if (p) p.textContent = 'Generating your design from multiple angles…'; }
+  // Add a gold pulse dot under the step-1/2 loading message (once).
+  const ldBlock = lm && lm.parentElement;
+  if (ldBlock && !ldBlock.querySelector('.gold-pulse-dot')) {
+    const dot = document.createElement('div');
+    dot.className = 'gold-pulse-dot';
+    ldBlock.appendChild(dot);
+  }
+}
+
+// Generate one angle (Gemini-first → Flux → HF fallback, via _generateImage). Returns blob URL or null.
+function _genRingAngle(core, shared, angle) {
+  const prompt = `${angle.clause} ${shared}`;
+  const hfOverride = {
+    inputs: `${core}, ${angle.hf}, ${shared}`,
+    negative_prompt: RING_GALLERY_HF_NEG,
+    guidance_scale: 9.0,
+    num_inference_steps: 30,
+  };
+  return _enqueueGen(() => _generateImage(prompt, RING_GALLERY_HF_NEG, null, hfOverride)).catch(() => null);
+}
+
+async function _generateRingMultiAngle(opts) {
+  const core   = opts.core;
+  const thisGen = opts.thisGen;
+  const isTweak = !!opts.isTweak;
+  const ri = document.getElementById('refineImg');
+  _setRingLoadingMsg();
+
+  const shared = `${core}, single ring, one ring only, white seamless studio background, studio lighting, sharp focus, photorealistic, 8k, highly detailed, isolated product, no person, no hand, no body parts`;
+
+  // Generate all 3 angles (queue caps concurrency). Any that fail resolve to null.
+  let urls = await Promise.all(RING_ANGLES.map(a => _genRingAngle(core, shared, a)));
+
+  // Try-on REQUIRES head-on (index 0): retry it specifically before falling back.
+  if (!urls[0]) {
+    console.log('[Ring] head-on (index 0) failed — retrying specifically before fallback');
+    urls[0] = await _genRingAngle(core, shared, RING_ANGLES[0]);
+  }
+  if (!urls[0]) {
+    urls[0] = urls[1] || urls[2] || null; // last-resort fallback so try-on has something
+    if (urls[0]) console.log('[Ring] head-on unavailable — falling back to next available angle for index 0');
+  }
+
+  // A newer generation superseded this one — discard.
+  if (thisGen !== generationId) { urls.forEach(u => { if (u) URL.revokeObjectURL(u); }); return; }
+
+  if (!urls[0]) {
+    setGenLoading(false);
+    const errOverlay = document.getElementById('genErrorOverlay');
+    if (errOverlay) errOverlay.style.display = 'flex';
+    return;
+  }
+
+  LAB.ringAngles = urls;          // fixed order: [headOn, threeQuarter, profile]
+  LAB.imageUrl   = urls[0];       // head-on — try-on + remove.bg preload key
+  bgRemovalCache.clear();
+  console.log('[Ring] generated 3 angles:', urls);
+
+  // Capture head-on as base64 for any later img2img refine pass.
+  fetch(urls[0]).then(r => r.blob()).then(blob => {
+    const fr = new FileReader();
+    fr.onload = () => { lastGeneratedImage = fr.result.split(',')[1]; };
+    fr.readAsDataURL(blob);
+  }).catch(() => {});
+
+  // Quote / order thumbnails use the head-on product image.
+  const q = document.getElementById('quoteImg'); if (q) q.src = urls[0];
+  const ot = document.getElementById('orderThumb'); if (ot) ot.src = urls[0];
+
+  setupRingGallery(urls);
+
+  if (isTweak) { if (ri) ri.style.filter = 'none'; }
+  else { showRefineStep(); }
+  setGenLoading(false);
+  window._lastFullPrompt = opts.fullPromptForLog || '';
+  showPostGenUI();
+}
+
+// Build the swipeable gallery DOM from whichever angles succeeded; default to the hero angle.
+function setupRingGallery(urls) {
+  const avail = [];
+  urls.forEach((u, i) => { if (u) avail.push({ url: u, cap: RING_ANGLES[i].cap, orig: i }); });
+  _ringGalleryUrls = avail;
+
+  const track    = document.getElementById('ringGalleryTrack');
+  const dotsWrap = document.getElementById('ringGalleryDots');
+  if (!track || !dotsWrap) return;
+
+  track.innerHTML = avail.map(a =>
+    `<div class="ring-angle-slide"><img src="${a.url}" alt="Ring — ${a.cap} view" loading="lazy"></div>`
+  ).join('');
+  dotsWrap.innerHTML = avail.map((a, idx) =>
+    `<button class="ring-gallery-dot" data-i="${idx}" aria-label="${a.cap}"></button>`
+  ).join('');
+
+  // Default view: three-quarter hero (original index 1) when available.
+  let def = avail.findIndex(a => a.orig === 1);
+  if (def < 0) def = 0;
+
+  const showNav = avail.length > 1;
+  document.getElementById('ringGalleryPrev').style.display = showNav ? '' : 'none';
+  document.getElementById('ringGalleryNext').style.display = showNav ? '' : 'none';
+  dotsWrap.style.display = showNav ? '' : 'none';
+
+  _wireRingGallery();
+  _ringGalleryGoTo(def);
+}
+
+function _ringGalleryGoTo(idx) {
+  const n = _ringGalleryUrls.length;
+  if (!n) return;
+  _ringGalleryIndex = ((idx % n) + n) % n;
+  const track = document.getElementById('ringGalleryTrack');
+  if (track) track.style.transform = 'translateX(-' + (_ringGalleryIndex * 100) + '%)';
+  document.querySelectorAll('#ringGalleryDots .ring-gallery-dot').forEach((d, i) =>
+    d.classList.toggle('active', i === _ringGalleryIndex));
+  const cap = document.getElementById('ringGalleryCaption');
+  if (cap && _ringGalleryUrls[_ringGalleryIndex]) cap.textContent = _ringGalleryUrls[_ringGalleryIndex].cap;
+  console.log('[Ring] gallery angle viewed:', _ringGalleryIndex);
+}
+
+// Wire arrows, dot delegation and touch-swipe ONCE.
+function _wireRingGallery() {
+  if (_ringGalleryWired) return;
+  _ringGalleryWired = true;
+  const prev = document.getElementById('ringGalleryPrev');
+  const next = document.getElementById('ringGalleryNext');
+  const dots = document.getElementById('ringGalleryDots');
+  const vp   = document.querySelector('#ringAngleGallery .ring-gallery-viewport');
+  if (prev) prev.addEventListener('click', () => _ringGalleryGoTo(_ringGalleryIndex - 1));
+  if (next) next.addEventListener('click', () => _ringGalleryGoTo(_ringGalleryIndex + 1));
+  if (dots) dots.addEventListener('click', (e) => {
+    const d = e.target.closest('.ring-gallery-dot');
+    if (d) _ringGalleryGoTo(parseInt(d.getAttribute('data-i'), 10) || 0);
+  });
+  if (vp) {
+    let startX = null;
+    vp.addEventListener('touchstart', (e) => { startX = e.touches[0].clientX; }, { passive: true });
+    vp.addEventListener('touchend', (e) => {
+      if (startX === null) return;
+      const dx = e.changedTouches[0].clientX - startX;
+      if (Math.abs(dx) > 40) _ringGalleryGoTo(_ringGalleryIndex + (dx < 0 ? 1 : -1));
+      startX = null;
+    }, { passive: true });
+  }
 }
 
 /* ── Post-generation Refine / Fresh (all types) ── */
@@ -2977,6 +3222,17 @@ function showRefineStep() {
   document.getElementById('quoteImg').src   = LAB.imageUrl;
   const ot = document.getElementById('orderThumb');
   if (ot) ot.src = LAB.imageUrl;
+
+  // Ring multi-angle gallery vs single-image toggle
+  const _rg = document.getElementById('ringAngleGallery');
+  const _ri = document.getElementById('refineImg');
+  if (LAB.type === 'ring' && LAB.ringAngles && LAB.ringAngles.length) {
+    if (_rg) _rg.style.display = '';
+    if (_ri) _ri.style.display = 'none';
+  } else {
+    if (_rg) _rg.style.display = 'none';
+    if (_ri) _ri.style.display = '';
+  }
 
   // Badge
   const chainPart = (LAB.type === 'necklace' && selectedChainLabel)
@@ -3761,7 +4017,12 @@ async function setupTryOn() {
     const handle = document.getElementById('tryon-resize');
     if (canvas) canvas.style.display = 'none';
     if (handle) handle.style.display = 'none';
-    loadRingForTryOn(LAB.imageUrl);
+    // Try-on ALWAYS uses the head-on / face-on angle (ringAngles[0]), regardless of
+    // which angle is shown in the gallery. The hide-bottom occlusion mask then tucks
+    // the lower band behind a vertical finger so it looks naturally worn.
+    const _headOn = (LAB.ringAngles && LAB.ringAngles[0]) ? LAB.ringAngles[0] : LAB.imageUrl;
+    console.log('[Ring] try-on using head-on angle (index 0)');
+    loadRingForTryOn(_headOn);
   } else if (LAB.type === 'bracelet') {
     if (hintEl) hintEl.textContent = 'DRAG TO POSITION · DRAG CORNER TO RESIZE';
     const canvas = document.getElementById('tryon-necklace');
