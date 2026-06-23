@@ -23,6 +23,36 @@
   var currentCategory = 'ring';
   var expanded = false;
 
+  // ── Pricing (shared AI Lab formula via pricing.js) + locked metal options ──
+  var P = window.JWLZ_PRICING;
+  var METAL_OPTIONS = [
+    { code: '925silver', display: '925 Sterling Silver', karat: '925' },
+    { code: '10ctgold',  display: '10k Gold',            karat: '10k' },
+    { code: '14ctgold',  display: '14k Gold',            karat: '14k' }
+  ];
+  console.log('[Collections] metal options locked to: 925 silver, 10k gold, 14k gold');
+
+  function metalOf(code) {
+    for (var i = 0; i < METAL_OPTIONS.length; i++) if (METAL_OPTIONS[i].code === code) return METAL_OPTIONS[i];
+    return METAL_OPTIONS[0];
+  }
+  function computePrice(item, metalCode) {
+    var s = item.specs || {};
+    var mc = metalCode || s.metalCode;
+    if (!P || !P.priceForSpec) return null;
+    var price = Math.round(P.priceForSpec({
+      metalCode: mc, grams: s.grams, stoneCode: s.stoneCode,
+      jewelryType: s.jewelryType, carats: s.carats, stoneCount: s.stoneCount
+    }));
+    console.log('[Collections] price calc | item:', item.id, '| metal:', mc, '| price:', price);
+    if (price < 50 || price > 100000) {
+      console.warn('[Collections] price OUT OF SANE RANGE:', item.id, '| metal:', mc, '| price:', price,
+        '| inputs:', JSON.stringify({ grams: s.grams, carats: s.carats, stone: s.stoneCode }));
+    }
+    return price;
+  }
+  function fmtPrice(n) { return (n == null) ? '—' : '$' + n.toLocaleString('en-US') + ' CAD'; }
+
   // ── Sidebar counts -> real number of items per category ──
   Array.prototype.forEach.call(filterBtns.querySelectorAll('.coll-filter-btn'), function (btn) {
     var cat = FILTER_TO_CATEGORY[btn.getAttribute('data-filter')];
@@ -75,6 +105,11 @@
     title.className = 'col-card-title';
     title.textContent = item.name;
     body.appendChild(title);
+
+    var price = document.createElement('p');
+    price.className = 'col-card-price';
+    price.textContent = fmtPrice(computePrice(item, item.specs.metalCode));
+    body.appendChild(price);
 
     card.appendChild(wrap);
     card.appendChild(body);
@@ -146,24 +181,48 @@
   var mTitle     = document.getElementById('specsModalTitle');
   var mList      = document.getElementById('specsModalList');
   var mCustomize = document.getElementById('specsCustomizeBtn');
+  var mMetalSel  = document.getElementById('specsMetalSelect');
+  var mPrice     = document.getElementById('specsPrice');
+  // Material/Karat are driven by the selected metal; price is computed (no static range row).
   var SPEC_ROWS = [
     ['Type', 'type'], ['Material', 'material'], ['Karat / Purity', 'karat'],
-    ['Stone', 'stone'], ['Stone Size', 'stoneSize'], ['Style', 'style'],
-    ['Weight', 'weight'], ['Price Range', 'priceRange']
+    ['Stone', 'stone'], ['Stone Size', 'stoneSize'], ['Style', 'style'], ['Weight', 'weight']
   ];
+
+  var _openItem = null;
+  var _openMetal = null;
+
+  function renderSpecList(item, metalCode) {
+    var s = item.specs || {};
+    var m = metalOf(metalCode);
+    mList.innerHTML = SPEC_ROWS.map(function (r) {
+      var v = (r[1] === 'material') ? m.display : (r[1] === 'karat') ? m.karat : s[r[1]];
+      if (v === undefined || v === null || v === '') return '';
+      return '<li><span class="k">' + r[0] + '</span><span class="v">' + v + '</span></li>';
+    }).join('');
+  }
+  function renderMetalSelect(metalCode) {
+    if (!mMetalSel) return;
+    mMetalSel.innerHTML = METAL_OPTIONS.map(function (m) {
+      return '<button class="specs-metal-btn' + (m.code === metalCode ? ' active' : '') +
+        '" data-code="' + m.code + '">' + m.display + '</button>';
+    }).join('');
+  }
+  function renderPrice(item, metalCode) {
+    if (mPrice) mPrice.textContent = fmtPrice(computePrice(item, metalCode));
+  }
 
   function openSpecs(item) {
     var s = item.specs || {};
+    _openItem = item;
+    _openMetal = s.metalCode;
     mImg.setAttribute('src', 'images/collections/' + item.id + '.jpg');
     mImg.setAttribute('alt', item.name);
     mTitle.textContent = item.name;
     if (mCustomize) mCustomize.setAttribute('href', 'ailab.html?type=' + encodeURIComponent((s.type || '').toLowerCase()));
-    mList.innerHTML = SPEC_ROWS.map(function (r) {
-      var v = s[r[1]];
-      if (v === undefined || v === null || v === '') return '';
-      var cls = r[1] === 'priceRange' ? 'v price' : 'v';
-      return '<li><span class="k">' + r[0] + '</span><span class="' + cls + '">' + v + '</span></li>';
-    }).join('');
+    renderSpecList(item, _openMetal);
+    renderMetalSelect(_openMetal);
+    renderPrice(item, _openMetal);
     modal.classList.add('open');
     document.body.style.overflow = 'hidden';
     console.log('[Collections] opened specs for:', item.name);
@@ -179,8 +238,20 @@
       if (e.key === 'Escape' && modal.classList.contains('open')) closeSpecs();
     });
   }
+  // Switch metal (925 / 10k / 14k) → update material, karat and price live.
+  if (mMetalSel) mMetalSel.addEventListener('click', function (e) {
+    var b = e.target.closest('.specs-metal-btn');
+    if (!b || !_openItem) return;
+    _openMetal = b.getAttribute('data-code');
+    renderMetalSelect(_openMetal);
+    renderSpecList(_openItem, _openMetal);
+    renderPrice(_openItem, _openMetal);
+  });
 
   // ── Init ──
   console.log('[Collections] tab theme updated to site palette');
-  render('ring'); // default view: Rings
+  render('ring'); // default view: Rings (uses fallback spot prices until live ones load)
+  if (P && P.fetchSpotPrices) {
+    P.fetchSpotPrices().then(function () { render(currentCategory); }).catch(function () {});
+  }
 })();

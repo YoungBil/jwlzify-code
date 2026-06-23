@@ -15,13 +15,16 @@
   'use strict';
 
   function pad2(n) { return n < 10 ? '0' + n : '' + n; }
-  function money(n) { return '$' + n.toLocaleString('en-US'); }
 
-  var MATERIALS = ['18k Yellow Gold', '18k White Gold', '18k Rose Gold', 'Platinum'];
-  var KARAT = {
-    '18k Yellow Gold': '18k', '18k White Gold': '18k', '18k Rose Gold': '18k',
-    'Platinum': 'PT950', 'Titanium': '—'
+  // ── Metals are LOCKED to exactly these three (matches the AI Lab pricing codes). ──
+  var METALS = {
+    '925silver': { display: '925 Sterling Silver', karat: '925' },
+    '10ctgold':  { display: '10k Gold',            karat: '10k' },
+    '14ctgold':  { display: '14k Gold',            karat: '14k' }
   };
+  // Tone of the original render → a sensible default locked metal (image is representative;
+  // the metal is switchable in the modal between all three).
+  var TONE_PREV = ['Yellow', 'White', 'Rose', 'Platinum']; // old idx%4 tone order
   var STONES = [
     'Round Brilliant Diamond', 'Pavé Diamonds', 'Blue Sapphire', 'Colombian Emerald',
     'Aquamarine', 'Pink Morganite', 'Ruby', 'South Sea Pearl', 'Black Onyx', 'Yellow Diamond'
@@ -87,32 +90,36 @@
     var idx = i - 1;
     var name = cfg.names[idx];
     var style = cfg.styles[idx % cfg.styles.length];
-    var material = MATERIALS[idx % MATERIALS.length];
     var stone = noStoneFor(category, style) ? 'None' : STONES[(idx * 3 + CAT_ORDER.indexOf(category)) % STONES.length];
 
-    var karat = KARAT[material] || '18k';
-    var weight = (cfg.weightBase + idx * (category === 'bracelet' || category === 'necklace' ? 1.6 : 0.6));
-    var weightStr = (Math.round(weight * 10) / 10) + ' g';
+    // Default locked metal (switchable in modal): white/platinum tones → 925 silver,
+    // yellow → 14k gold, rose → 10k gold. All three options are represented.
+    var tone = TONE_PREV[idx % 4];
+    var metalCode;
+    if (tone === 'White' || tone === 'Platinum') metalCode = '925silver';
+    else if (tone === 'Yellow') metalCode = '14ctgold';
+    else metalCode = '10ctgold';
+    var metal = METALS[metalCode];
 
-    var stoneSize, gemPhrase;
+    var grams = Math.round((cfg.weightBase + idx * (category === 'bracelet' || category === 'necklace' ? 1.6 : 0.6)) * 10) / 10;
+    var weightStr = grams + ' g';
+
+    var stoneCode, stoneSize, gemPhrase, carats, stoneCount;
     if (stone === 'None') {
-      stoneSize = '—';
-      gemPhrase = 'polished plain ' + material.toLowerCase().replace('18k ', '') + ', no stones';
+      stoneCode = 'none'; carats = 0; stoneCount = 0; stoneSize = '—';
+      gemPhrase = 'polished plain ' + metal.display.toLowerCase() + ', no stones';
     } else {
-      var carats = Math.round((0.4 + (idx % 6) * 0.45) * 100) / 100;
+      stoneCode = 'lab_diamond'; // AI Lab rate $2/ct; profit margin stays default 1.0
+      carats = Math.round((0.4 + (idx % 6) * 0.45) * 100) / 100;
       var isPave = stone.indexOf('Pav') !== -1 || style === 'Pavé Eternity' || style === 'Tennis' || style === 'Station';
+      stoneCount = isPave ? Math.max(2, Math.round(carats / 0.15)) : 1;
       stoneSize = carats.toFixed(2) + ' ct' + (isPave ? ' total' : '');
       gemPhrase = 'featuring ' + (isPave ? stoneSize + ' of ' + stone.toLowerCase() : 'a ' + stoneSize + ' ' + stone.toLowerCase());
     }
 
-    var lowBase = cfg.priceBase + idx * Math.round(cfg.priceBase * 0.22);
-    var low = Math.round(lowBase / 50) * 50;
-    var high = Math.round((low * 1.12) / 50) * 50;
-    var priceRange = money(low) + ' – ' + money(high);
-
     // SDXL description (front-facing, single item; orientation clause added by generator)
     var desc = 'a ' + style.toLowerCase() + ' ' + cfg.label.toLowerCase() + ', the "' + name + '", crafted in ' +
-      material + ', ' + gemPhrase;
+      metal.display + ', ' + gemPhrase;
 
     return {
       id: category + '-' + pad2(i),
@@ -123,13 +130,19 @@
       desc: desc,
       specs: {
         type: cfg.label,
-        material: material,
-        karat: karat,
+        jewelryType: cfg.type,   // ring|pendant|earrings|bracelet|necklace (for pricing)
+        material: metal.display, // '925 Sterling Silver' | '10k Gold' | '14k Gold'
+        metalCode: metalCode,    // '925silver' | '10ctgold' | '14ctgold'
+        karat: metal.karat,      // '925' | '10k' | '14k'
         stone: stone,
+        stoneCode: stoneCode,    // 'lab_diamond' | 'none'
         stoneSize: stoneSize,
+        carats: carats,          // numeric total carats
+        stoneCount: stoneCount,
         style: style,
         weight: weightStr,
-        priceRange: priceRange
+        grams: grams             // numeric grams (price input)
+        // price is computed at runtime via pricing.js (shared AI Lab formula)
       }
     };
   }
