@@ -1473,7 +1473,9 @@ const RING_3D_CONFIG = {
   ROUGHNESS: 0.12,
 };
 
-const REMOVE_BG_API_KEY = 'SaaY6FrGJRJs7tj5zh7Jvs29';
+const REMOVE_BG_API_KEY = 'SaaY6FrGJRJs7tj5zh7Jvs29'; // unused while flag is false
+// Set true to re-enable paid remove.bg as primary (with canvas as fallback)
+const USE_REMOVEBG_FALLBACK = false;
 
 /* ── Gemini image generation ── */
 
@@ -3263,9 +3265,9 @@ function showRefineStep() {
   // the refine step, so the transparent PNG is cached and ready the instant
   // try-on opens. Result is keyed by image URL in bgRemovalCache.
   if ((LAB.type === 'ring' || LAB.type === 'bracelet') && LAB.imageUrl && !bgRemovalCache.has(LAB.imageUrl)) {
-    removeBgWithApi(LAB.imageUrl).then(cleanUrl => {
+    removePendantBackgroundCanvas(LAB.imageUrl).then(cleanUrl => {
       bgRemovalCache.set(LAB.imageUrl, cleanUrl);
-      console.log('[TryOn]', LAB.type, 'preloaded remove.bg result at refine step');
+      console.log('[TryOn]', LAB.type, 'preloaded flood-fill result at refine step');
     }).catch(() => {});
   }
 }
@@ -4440,11 +4442,13 @@ async function removeBgWithApi(imageUrl) {
 }
 
 async function removePendantBackground(imageUrl) {
-  try {
-    const result = await removeBgWithApi(imageUrl);
-    if (result) return result;
-  } catch (e) {
-    console.warn('[JWLZIFY] remove.bg failed, using canvas fallback:', e.message);
+  if (USE_REMOVEBG_FALLBACK) {
+    try {
+      const result = await removeBgWithApi(imageUrl);
+      if (result) return result;
+    } catch (e) {
+      console.warn('[JWLZIFY] remove.bg failed, using canvas fallback:', e.message);
+    }
   }
   return removePendantBackgroundCanvas(imageUrl);
 }
@@ -4861,20 +4865,17 @@ async function captureAndRemoveBg() {
   capCtx.scale(-1, 1);
   capCtx.drawImage(video, -cap.width, 0, cap.width, cap.height);
   capCtx.restore();
-  const blob = await new Promise(r => cap.toBlob(r, 'image/png'));
-  const form = new FormData();
-  form.append('image_file', blob, 'frame.png');
-  form.append('size', 'auto');
-  const res = await fetch('https://api.remove.bg/v1.0/removebg', {
-    method: 'POST',
-    headers: { 'X-Api-Key': REMOVE_BG_API_KEY },
-    body: form
-  });
-  if (!res.ok) return;
-  const url = URL.createObjectURL(await res.blob());
-  const img = new Image();
-  img.onload = () => { latestCutoutImage = img; URL.revokeObjectURL(url); };
-  img.src = url;
+  // Convert frame to blob URL, run free flood-fill, then load the cutout
+  const frameUrl = await new Promise(r => cap.toBlob(b => r(URL.createObjectURL(b)), 'image/png'));
+  try {
+    const cleanUrl = await removePendantBackgroundCanvas(frameUrl);
+    URL.revokeObjectURL(frameUrl);
+    const img = new Image();
+    img.onload = () => { latestCutoutImage = img; URL.revokeObjectURL(cleanUrl); };
+    img.src = cleanUrl;
+  } catch (e) {
+    URL.revokeObjectURL(frameUrl);
+  }
 }
 
 function _ringRenderLoop() {
@@ -5161,9 +5162,9 @@ function initTryOn(cfg) {
       _logSource(true);
     };
   } else {
-    removeBgWithApi(_srcToUse).then(cleanUrl => {
+    removePendantBackgroundCanvas(_srcToUse).then(cleanUrl => {
       bgRemovalCache.set(_srcToUse, cleanUrl);
-      console.log('[Ring] remove.bg call status: 200 OK');
+      console.log('[Ring] flood-fill bg removal: done');
       if (!isTryOnActive) return;
       const cleanImg = _makeImg(cleanUrl);
       cleanImg.dataset.src = imageUrl;
@@ -5175,8 +5176,7 @@ function initTryOn(cfg) {
         _logSource(true);
       };
     }).catch(e => {
-      // No credits / failure → keep original drawn at opacity 0.85 (fallback).
-      console.log('[Ring] remove.bg call status: failed —', e.message, '— keeping original at 0.85');
+      console.log('[Ring] flood-fill bg removal failed —', e.message, '— keeping original at 0.85');
       _logSource(false);
     });
   }
@@ -5665,21 +5665,20 @@ async function loadNecklaceForTryOn(imageUrl) {
   necklaceResize.style.display = 'block';
   requestAnimationFrame(updateNecklaceResizeHandle);
 
-  // Swap to bg-removed version via API only.
-  // Canvas flood-fill is NOT used here: metallic chains on a grey background
-  // have near-identical RGB to the background, so flood-fill removes the chain
-  // itself and returns a transparent PNG. On API failure, keep the original.
+  // Swap to bg-removed version. Uses canvas flood-fill (free).
+  // Note: flood-fill may leave chain remnants on very uniform grey — if quality
+  // is poor, set USE_REMOVEBG_FALLBACK = true to re-enable the paid API path.
   try {
     let cleanUrl = bgRemovalCache.get(imageUrl);
     if (!cleanUrl) {
-      cleanUrl = await removeBgWithApi(imageUrl);
+      cleanUrl = await removePendantBackgroundCanvas(imageUrl);
       bgRemovalCache.set(imageUrl, cleanUrl);
     }
     if (isTryOnActive) {
       necklaceImg.src = cleanUrl;
       requestAnimationFrame(updateNecklaceResizeHandle);
     }
-    console.log('[JWLZIFY] necklace bg removed via API');
+    console.log('[JWLZIFY] necklace bg removed via flood-fill');
   } catch (e) {
     console.log('[JWLZIFY] necklace bg removal failed, keeping original:', e.message);
   }
