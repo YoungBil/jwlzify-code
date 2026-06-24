@@ -1,0 +1,8 @@
+name = "bg-remove"
+main = "bg-remove-worker.js"
+compatibility_date = "2024-01-01"
+
+# Dedicated jewelry background removal (matting) proxy → fal.ai (birefnet / rembg).
+# Set the FAL key as an encrypted secret (never put it here):
+#   Cloudflare dashboard: Worker → Settings → Variables → Add → Encrypt → Name: FAL_KEY
+#   or CLI: wrangler secret put FAL_KEY --config bg-remove-wrangler.toml
