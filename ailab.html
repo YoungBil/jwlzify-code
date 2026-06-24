@@ -1676,7 +1676,7 @@ function _buildHfJewelryDesc(type, material, gem, style, desc) {
 }
 const _HF_RING_NEGATIVE      = 'tilted, angled, three-quarter view, 3/4 view, perspective, side view, side angle, top-down, birds eye, isometric, diagonal, rotated, lying flat, flat lay, on its side, leaning, oblique, dutch angle, foreshortening, multiple rings, collage, grid, two rings, group of rings, blurry, deformed, asymmetrical';
 const _HF_BRACELET_NEGATIVE  = 'flat lay, laid flat, spread out, scattered, disconnected pieces, broken chain, straight strip, unclasped, open ends, multiple bracelets, two bracelets, collage, grid, tangled, deformed, asymmetrical, lying on surface, top-down, birds eye, side view, coiled, stacked, two bracelets, double band, two bands, stacked bracelets, pair of bracelets, multiple loops, double loop, two rings, twin bands, layered bracelets, second bracelet, duplicate';
-const _HF_NECKLACE_NEGATIVE  = 'flat lay, tabletop, top-down view, coiled chain, chain laid flat, jewelry box, angled perspective, asymmetrical drape, cropped chain, multiple necklaces, hands, neck skin, mannequin face, busy background, blurry, deformed, pendant, charm, hanging pendant, locket, dangling ornament, extra pendant, multiple chains, two necklaces, double chain, several chains, duplicate necklace, tangled chains, center stone, centre stone, focal stone, solitaire, central gemstone, large center gem, neck, bust, ghost mannequin, neck form, body, person, skin';
+const _HF_NECKLACE_NEGATIVE  = 'flat lay, tabletop, top-down view, coiled chain, chain laid flat, jewelry box, angled perspective, asymmetrical drape, cropped chain, multiple necklaces, hands, neck skin, mannequin face, busy background, blurry, deformed, pendant, charm, hanging pendant, locket, dangling ornament, extra pendant, multiple chains, two necklaces, double chain, several chains, duplicate necklace, tangled chains, center stone, centre stone, focal stone, solitaire, central gemstone, large center gem, neck, bust, body, person, skin';
 // Single-band enforcement — bracelet only. Appended to BOTH Gemini and HF positive prompts.
 const _BRACELET_SINGLE_BAND   = 'ONE single bracelet band only. A single continuous loop. One unbroken band. Exactly one bracelet, not two, not a pair, not stacked, not double-banded. A single solitary bracelet shown as one closed oval loop facing the camera.';
 // Head-on band negative for bracelet (front-facing horizontal loop; no body parts, no side/tilt).
@@ -2275,9 +2275,9 @@ function buildPrompt(type, material, gem, style, desc) {
     const necklaceFraming = [
       'necklace displayed as if worn',
       'front-facing view photographed straight on',
-      'chain forms a clean symmetrical U-shape draped evenly down both sides',
-      'isolated single necklace, full chain visible from end to end',
-      'a single continuous chain only, no pendant, no charm, one necklace',
+      'chain forms a clean symmetrical U-shape draped down both sides evenly',
+      'pendant centered at bottom of the curve facing directly forward',
+      'displayed on an invisible ghost mannequin neck form',
       'vertical portrait orientation',
       'professional jewelry photography',
       'plain seamless light grey background',
@@ -2721,7 +2721,7 @@ async function startGeneration(isTweak) {
     .join(', ');
   const _ringNegPrefix     = resolvedType === 'ring' ? 'collage, grid, multiple panels, multiple angles, contact sheet, multiple rings, split screen, tiled, montage, two rings, several rings, ' : '';
   const _necklaceNegSuffix = resolvedType === 'necklace'
-    ? ', flat lay, tabletop, top-down view, coiled chain, chain laid flat, jewelry box, angled perspective, asymmetrical drape, cropped chain, multiple necklaces, hands, neck skin, mannequin face, busy background, pendant, charm, hanging pendant, locket, dangling ornament, extra pendant, multiple chains, two necklaces, double chain, several chains, duplicate necklace, tangled chains, center stone, centre stone, focal stone, solitaire, central gemstone, large center gem, neck, bust, ghost mannequin, neck form, body, skin'
+    ? ', flat lay, tabletop, top-down view, coiled chain, chain laid flat, jewelry box, angled perspective, asymmetrical drape, cropped chain, multiple necklaces, hands, neck skin, mannequin face, busy background, pendant, charm, hanging pendant, locket, dangling ornament, extra pendant, multiple chains, two necklaces, double chain, several chains, duplicate necklace, tangled chains, center stone, centre stone, focal stone, solitaire, central gemstone, large center gem, neck, bust, body, skin'
       + (selectedNecklacePlacement === 'stations' ? ', tennis necklace, continuous stones, fully set chain, pave chain, stones touching, no gaps between stones' : '')
     : '';
   const negativePrompt = `${_ringNegPrefix}${negJewelryTerms}, brooch, anklet, person, human, model, body, face, hands, text, watermark, logo, blurry, low quality, distorted${_necklaceNegSuffix}`;
@@ -2800,7 +2800,7 @@ async function startGeneration(isTweak) {
         ? 'stones set continuously along entire chain tennis necklace'
         : `${_domSpecs.stoneCount} individual stones spaced far apart along chain, bare chain links clearly visible between each stone, NOT tennis necklace, NOT continuous, distinct gaps between stones`;
     const _hfNegNecklace = _HF_NECKLACE_NEGATIVE + (selectedNecklacePlacement === 'stations' ? ', tennis necklace, continuous stones, fully set chain, pave chain, stones touching, no gaps between stones' : '');
-    const _hfInput = `${_hfDesc}, ${_hfPlacement}, necklace displayed as if worn, front-facing view photographed straight on, chain forms a clean symmetrical U-shape draped evenly down both sides, isolated single necklace full chain visible, a single continuous chain only, no pendant, no charm, one necklace, vertical portrait orientation, light grey background, studio lighting, sharp focus, photorealistic, 8k`;
+    const _hfInput = `${_hfDesc}, ${_hfPlacement}, necklace displayed as if worn, front-facing view photographed straight on, chain forms a clean symmetrical U-shape draped down both sides evenly, pendant centered at bottom of the curve facing directly forward, displayed on an invisible ghost mannequin neck form, vertical portrait orientation, light grey background, studio lighting, sharp focus, photorealistic, 8k`;
     _hfOverrides = { inputs: _hfInput, negative_prompt: _hfNegNecklace, guidance_scale: 9.0, num_inference_steps: 30 };
     console.log('[JWLZIFY] necklace prompt (HF):', _hfInput);
     console.log('[JWLZIFY] necklace negative:', _hfNegNecklace);
@@ -2933,7 +2933,7 @@ async function confirmAndGenerate() {
     .flatMap(([, syns]) => syns).join(', ');
   const _ringNegPrefixC     = LAB.type === 'ring' ? 'collage, grid, multiple panels, multiple angles, contact sheet, multiple rings, split screen, tiled, montage, two rings, several rings, ' : '';
   const _necklaceNegSuffixC = LAB.type === 'necklace'
-    ? ', flat lay, tabletop, top-down view, coiled chain, chain laid flat, jewelry box, angled perspective, asymmetrical drape, cropped chain, multiple necklaces, hands, neck skin, mannequin face, busy background, pendant, charm, hanging pendant, locket, dangling ornament, extra pendant, multiple chains, two necklaces, double chain, several chains, duplicate necklace, tangled chains, center stone, centre stone, focal stone, solitaire, central gemstone, large center gem, neck, bust, ghost mannequin, neck form, body, skin'
+    ? ', flat lay, tabletop, top-down view, coiled chain, chain laid flat, jewelry box, angled perspective, asymmetrical drape, cropped chain, multiple necklaces, hands, neck skin, mannequin face, busy background, pendant, charm, hanging pendant, locket, dangling ornament, extra pendant, multiple chains, two necklaces, double chain, several chains, duplicate necklace, tangled chains, center stone, centre stone, focal stone, solitaire, central gemstone, large center gem, neck, bust, body, skin'
       + (selectedNecklacePlacement === 'stations' ? ', tennis necklace, continuous stones, fully set chain, pave chain, stones touching, no gaps between stones' : '')
     : '';
   const negativePrompt = _ringNegPrefixC + negJewelryTerms + ', brooch, anklet, person, human, model, body, face, hands, text, watermark, logo, blurry, low quality, distorted' + _necklaceNegSuffixC;
@@ -2962,7 +2962,7 @@ async function confirmAndGenerate() {
         ? 'stones set continuously along entire chain tennis necklace'
         : `${window.jwlSpecifications.stoneCount} individual stones spaced far apart along chain, bare chain links clearly visible between each stone, NOT tennis necklace, NOT continuous, distinct gaps between stones`;
     const _hfNegNecklaceC = _HF_NECKLACE_NEGATIVE + (selectedNecklacePlacement === 'stations' ? ', tennis necklace, continuous stones, fully set chain, pave chain, stones touching, no gaps between stones' : '');
-    const _hfInput = `${_hfDesc}, ${_hfPlacement}, necklace displayed as if worn, front-facing view photographed straight on, chain forms a clean symmetrical U-shape draped evenly down both sides, isolated single necklace full chain visible, a single continuous chain only, no pendant, no charm, one necklace, vertical portrait orientation, light grey background, studio lighting, sharp focus, photorealistic, 8k`;
+    const _hfInput = `${_hfDesc}, ${_hfPlacement}, necklace displayed as if worn, front-facing view photographed straight on, chain forms a clean symmetrical U-shape draped down both sides evenly, pendant centered at bottom of the curve facing directly forward, displayed on an invisible ghost mannequin neck form, vertical portrait orientation, light grey background, studio lighting, sharp focus, photorealistic, 8k`;
     _hfOverridesC = { inputs: _hfInput, negative_prompt: _hfNegNecklaceC, guidance_scale: 9.0, num_inference_steps: 30 };
     console.log('[JWLZIFY] necklace prompt (HF):', _hfInput);
     console.log('[JWLZIFY] necklace negative:', _hfNegNecklaceC);
