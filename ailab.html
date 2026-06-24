@@ -1661,7 +1661,7 @@ const _HF_BRACELET_WRAP_NEG   = 'laid flat, flat lay, straight strip, side view,
 const _GEMINI_BRACELET_SINGLE = 'Generate exactly ONE single bracelet band. Do not show two bands, a double band, stacked bracelets, or a pair. One single continuous loop only.';
 // Flux 2 Pro worker — primary txt2img generator (swap model by updating flux-image-worker.js FAL_MODEL)
 const FLUX_WORKER_URL = 'https://flux-image.sarkd333.workers.dev';
-const BG_REMOVE_WORKER_URL = 'https://bg-remove.sarkd333.workers.dev'; // dedicated fal matting (birefnet/rembg)
+const FAL_BG_REMOVE_URL = 'https://fal-bg-remove.sarkd333.workers.dev'; // fal birefnet matting worker (returns JSON with image.url)
 
 async function _generateImage(prompt, negativePrompt, initImage, hfOverrides) {
   hfOverrides = hfOverrides || {};
@@ -4777,12 +4777,14 @@ async function removePendantBackgroundCanvas(imageUrl) {
    worker), which returns a clean transparent PNG by design — including
    enclosed inner regions like the centre of a bracelet loop. Fallbacks:
    remove.bg (if it has credits), then the original image at 0.85. */
-async function _imageUrlToBase64(url) {
+// Convert any image URL (incl. local blob: URLs) to a full base64 data URL the
+// worker/fal can consume as image_url.
+async function _imageUrlToDataURL(url) {
   const res  = await fetch(url);
   const blob = await res.blob();
   return await new Promise((resolve, reject) => {
     const fr = new FileReader();
-    fr.onload  = () => resolve(String(fr.result).split(',')[1]);
+    fr.onload  = () => resolve(String(fr.result));
     fr.onerror = reject;
     fr.readAsDataURL(blob);
   });
@@ -4808,17 +4810,27 @@ async function _isCenterTransparent(url) {
   });
 }
 
-// Primary cutout: dedicated fal matting model via the bg-remove worker → transparent PNG.
+// Primary cutout: dedicated fal birefnet matting worker → transparent PNG.
+// The worker returns JSON from fal (e.g. { image: { url } }); we fetch that PNG
+// into a same-origin blob URL so the canvas stays clean for reads/Save Photo.
 async function falCutout(imageUrl) {
-  const b64 = await _imageUrlToBase64(imageUrl);
-  const res = await fetch(BG_REMOVE_WORKER_URL, {
+  const dataUrl = await _imageUrlToDataURL(imageUrl);
+  const res = await fetch(FAL_BG_REMOVE_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ initImage: b64 }),
+    body: JSON.stringify({ image_url: dataUrl }),
   });
-  if (!res.ok) throw new Error('bg-remove HTTP ' + res.status);
-  const blob = await res.blob();
-  if (blob.size < 2000) throw new Error('bg-remove returned tiny blob (' + blob.size + 'b)');
+  if (!res.ok) throw new Error('fal-bg-remove HTTP ' + res.status);
+  const data = await res.json();
+  console.log('[Cutout] birefnet response:', data);
+  const pngUrl = (data && data.image && data.image.url)
+              || (data && data.result && data.result.image && data.result.image.url)
+              || (data && data.images && data.images[0] && data.images[0].url);
+  if (!pngUrl) throw new Error('fal-bg-remove: no image url in response');
+  const imgRes = await fetch(pngUrl);
+  if (!imgRes.ok) throw new Error('fal CDN HTTP ' + imgRes.status);
+  const blob = await imgRes.blob();
+  if (blob.size < 1000) throw new Error('fal CDN returned tiny blob (' + blob.size + 'b)');
   return URL.createObjectURL(blob);
 }
 
