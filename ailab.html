@@ -90,6 +90,7 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
   box-shadow:0 4px 16px rgba(60,100,116,0.14);
 }
 .type-btn span.material-symbols-outlined { font-size:28px; }
+.type-btn svg.type-ico { width:28px; height:28px; display:block; }
 
 /* ── Lab input ── */
 .lab-input {
@@ -430,19 +431,42 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
           <label class="label block mb-3" style="font-size:10px;letter-spacing:0.18em;color:#3c6474;">Jewelry Type</label>
           <div class="flex flex-wrap gap-2">
             <button class="type-btn active" data-type="ring" onclick="setType(this,'ring')">
-              <span class="material-symbols-outlined">diamond</span>Ring
+              <!-- Ring: band with a solitaire stone on top -->
+              <svg class="type-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="12" cy="15" r="5.5"/>
+                <path d="M9 7 L12 4 L15 7 L12 10 Z"/>
+              </svg>Ring
             </button>
             <button class="type-btn" data-type="necklace" onclick="setType(this,'necklace')">
-              <span class="material-symbols-outlined">radio_button_unchecked</span>Necklace
+              <!-- Necklace: U-shaped strand with clasp ends (no pendant) -->
+              <svg class="type-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M5 5 C 6 17, 18 17, 19 5"/>
+                <circle cx="5" cy="5" r="1.1" fill="currentColor" stroke="none"/>
+                <circle cx="19" cy="5" r="1.1" fill="currentColor" stroke="none"/>
+              </svg>Necklace
             </button>
             <button class="type-btn" data-type="pendant" onclick="setType(this,'pendant')">
-              <span class="material-symbols-outlined">circle</span>Pendant
+              <!-- Pendant: chain with a hanging charm/stone at the bottom centre -->
+              <svg class="type-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M5 5 C 6 13.5, 18 13.5, 19 5"/>
+                <path d="M12 13 v2.4"/>
+                <path d="M12 16 L14.2 18.4 L12 21 L9.8 18.4 Z"/>
+              </svg>Pendant
             </button>
             <button class="type-btn" data-type="earrings" onclick="setType(this,'earrings')">
-              <span class="material-symbols-outlined">hearing</span>Earrings
+              <!-- Earrings: stud post with a dangling teardrop stone -->
+              <svg class="type-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="12" cy="5" r="2"/>
+                <path d="M12 7 v2"/>
+                <path d="M12 20.5 C 8.6 17, 8.6 11.5, 12 10.5 C 15.4 11.5, 15.4 17, 12 20.5 Z"/>
+              </svg>Earrings
             </button>
             <button class="type-btn" data-type="bracelet" onclick="setType(this,'bracelet')">
-              <span class="material-symbols-outlined">watch</span>Bracelet
+              <!-- Bracelet: oval bangle band for the wrist -->
+              <svg class="type-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <ellipse cx="12" cy="12" rx="8.3" ry="5.6"/>
+                <ellipse cx="12" cy="12" rx="4.6" ry="3"/>
+              </svg>Bracelet
             </button>
           </div>
         </div>
