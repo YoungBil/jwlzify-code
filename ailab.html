@@ -1040,7 +1040,7 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
                          border-radius:6px;font-size:18px;cursor:pointer;line-height:1;flex-shrink:0;">+</button>
         </div>
         <!-- Row 3: Fit on finger -->
-        <div style="display:flex;align-items:center;gap:12px;width:100%;max-width:400px;">
+        <div id="ringFitRow" style="display:flex;align-items:center;gap:12px;width:100%;max-width:400px;">
           <span id="ringFitLabel" style="font-family:Inter,sans-serif;font-size:12px;color:rgba(201,168,76,0.6);user-select:none;width:36px;flex-shrink:0;">Fit</span>
           <label for="ringFitSlider" style="display:none;"></label>
           <input type="range" id="ringFitSlider" class="ring-rotate-slider" min="35" max="65" value="45"
@@ -3359,9 +3359,9 @@ function showRefineStep() {
   // Preload remove.bg for canvas try-on (ring + bracelet) while the user reads
   // the refine step, so the transparent PNG is cached and ready the instant
   // try-on opens. Result is keyed by image URL in bgRemovalCache.
-  if ((LAB.type === 'ring' || LAB.type === 'bracelet') && LAB.imageUrl && !bgRemovalCache.has(LAB.imageUrl)) {
+  if ((LAB.type === 'ring' || LAB.type === 'bracelet' || LAB.type === 'necklace') && LAB.imageUrl && !bgRemovalCache.has(LAB.imageUrl)) {
     // Preload the dedicated fal cutout (birefnet/rembg) so the transparent PNG is cached
-    // and ready the instant try-on opens. Same method for ring and bracelet.
+    // and ready the instant try-on opens. Same method for ring, bracelet and necklace.
     jewelryCutout(LAB.imageUrl, LAB.type).then(result => {
       if (result.url) {
         bgRemovalCache.set(LAB.imageUrl, result.url);
@@ -5013,29 +5013,34 @@ function _buildRingMask(img, srcType) {
   //   ring     → hide the BOTTOM (band backside goes behind the finger)
   //   bracelet → hide the TOP (far arc of the loop goes behind the wrist)
   let fadeStart, fadeEnd, region;
-  oc2.globalCompositeOperation = 'destination-out';
-  if (_ringMaskDirection === 'hide-top') {
-    // Bracelet: fully hidden from 0% down to fadeStart, fade fadeStart→fadeEnd, visible below.
-    fadeStart = ringFadeStart;                          // end of fully-hidden region (slider, default 0.35)
-    fadeEnd   = Math.min(0.95, fadeStart + _BRACELET_FADE_W); // fade width 0.20 → default 0.55
-    const grad = oc2.createLinearGradient(0, SIZE * fadeStart, 0, SIZE * fadeEnd);
-    grad.addColorStop(0, 'rgba(0,0,0,1)');  // fully removed at/above top of fade zone (hide far arc)
-    grad.addColorStop(1, 'rgba(0,0,0,0)');  // fully visible at/below bottom of fade zone (front curve)
-    oc2.fillStyle = grad;
-    oc2.fillRect(0, 0, SIZE, SIZE);
-    region = 'top 0%–' + Math.round(fadeStart * 100) + '% (fade to ' + Math.round(fadeEnd * 100) + '%)';
+  if (_ringMaskDirection === 'none') {
+    // Necklace: drapes on the chest — nothing goes behind the body, so NO mask.
+    region = 'none (full image, no occlusion)';
   } else {
-    // Ring (default, unchanged): visible top, hidden bottom.
-    fadeStart = ringFadeStart;
-    fadeEnd   = _RING_FADE_END;
-    const grad = oc2.createLinearGradient(0, SIZE * fadeStart, 0, SIZE * fadeEnd);
-    grad.addColorStop(0, 'rgba(0,0,0,0)');  // nothing removed at top of fade zone
-    grad.addColorStop(1, 'rgba(0,0,0,1)');  // fully removed at bottom of fade zone
-    oc2.fillStyle = grad;
-    oc2.fillRect(0, 0, SIZE, SIZE);
-    region = 'bottom ' + Math.round(fadeEnd * 100) + '%–100% (fade from ' + Math.round(fadeStart * 100) + '%)';
+    oc2.globalCompositeOperation = 'destination-out';
+    if (_ringMaskDirection === 'hide-top') {
+      // Bracelet: fully hidden from 0% down to fadeStart, fade fadeStart→fadeEnd, visible below.
+      fadeStart = ringFadeStart;                          // end of fully-hidden region (slider, default 0.35)
+      fadeEnd   = Math.min(0.95, fadeStart + _BRACELET_FADE_W); // fade width 0.20 → default 0.55
+      const grad = oc2.createLinearGradient(0, SIZE * fadeStart, 0, SIZE * fadeEnd);
+      grad.addColorStop(0, 'rgba(0,0,0,1)');  // fully removed at/above top of fade zone (hide far arc)
+      grad.addColorStop(1, 'rgba(0,0,0,0)');  // fully visible at/below bottom of fade zone (front curve)
+      oc2.fillStyle = grad;
+      oc2.fillRect(0, 0, SIZE, SIZE);
+      region = 'top 0%–' + Math.round(fadeStart * 100) + '% (fade to ' + Math.round(fadeEnd * 100) + '%)';
+    } else {
+      // Ring (default, unchanged): visible top, hidden bottom.
+      fadeStart = ringFadeStart;
+      fadeEnd   = _RING_FADE_END;
+      const grad = oc2.createLinearGradient(0, SIZE * fadeStart, 0, SIZE * fadeEnd);
+      grad.addColorStop(0, 'rgba(0,0,0,0)');  // nothing removed at top of fade zone
+      grad.addColorStop(1, 'rgba(0,0,0,1)');  // fully removed at bottom of fade zone
+      oc2.fillStyle = grad;
+      oc2.fillRect(0, 0, SIZE, SIZE);
+      region = 'bottom ' + Math.round(fadeEnd * 100) + '%–100% (fade from ' + Math.round(fadeStart * 100) + '%)';
+    }
+    oc2.globalCompositeOperation = 'source-over';
   }
-  oc2.globalCompositeOperation = 'source-over';
 
   _ringMaskedCanvas = oc;
   _ringMaskSrcType  = srcType;
@@ -5211,6 +5216,9 @@ function initTryOn(cfg) {
   _ringMaskDirection = cfg.maskDirection || 'hide-bottom';
   const fitLabelEl = document.getElementById('ringFitLabel');
   if (fitLabelEl) fitLabelEl.textContent = cfg.fitLabel || 'Fit';
+  // No occlusion (necklace) → hide the Fit slider entirely; otherwise show it.
+  const fitRowEl = document.getElementById('ringFitRow');
+  if (fitRowEl) fitRowEl.style.display = (cfg.maskDirection === 'none') ? 'none' : 'flex';
 
   // Hide other try-on overlays
   ['tryon-necklace', 'tryon-pendant', 'tryon-resize',
@@ -5806,82 +5814,22 @@ document.addEventListener('pointerup', () => {
 // ring, with maskDirection 'hide-top' so the far arc tucks behind the wrist.
 // The previous DOM-<img> implementation was removed to stop it shadowing that.
 
-async function loadNecklaceForTryOn(imageUrl) {
-  console.log('[JWLZIFY] loading necklace try-on');
-
-  // Hide all other try-on elements
-  ['tryon-necklace', 'tryon-pendant', 'tryon-resize',
-   'tryon-earring-left', 'tryon-earring-right',
-   'tryon-earring-left-handle', 'tryon-earring-right-handle'
-  ].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.style.display = 'none';
+function loadNecklaceForTryOn(imageUrl) {
+  // Necklace uses the SAME shared try-on engine as ring/bracelet (ring-tryon-canvas),
+  // but it DRAPES on the chest — no occlusion mask (maskDirection 'none' = full image),
+  // and the cutout goes through the same fal birefnet → remove.bg → original chain.
+  initTryOn({
+    imageUrl:      imageUrl,
+    typeLabel:     'necklace',
+    defaultSize:   300,            // ~half the frame on the 600px canvas (subtle, realistic)
+    minSize:       180,
+    maxSize:       460,
+    getDefaultY:   (H) => H * 0.60, // lower-center — collarbone / upper chest
+    hintText:      'Frame your head and shoulders · Drag to position · +/− to resize · slider to rotate',
+    fitLabel:      'Fit',
+    maskDirection: 'none',          // necklace drapes on the chest — nothing goes behind the body
   });
-
-  // Create img element if it doesn't exist yet
-  let necklaceImg    = document.getElementById('tryon-necklace-img');
-  let necklaceResize = document.getElementById('tryon-necklace-resize');
-
-  if (!necklaceImg) {
-    necklaceImg = document.createElement('img');
-    necklaceImg.id = 'tryon-necklace-img';
-    necklaceImg.style.cssText =
-      'position:absolute;cursor:grab;user-select:none;display:none;z-index:10;pointer-events:auto;';
-    document.getElementById('tryon-container').appendChild(necklaceImg);
-  }
-
-  if (!necklaceResize) {
-    necklaceResize = document.createElement('div');
-    necklaceResize.id = 'tryon-necklace-resize';
-    necklaceResize.style.cssText =
-      'position:absolute;width:14px;height:14px;background:#C0C0C0;border-radius:50%;' +
-      'cursor:se-resize;display:none;z-index:11;' +
-      'border:1.5px solid rgba(255,255,255,0.7);box-shadow:0 1px 4px rgba(0,0,0,0.4);';
-    document.getElementById('tryon-container').appendChild(necklaceResize);
-  }
-
-  const container  = document.getElementById('tryon-container');
-  const W          = container.offsetWidth;
-  const H          = container.offsetHeight;
-  const necklaceDefaults = {
-    cable:     { widthRatio: 0.55, topRatio: 0.32 },
-    box:       { widthRatio: 0.55, topRatio: 0.32 },
-    rope:      { widthRatio: 0.55, topRatio: 0.32 },
-    statement: { widthRatio: 0.80, topRatio: 0.38 },
-    collar:    { widthRatio: 0.65, topRatio: 0.28 },
-  };
-  const necklaceDef = necklaceDefaults[selectedChainStyle] || { widthRatio: 0.65, topRatio: 0.32 };
-  const defaultW   = Math.floor(W * necklaceDef.widthRatio);
-  const defaultLeft= Math.floor((W - defaultW) / 2);
-  const defaultTop = Math.floor(H * necklaceDef.topRatio);
-
-  // Show immediately with original while bg removal runs
-  necklaceImg.src           = imageUrl;
-  necklaceImg.style.width   = defaultW + 'px';
-  necklaceImg.style.height  = 'auto';
-  necklaceImg.style.left    = defaultLeft + 'px';
-  necklaceImg.style.top     = defaultTop  + 'px';
-  necklaceImg.style.display = 'block';
-  necklaceResize.style.display = 'block';
-  requestAnimationFrame(updateNecklaceResizeHandle);
-
-  // Swap to bg-removed version. Uses canvas flood-fill (free).
-  // Note: flood-fill may leave chain remnants on very uniform grey — if quality
-  // is poor, set USE_REMOVEBG_FALLBACK = true to re-enable the paid API path.
-  try {
-    let cleanUrl = bgRemovalCache.get(imageUrl);
-    if (!cleanUrl) {
-      cleanUrl = await removePendantBackgroundCanvas(imageUrl);
-      bgRemovalCache.set(imageUrl, cleanUrl);
-    }
-    if (isTryOnActive) {
-      necklaceImg.src = cleanUrl;
-      requestAnimationFrame(updateNecklaceResizeHandle);
-    }
-    console.log('[JWLZIFY] necklace bg removed via flood-fill');
-  } catch (e) {
-    console.log('[JWLZIFY] necklace bg removal failed, keeping original:', e.message);
-  }
+  console.log('[Necklace] no occlusion, draped at collarbone, default 300px');
 }
 </script>
 
