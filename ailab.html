@@ -4542,10 +4542,10 @@ async function removePendantBackgroundCanvas(imageUrl) {
       const isLight = avgBrightness > 200;
       const isMidtone = !isDark && !isLight;
 
-      // Adaptive tolerance based on bg type
-      // Dark/light bgs are more uniform → tighter
-      // Midtone bgs can have more variation → looser
-      const TOLERANCE = isDark ? 45 : isLight ? 40 : 55;
+      // Midtone tolerance is tight (28) to protect silver/platinum jewelry whose
+      // perceptual distance from Flux's uniform grey bg is ~35-50 — above 28,
+      // below the old 55 which ate into metallic pieces.
+      const TOLERANCE = isDark ? 45 : isLight ? 40 : 28;
 
       console.log('[JWLZIFY] bg color:', bgR, bgG, bgB,
         '| type:', isDark?'dark':isLight?'light':'midtone',
@@ -4640,16 +4640,14 @@ async function removePendantBackgroundCanvas(imageUrl) {
           const dist = colorDistance(r, g, b);
           const sat = Math.max(r,g,b) - Math.min(r,g,b);
           const brightness = (r+g+b)/3;
-          // Only expand into pixels that are:
-          // - Reasonably close to bg color (dist < TOLERANCE*1.4)
-          // - AND very low saturation (definitely not jewelry)
-          // - AND not suspiciously dark/bright compared to bg
-          //   (prevents eating into jewelry shadows/highlights)
+          // Only expand into truly-achromatic background pixels.
+          // sat < 8 protects silver/metallic jewelry (sat 8-20) while
+          // allowing pure-grey background remnants (sat 0-3) to be caught.
           const brightnessDiff = Math.abs(brightness -
             (bgR+bgG+bgB)/3);
-          if (dist < TOLERANCE * 1.4 &&
-              sat < 25 &&
-              brightnessDiff < 60) {
+          if (dist < TOLERANCE * 1.1 &&
+              sat < 8 &&
+              brightnessDiff < 40) {
             visited[n] = 1;
             queueExp.push(n);
           }
@@ -4663,7 +4661,7 @@ async function removePendantBackgroundCanvas(imageUrl) {
       // PASS 2A — Expand flood fill with wider tolerance
       // Re-run BFS from already-visited pixels
       // with a wider tolerance to catch gradient edges
-      const WIDE_TOLERANCE = TOLERANCE * 1.6;
+      const WIDE_TOLERANCE = TOLERANCE * 1.1;
       let head2 = 0;
       const queue2 = [...queue]; // start from all removed pixels
       while (head2 < queue2.length) {
@@ -4680,10 +4678,9 @@ async function removePendantBackgroundCanvas(imageUrl) {
           const r = data[pi], g = data[pi+1], b = data[pi+2];
           const sat = Math.max(r,g,b) - Math.min(r,g,b);
           const dist = colorDistance(r, g, b);
-          // Only expand into low-saturation pixels
-          // (background never has high color saturation)
-          // Jewellery = high saturation, bg = low saturation
-          if (dist < WIDE_TOLERANCE && sat < 30) {
+          // sat < 8: only truly-achromatic grey background remnants;
+          // silver/metallic jewelry (sat 8-20) is not touched here.
+          if (dist < WIDE_TOLERANCE && sat < 8) {
             visited[n] = 1;
             queue2.push(n);
           }
