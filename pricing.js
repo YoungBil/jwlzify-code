@@ -7,7 +7,7 @@
  *     (gold-price / silver-price), with fallbacks
  *   - karat purity multipliers: 10k = 0.417, 14k = 0.583, 925 silver = 0.925
  *   - metal cost  = grams × (spot CAD/g × purity)
- *   - stone cost  = carats × $2.00/ct
+ *   - stone cost  = carats × per-gem rate ($80/ct lab grown diamond, $2.00/ct otherwise)
  *   - base        = metal + stone
  *   - + 20% labour, + profit margin (default 100%)
  *   - final price in CAD
@@ -72,7 +72,10 @@
     return spotPrices;
   }
 
-  var STONE_RATES = { moissanite_vvsd: 2.00, lab_diamond: 2.00, natural_diamond: 2.00 };
+  // Lab grown diamond is a flat $80/ct (both lab_diamond and lab_diamond_vvs);
+  // natural/real diamond and moissanite are unchanged. Mirrors ailab.html STONE_RATES.
+  var STONE_RATES = { moissanite_vvsd: 2.00, lab_diamond: 80.00, lab_diamond_vvs: 80.00, natural_diamond: 2.00 };
+  console.log('[Pricing] lab diamond rate set to $80/ct');
   var MATERIAL_WEIGHTS = {
     ring:     { metalGrams: 4,  stoneCarats: 0.80 },
     necklace: { metalGrams: 8,  stoneCarats: 1.20 },

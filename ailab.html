@@ -1672,8 +1672,13 @@ function _buildHfJewelryDesc(type, material, gem, style, desc) {
   const m = matLabel(material);
   const g = gemLabel(gem);
   const s = style || 'Modern';
-  const userPart = desc && desc.trim() ? desc.trim() + ', ' : '';
-  return `${userPart}luxury ${s} ${m} ${type}, ${g}`;
+  // Same reconciliation as buildPrompt: strip typed stone quantities (specs are
+  // the source of truth) and append the authoritative spec count. This path feeds
+  // the Flux worker for ring/bracelet/necklace (hfOverrides.inputs) and the ring
+  // multi-angle core, plus the HuggingFace fallback.
+  const cleaned  = stripStoneQuantities(desc);
+  const userPart = cleaned ? cleaned + ', ' : '';
+  return `${userPart}luxury ${s} ${m} ${type}, ${g}` + _authoritativeStoneClause(type);
 }
 const _HF_RING_NEGATIVE      = 'tilted, angled, three-quarter view, 3/4 view, perspective, side view, side angle, top-down, birds eye, isometric, diagonal, rotated, lying flat, flat lay, on its side, leaning, oblique, dutch angle, foreshortening, multiple rings, collage, grid, two rings, group of rings, blurry, deformed, asymmetrical';
 const _HF_BRACELET_NEGATIVE  = 'flat lay, laid flat, spread out, scattered, disconnected pieces, broken chain, straight strip, unclasped, open ends, multiple bracelets, two bracelets, collage, grid, tangled, deformed, asymmetrical, lying on surface, top-down, birds eye, side view, coiled, stacked, two bracelets, double band, two bands, stacked bracelets, pair of bracelets, multiple loops, double loop, two rings, twin bands, layered bracelets, second bracelet, duplicate';
@@ -2241,7 +2246,66 @@ function useInspiration(btn) {
 }
 
 /* ── Prompt building ─────────────────────────── */
+/* ── Typed-prompt vs spec reconciliation ───────────────────────────────
+   The SPECIFICATION SELECTORS are the single source of truth for all
+   structured attributes (stone count/size, metal, etc.). The typed
+   description is for STYLE/AESTHETIC intent only. Before building the
+   generation prompt we STRIP any explicit stone/diamond quantity out of
+   the typed text so it can never double the authoritative spec count
+   (the classic "ring with 6 diamonds" + spec=6 → ~12 stones bug). */
+function stripStoneQuantities(text) {
+  if (!text) return '';
+  const NUM_WORDS   = 'one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty';
+  const STONE_NOUNS = '(?:diamonds?|stones?|gemstones?|gems?)';
+  let t = String(text);
+  // digit-led counts: "6 diamonds", "12 stones", "3-stone", "2 gems"
+  t = t.replace(new RegExp('\\b\\d+\\s*[-–—]?\\s*' + STONE_NOUNS + '\\b', 'gi'), ' ');
+  // spelled-out counts: "six diamonds", "three-stone"
+  t = t.replace(new RegExp('\\b(?:' + NUM_WORDS + ')\\s*[-–—]?\\s*' + STONE_NOUNS + '\\b', 'gi'), ' ');
+  // tidy leftover punctuation/whitespace from the removals
+  t = t.replace(/\s*,\s*,\s*/g, ', ')
+       .replace(/\s{2,}/g, ' ')
+       .replace(/\s+([,.;])/g, '$1')
+       .replace(/^[\s,;.]+|[\s,;.]+$/g, '')
+       .trim();
+  return t;
+}
+
+// Authoritative stone count — ONLY from the spec selectors (synced into
+// window.jwlSpecifications from userSelections.stoneCount/stoneSizes at
+// generate time). Never derived from the typed text.
+function _authoritativeStoneCount() {
+  const specs = window.jwlSpecifications || {};
+  return specs.stoneCount || (Array.isArray(specs.stones) ? specs.stones.length : 0) || 1;
+}
+// Explicit, singular quantity instruction appended to the final prompt.
+// Necklaces already encode count + placement in their own prompt language,
+// so we don't inject a conflicting discrete-count sentence there.
+function _authoritativeStoneClause(type) {
+  if (type === 'necklace') return '';
+  const n = _authoritativeStoneCount();
+  return ' This piece has EXACTLY ' + n + ' stones in total, no more and no fewer. Total stone count: ' + n + '.';
+}
+
 function buildPrompt(type, material, gem, style, desc) {
+  // Typed text drives STYLE only; quantity comes solely from the spec selectors.
+  // If the typed count differs from the spec count we silently prefer the spec
+  // count (it is the source of truth) — stripping the typed quantity achieves this.
+  const rawUserText     = (desc || '').trim();
+  const cleanedUserText = stripStoneQuantities(rawUserText);
+  const stoneCount      = _authoritativeStoneCount();
+
+  const core        = _buildPromptCore(type, material, gem, style, cleanedUserText);
+  const finalPrompt = core + _authoritativeStoneClause(type);
+
+  console.log('[Gen] user typed (raw):', rawUserText);
+  console.log('[Gen] user typed (quantities stripped):', cleanedUserText);
+  console.log('[Gen] authoritative stone count from specs:', stoneCount);
+  console.log('[Gen] final Flux prompt:', finalPrompt);
+  return finalPrompt;
+}
+
+function _buildPromptCore(type, material, gem, style, desc) {
   const isPendantType = (type === 'pendant');
   const mDisp = matLabel(material);
   const gDisp = gemLabel(gem);
@@ -3649,7 +3713,9 @@ function updateSpecCostEstimate() {
   const lenFactor = (LAB.type === 'necklace') ? (_necklaceLengthInches() / 18) : 1;
   const effGrams  = +(s.metalGrams * lenFactor).toFixed(2);
   const metalCost = effGrams * metalRate;
-  const stoneCost = s.totalCarats * 2.00;
+  // Use the same per-gem rate as the quote step so lab grown diamonds estimate at $80/ct.
+  const _gemRate  = (STONE_RATES[LAB.gem] != null) ? STONE_RATES[LAB.gem] : 2.00;
+  const stoneCost = s.totalCarats * _gemRate;
   const total     = metalCost + stoneCost;
 
   const el     = document.getElementById('specCostEstimate');
@@ -3673,9 +3739,11 @@ const MATERIAL_WEIGHTS = {
 };
 const STONE_RATES = {
   moissanite_vvsd: 2.00,
-  lab_diamond:     2.00,
-  natural_diamond: 2.00
+  lab_diamond:     80.00,  // lab grown diamond — flat $80/ct
+  lab_diamond_vvs: 80.00,  // lab grown diamond (VVS) — flat $80/ct
+  natural_diamond: 2.00    // natural/real diamond unchanged
 };
+console.log('[Pricing] lab diamond rate set to $80/ct');
 
 function getDynamicStoneRates() {
   return STONE_RATES;
