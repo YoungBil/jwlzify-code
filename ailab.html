@@ -3284,10 +3284,18 @@ function showRefineStep() {
   // Preload remove.bg for canvas try-on (ring + bracelet) while the user reads
   // the refine step, so the transparent PNG is cached and ready the instant
   // try-on opens. Result is keyed by image URL in bgRemovalCache.
-  if ((LAB.type === 'ring' || LAB.type === 'bracelet') && LAB.imageUrl && !bgRemovalCache.has(LAB.imageUrl)) {
+  if (LAB.type === 'ring' && LAB.imageUrl && !bgRemovalCache.has(LAB.imageUrl)) {
     removePendantBackgroundCanvas(LAB.imageUrl).then(cleanUrl => {
       bgRemovalCache.set(LAB.imageUrl, cleanUrl);
-      console.log('[TryOn]', LAB.type, 'preloaded flood-fill result at refine step');
+      console.log('[TryOn] ring preloaded flood-fill result at refine step');
+    }).catch(() => {});
+  } else if (LAB.type === 'bracelet' && LAB.imageUrl && !bgRemovalCache.has(LAB.imageUrl)) {
+    // Bracelet uses the semantic cutout (Flux → remove.bg) so the inner loop is transparent.
+    braceletCutout(LAB.imageUrl).then(result => {
+      if (result.url) {
+        bgRemovalCache.set(LAB.imageUrl, result.url);
+        console.log('[Bracelet] preloaded cutout via:', result.method, '| inner loop transparent:', result.innerTransparent);
+      }
     }).catch(() => {});
   }
 }
@@ -4770,6 +4778,82 @@ async function removePendantBackgroundCanvas(imageUrl) {
   });
 }
 
+/* ── Bracelet cutout (Flux edit → remove.bg → original) ──────────
+   The bracelet is a closed loop; the area INSIDE the loop is enclosed
+   background that the canvas flood-fill (used for the ring) cannot reach.
+   To get a fully transparent cutout — including the inner hole — we use
+   semantic isolation: Flux edit (PNG/alpha) first, then remove.bg, then
+   fall back to the original at 0.85. Bracelet-only; ring is untouched. */
+async function _imageUrlToBase64(url) {
+  const res  = await fetch(url);
+  const blob = await res.blob();
+  return await new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onload  = () => resolve(String(fr.result).split(',')[1]);
+    fr.onerror = reject;
+    fr.readAsDataURL(blob);
+  });
+}
+
+// True if the geometric centre of the image (the bracelet's inner hole) is transparent.
+async function _isCenterTransparent(url) {
+  return await new Promise((resolve) => {
+    const img = new Image();
+    if (!url.startsWith('blob:') && !url.startsWith('data:')) img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      try {
+        const c = document.createElement('canvas');
+        c.width = img.naturalWidth; c.height = img.naturalHeight;
+        const cx = c.getContext('2d');
+        cx.drawImage(img, 0, 0);
+        const px = cx.getImageData(Math.floor(c.width / 2), Math.floor(c.height / 2), 1, 1).data;
+        resolve(px[3] < 20);
+      } catch (e) { resolve(false); }
+    };
+    img.onerror = () => resolve(false);
+    img.src = url;
+  });
+}
+
+const _BRACELET_CUTOUT_PROMPT = 'Remove the entire background completely, including the area inside the bracelet loop. Output only the bracelet jewelry itself on a fully transparent background. The hole in the center of the bracelet must be transparent, not white.';
+
+// Returns { url, method, innerTransparent }. url === null → caller keeps original at 0.85.
+async function braceletCutout(imageUrl) {
+  // 1) Flux edit/segmentation (request PNG so alpha survives)
+  try {
+    const b64 = await _imageUrlToBase64(imageUrl);
+    const res = await fetch(FLUX_WORKER_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ inputs: _BRACELET_CUTOUT_PROMPT, initImage: b64, output_format: 'png' }),
+    });
+    if (res.ok) {
+      const ct   = res.headers.get('Content-Type') || '';
+      const blob = await res.blob();
+      if (blob.size > 2000) {
+        const url = URL.createObjectURL(blob);
+        const innerT = (ct.indexOf('png') !== -1) ? await _isCenterTransparent(url) : false;
+        if (innerT) return { url: url, method: 'flux', innerTransparent: true };
+        URL.revokeObjectURL(url); // opaque (jpeg/no-alpha) → not a real cutout, fall through
+      }
+    } else {
+      console.warn('[Bracelet] Flux cutout HTTP', res.status);
+    }
+  } catch (e) { console.warn('[Bracelet] Flux cutout error:', e.message); }
+
+  // 2) remove.bg — semantic matte, removes enclosed regions, true alpha PNG
+  try {
+    const url = await removeBgWithApi(imageUrl);
+    if (url) {
+      const innerT = await _isCenterTransparent(url);
+      return { url: url, method: 'remove.bg', innerTransparent: innerT };
+    }
+  } catch (e) { console.warn('[Bracelet] remove.bg cutout error:', e.message); }
+
+  // 3) original at 0.85 (current behaviour)
+  return { url: null, method: 'original-0.85', innerTransparent: false };
+}
+
 async function loadPendantForTryOn(imageUrl) {
   console.log('[JWLZIFY] loadPendantForTryOn called, url:', imageUrl);
   const canvas = document.getElementById('tryon-necklace');
@@ -5019,6 +5103,7 @@ function loadBraceletForTryOn(imageUrl) {
     fitLabel:      'Fit on wrist',
     maskDirection: 'hide-top',      // bracelet wraps AROUND the wrist → hide TOP arc (behind wrist)
     wristGuide:    true,            // show the wrist-alignment guide overlay
+    fluxCutout:    true,            // closed loop → use Flux/remove.bg cutout so the inner hole is transparent
     fitMin:        20,              // slider 0.20–0.50
     fitMax:        50,
     fitDefault:    35,             // hidden top 0–35%, fade 35–55%, visible 55–100% (front curve on near side)
@@ -5199,6 +5284,26 @@ function initTryOn(cfg) {
       _buildRingMask(cleanImg, 'cached');
       _logSource(true);
     };
+  } else if (cfg.fluxCutout) {
+    // BRACELET: semantic cutout (Flux → remove.bg → original) so the inner loop is transparent.
+    braceletCutout(_srcToUse).then(result => {
+      if (!isTryOnActive) return;
+      console.log('[Bracelet] cutout via:', result.method, '| inner loop transparent:', result.innerTransparent);
+      if (!result.url) { _logSource(false); return; } // keep original at 0.85
+      bgRemovalCache.set(_srcToUse, result.url);
+      const cleanImg = _makeImg(result.url);
+      cleanImg.dataset.src = imageUrl;
+      cleanImg.onload = () => {
+        if (!isTryOnActive) return;
+        _ringTryonImg      = cleanImg;
+        _ringImgIsOriginal = false;
+        _buildRingMask(cleanImg, 'transparent');
+        _logSource(true);
+      };
+    }).catch(e => {
+      console.log('[Bracelet] cutout failed —', e.message, '— keeping original at 0.85');
+      _logSource(false);
+    });
   } else {
     removePendantBackgroundCanvas(_srcToUse).then(cleanUrl => {
       bgRemovalCache.set(_srcToUse, cleanUrl);

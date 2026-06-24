@@ -46,6 +46,9 @@ export default {
     const prompt    = body.inputs || body.prompt || '';
     const imageSize = body.image_size || 'portrait_4_3';
     const initImage = body.initImage || null;  // raw base64 string; presence triggers edit endpoint
+    // Output format: default jpeg (unchanged for generation). PNG is requested for
+    // transparent cutouts (e.g. bracelet try-on isolation) where alpha must survive.
+    const outputFormat = (body.output_format === 'png') ? 'png' : 'jpeg';
 
     if (!prompt) {
       return new Response(JSON.stringify({ error: 'prompt is required' }), {
@@ -63,13 +66,13 @@ export default {
           prompt,
           image_url:             `data:image/png;base64,${initImage}`,
           image_size:            imageSize,
-          output_format:         'jpeg',
+          output_format:         outputFormat,
           enable_safety_checker: true,
         }
       : {
           prompt,
           image_size:            imageSize,
-          output_format:         'jpeg',
+          output_format:         outputFormat,
           enable_safety_checker: true,
         };
 
@@ -142,9 +145,9 @@ export default {
       });
     }
 
-    console.log(`[JWLZIFY] flux-image: SUCCESS | mode=${isEdit ? 'edit' : 'gen'}`);
+    console.log(`[JWLZIFY] flux-image: SUCCESS | mode=${isEdit ? 'edit' : 'gen'} | format=${outputFormat}`);
     return new Response(imgRes.body, {
-      headers: { ...CORS, 'Content-Type': 'image/jpeg' },
+      headers: { ...CORS, 'Content-Type': outputFormat === 'png' ? 'image/png' : 'image/jpeg' },
     });
   },
 };
