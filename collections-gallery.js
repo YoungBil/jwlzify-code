@@ -222,7 +222,7 @@
     mImg.setAttribute('src', 'images/collections/' + item.id + '.jpg');
     mImg.setAttribute('alt', item.name);
     mTitle.textContent = item.name;
-    if (mCustomize) mCustomize.setAttribute('href', 'ailab.html?type=' + encodeURIComponent((s.type || '').toLowerCase()));
+    if (mCustomize) mCustomize.setAttribute('href', 'ailab.html'); // piece is passed via sessionStorage on click
     renderSpecList(item, _openMetal);
     renderMetalSelect(_openMetal);
     renderPrice(item, _openMetal);
@@ -249,6 +249,28 @@
     renderMetalSelect(_openMetal);
     renderSpecList(_openItem, _openMetal);
     renderPrice(_openItem, _openMetal);
+  });
+
+  // "Customize This Design" → hand this piece (with the selected metal) to the AI Lab,
+  // which loads it straight into the Refine step. Written synchronously before the <a> navigates.
+  if (mCustomize) mCustomize.addEventListener('click', function () {
+    if (!_openItem) return;
+    var s = _openItem.specs || {};
+    var payload = {
+      id:         _openItem.id,
+      type:       s.jewelryType,                 // ring | pendant | earrings | bracelet | necklace
+      material:   _openMetal || s.metalCode,     // 925silver | 10ctgold | 14ctgold (AI Lab codes)
+      gem:        s.stoneType,                    // lab_diamond | natural_diamond | moissanite_vvsd | none
+      style:      s.style,
+      imageUrl:   'images/collections/' + _openItem.id + '.jpg',
+      grams:      s.grams,
+      carats:     s.carats,
+      stoneCount: s.stoneCount,
+      name:       _openItem.name,
+      prompt:     _openItem.desc || _openItem.name
+    };
+    try { sessionStorage.setItem('jwlz_customize_piece', JSON.stringify(payload)); } catch (e) {}
+    console.log('[Collections] customize → AI Lab refine:', _openItem.id, '| metal:', payload.material);
   });
 
   // ── Init ──

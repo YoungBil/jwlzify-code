@@ -2046,6 +2046,49 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 });
 
+/* ── Load an incoming collection piece ("Customize This Design") ──
+   If collections.html handed us a piece via sessionStorage, skip the blank
+   step 1 and jump straight to the Refine step with that design + specs loaded.
+   No incoming piece → the AI Lab starts fresh exactly as before. */
+function _loadIncomingCollectionPiece() {
+  let raw = null;
+  try { raw = sessionStorage.getItem('jwlz_customize_piece'); } catch (e) { return; }
+  if (!raw) return;
+  let piece = null;
+  try { piece = JSON.parse(raw); } catch (e) { return; }
+  try { sessionStorage.removeItem('jwlz_customize_piece'); } catch (e) {} // one-shot
+  if (!piece || !piece.imageUrl) return;
+
+  // Map collection specs → AI Lab state. Codes already align with the AI Lab
+  // (material: 925silver/10ctgold/14ctgold, gem: lab_diamond/natural_diamond/moissanite_vvsd).
+  LAB.type     = piece.type     || LAB.type;
+  LAB.material = piece.material || LAB.material;
+  LAB.gem      = piece.gem      || LAB.gem;
+  LAB.style    = piece.style    || LAB.style;
+  LAB.imageUrl = piece.imageUrl;
+  LAB.prompt   = piece.prompt   || piece.name || '';
+  LAB.ringAngles     = null; // single collection image → refineImg shown; try-on falls back to imageUrl
+  LAB.braceletAngles = null;
+
+  // Pricing inputs so the quote matches this piece.
+  window.jwlSpecifications = window.jwlSpecifications || {};
+  if (piece.grams)            window.jwlSpecifications.metalGrams  = piece.grams;
+  if (piece.carats != null) { window.jwlSpecifications.totalCarats = piece.carats; window.jwlSpecifications.stones = piece.carats ? [piece.carats] : []; }
+  if (piece.stoneCount != null) window.jwlSpecifications.stoneCount = piece.stoneCount;
+
+  // Sync the step-1 selectors + prompt so Refine / Start-Fresh stay consistent with the piece.
+  const _ms = document.getElementById('materialSelect'); if (_ms && piece.material) _ms.value = piece.material;
+  const _gs = document.getElementById('gemSelect');      if (_gs && piece.gem)      _gs.value = piece.gem;
+  const _pa = document.getElementById('promptArea');     if (_pa && LAB.prompt)     _pa.value = LAB.prompt;
+  window._lastFullPrompt = LAB.prompt;
+
+  // Jump straight to Refine with the design shown + refine/restart controls available.
+  showRefineStep();
+  if (typeof showPostGenUI === 'function') showPostGenUI();
+  console.log('[AILab] loaded from collections piece:', piece.id, '| jumped to refine step');
+}
+window.addEventListener('DOMContentLoaded', _loadIncomingCollectionPiece);
+
 /* ── Jewelry type selector ───────────────────── */
 function setType(btn, type) {
   document.querySelectorAll('.type-btn').forEach(b => b.classList.remove('active'));
