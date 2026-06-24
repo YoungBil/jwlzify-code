@@ -5546,11 +5546,8 @@ async function loadEarringsForTryOn(imageUrl) {
   const leftHandle = document.getElementById('tryon-earring-left-handle');
   const rightHandle= document.getElementById('tryon-earring-right-handle');
 
-  // Step 1: Crop to single earring if AI returned a pair
-  const singleUrl = await cropToSingleEarring(imageUrl);
-
-  // Step 2: Remove background
-  const cleanUrl = await removePendantBackgroundCached(singleUrl);
+  // Remove background from the full earring image
+  const cleanUrl = await removePendantBackgroundCached(imageUrl);
 
   // Left: normal, Right: mirrored — looks like a natural pair
   leftEl.src = cleanUrl;
