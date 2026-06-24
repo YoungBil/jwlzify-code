@@ -631,9 +631,9 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
           oninput="setSpecWeightExact(this.value)"
           onfocus="this.style.borderColor='#3c6474'" onblur="this.style.borderColor='rgba(193,199,203,0.5)'">
 
-        <!-- Chain Length — necklace only, shown for cable/box/rope styles -->
+        <!-- Necklace Length — shown for ALL necklaces -->
         <div id="specChainLengthWrap" style="display:none;margin-top:28px;">
-          <h3 style="font-family:'Playfair Display',serif;font-size:20px;font-weight:600;color:#1b1c1c;margin-bottom:20px;">Chain Length</h3>
+          <h3 style="font-family:'Playfair Display',serif;font-size:20px;font-weight:600;color:#1b1c1c;margin-bottom:20px;">Necklace Length</h3>
           <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;">
             <button class="spec-toggle spec-chainlen-btn" data-len="16" onclick="setChainLength(this)">16" <span style="font-size:10px;font-weight:400;color:#9ca3af;margin-left:2px;">Choker</span></button>
             <button class="spec-toggle spec-chainlen-btn active" data-len="18" onclick="setChainLength(this)">18" <span style="font-size:10px;font-weight:400;color:#9ca3af;margin-left:2px;">Standard</span></button>
@@ -642,9 +642,10 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
             <button class="spec-toggle spec-chainlen-btn" data-len="custom" onclick="setChainLength(this)">Custom</button>
           </div>
           <div id="specChainLengthCustomWrap" style="display:none;">
-            <input id="specChainLengthCustomInput" type="number" min="10" max="36" step="1" placeholder="e.g. 24 (inches)"
+            <label style="font-family:Inter,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.1em;color:#71787c;text-transform:uppercase;display:block;margin-bottom:8px;">Enter length in inches</label>
+            <input id="specChainLengthCustomInput" type="number" min="12" max="36" step="1" placeholder="19"
               style="width:100%;font-family:Inter,sans-serif;font-size:14px;padding:10px 14px;border:1.5px solid rgba(193,199,203,0.5);border-radius:10px;outline:none;color:#1b1c1c;box-sizing:border-box;transition:border-color 0.2s;"
-              oninput="selectedChainLength = this.value ? this.value + ' inches (custom)' : null"
+              oninput="setNecklaceCustomLength(this)"
               onfocus="this.style.borderColor='#3c6474'" onblur="this.style.borderColor='rgba(193,199,203,0.5)'">
           </div>
         </div>
@@ -1996,8 +1997,8 @@ function updateWeightHeading() {
 function updateChainLengthVisibility() {
   const wrap = document.getElementById('specChainLengthWrap');
   if (!wrap) return;
-  const show = LAB.type === 'necklace' && ['cable','box','rope','figaro'].includes(selectedChainStyle);
-  wrap.style.display = show ? 'block' : 'none';
+  // Necklace LENGTH applies to every necklace (16/18/20/22/custom inches).
+  wrap.style.display = (LAB.type === 'necklace') ? 'block' : 'none';
 }
 
 const _chainLenMap = {'16':'16 inches (choker)','18':'18 inches (standard)','20':'20 inches (classic)','22':'22 inches (long)'};
@@ -2008,10 +2009,28 @@ function setChainLength(btn) {
   if (key === 'custom') {
     selectedChainLength = null;
     document.getElementById('specChainLengthCustomWrap').style.display = 'block';
+    const ci = document.getElementById('specChainLengthCustomInput');
+    if (ci && ci.value) setNecklaceCustomLength(ci);
   } else {
     selectedChainLength = _chainLenMap[key] || (key + ' inches');
+    userSelections.necklaceLength = key + '"';
     document.getElementById('specChainLengthCustomWrap').style.display = 'none';
+    console.log('[Necklace] length selected:', userSelections.necklaceLength);
   }
+}
+function setNecklaceCustomLength(input) {
+  const v = parseFloat(input.value);
+  if (v >= 12 && v <= 36) {
+    selectedChainLength = v + ' inches (custom)';
+    userSelections.necklaceLength = v + '"';
+    console.log('[Necklace] length selected:', userSelections.necklaceLength);
+  }
+}
+// Numeric necklace length in inches (default 18). Used by the prompt + pricing.
+function _necklaceLengthInches() {
+  const v = userSelections.necklaceLength;
+  if (v != null) { const n = parseFloat(String(v)); if (n >= 12 && n <= 36) return n; }
+  return 18;
 }
 
 /* ── Chain style modal ───────────────────────── */
@@ -2254,8 +2273,12 @@ function buildPrompt(type, material, gem, style, desc) {
     const chainSpecific = selectedChainPrompt || '';
     const userDesc = desc.trim();
     const chainStyleStr = selectedChainLabel ? `Chain style: ${selectedChainLabel}.` : '';
-    const chainLenVisible = ['cable','box','rope','figaro'].includes(selectedChainStyle);
-    const chainLenStr = (chainLenVisible && selectedChainLength) ? `Chain length: ${selectedChainLength}.` : '';
+    // Necklace length applies to every necklace; longer reads as a longer chain / lower drop.
+    const _neckLenIn = _necklaceLengthInches();
+    const _neckLenDesc = _neckLenIn >= 20 ? ', a longer chain that hangs lower on the chest'
+                       : _neckLenIn <= 16 ? ', a shorter choker-length chain sitting high on the neck'
+                       : ', a standard-length chain';
+    const chainLenStr = `This is a ${_neckLenIn} inch necklace${_neckLenDesc}.`;
     const specStr = [chainStyleStr, chainLenStr].filter(Boolean).join(' ');
     // Placement-aware gem description — chain-only necklaces, no pendant ever.
     // Built from raw stone values, not gemPart, to avoid "center stone" language.
@@ -3622,7 +3645,10 @@ function updateSpecCostEstimate() {
   else if (mt === '10ctgold')   metalRate = spotPrices.gold10ctPerGram || 75.40;
   else if (mt === '14ctgold')   metalRate = spotPrices.gold14ctPerGram || 105.56;
 
-  const metalCost = s.metalGrams * metalRate;
+  // Necklace length scales metal weight (a 22" necklace uses more metal than 16").
+  const lenFactor = (LAB.type === 'necklace') ? (_necklaceLengthInches() / 18) : 1;
+  const effGrams  = +(s.metalGrams * lenFactor).toFixed(2);
+  const metalCost = effGrams * metalRate;
   const stoneCost = s.totalCarats * 2.00;
   const total     = metalCost + stoneCost;
 
@@ -3631,7 +3657,7 @@ function updateSpecCostEstimate() {
   if (el) el.textContent = total > 0 ? '$' + total.toFixed(2) + ' CAD' : '—';
   if (detail) {
     const breakdown = s.stones.map(c => c + 'ct').join(' + ');
-    detail.textContent = s.metalGrams + 'g metal · '
+    detail.textContent = effGrams + 'g metal · '
       + s.stones.length + ' stone' + (s.stones.length > 1 ? 's' : '')
       + ' (' + breakdown + ' = ' + s.totalCarats + 'ct total)';
   }
@@ -3762,7 +3788,15 @@ async function displayPricing(metalType, stoneType, jewelryType, overrideCarats)
 
   var promptText = LAB.prompt || (document.getElementById('promptArea') ? document.getElementById('promptArea').value : '');
   var userCarats = (overrideCarats !== undefined) ? overrideCarats : extractCaratWeight(promptText);
+  // Necklace length scales metal weight (longer chain = more metal). Apply for the
+  // calc only, then restore — avoids double-scaling on re-quote and never affects collections.
+  var _wsP = window.jwlSpecifications;
+  var _savedGramsP = _wsP ? _wsP.metalGrams : null;
+  if (jewelryType === 'necklace' && _wsP && _wsP.metalGrams > 0) {
+    _wsP.metalGrams = +(_savedGramsP * (_necklaceLengthInches() / 18)).toFixed(2);
+  }
   var r = calculatePrice(metalType, stoneType, jewelryType, userCarats);
+  if (jewelryType === 'necklace' && _wsP) _wsP.metalGrams = _savedGramsP; // restore
   LAB.quote = { total: r.finalPrice, grams: r.metalGrams };
 
   // Store for automatic recalculation when metals refresh
