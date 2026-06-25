@@ -3,14 +3,14 @@
  *
  * This is the SAME formula the AI Lab quote step (ailab.html) uses, kept in one
  * place so the Collections page prices match the AI Lab exactly:
- *   - live metal price (CAD/g) from the metals.dev Cloudflare workers
- *     (gold-price / silver-price), with fallbacks
+ *   - live metal price (USD/g) from the metals.dev Cloudflare workers
+ *     (gold-price / silver-price, now fetched with currency=USD), with fallbacks
  *   - karat purity multipliers: 10k = 0.417, 14k = 0.583, 925 silver = 0.925
- *   - metal cost  = grams × (spot CAD/g × purity)
+ *   - metal cost  = grams × (spot USD/g × purity)   [no currency conversion]
  *   - stone cost  = carats × per-gem rate ($80/ct lab grown diamond, $2.00/ct otherwise)
  *   - base        = metal + stone
  *   - + 20% labour, + profit margin (default 100%)
- *   - final price in CAD
+ *   - final price in USD
  *
  * Exposes window.JWLZ_PRICING = { spotPrices, fetchSpotPrices, calculatePrice, priceForSpec }.
  * NOTE: this mirrors ailab.html's calculatePrice()/fetchSpotPrices()/spotPrices verbatim;
@@ -30,7 +30,7 @@
     source: 'fallback', fetchedAt: null
   };
 
-  // Live metal prices (CAD/g) — same workers + parsing as the AI Lab.
+  // Live metal prices (USD/g) — same workers + parsing as the AI Lab.
   async function fetchSpotPrices() {
     var silverOk = false, goldOk = false;
     var results = await Promise.allSettled([
@@ -55,7 +55,7 @@
     }
 
     if (goldResult.status === 'fulfilled') {
-      var goldPerGram = goldResult.value && goldResult.value.price; // pure 24ct CAD/g
+      var goldPerGram = goldResult.value && goldResult.value.price; // pure 24ct USD/g
       if (goldPerGram > 0) {
         spotPrices.gold10ctPerGram = goldPerGram * KARAT_PURITY['10ct'];
         spotPrices.gold14ctPerGram = goldPerGram * KARAT_PURITY['14ct'];
@@ -65,10 +65,10 @@
       console.warn('[Pricing] gold-price worker failed:', goldResult.reason && goldResult.reason.message);
     }
 
-    if (silverOk || goldOk) { spotPrices.source = 'cloudflare-worker-cad'; spotPrices.fetchedAt = new Date().toISOString(); }
-    if (!silverOk) spotPrices.silverPerGram = 3.33;
-    if (!goldOk) { spotPrices.gold10ctPerGram = 75.40; spotPrices.gold14ctPerGram = 105.56; }
-    if (!spotPrices.fetchedAt) { spotPrices.source = 'fallback-cad'; spotPrices.fetchedAt = new Date().toISOString(); }
+    if (silverOk || goldOk) { spotPrices.source = 'cloudflare-worker-usd'; spotPrices.fetchedAt = new Date().toISOString(); }
+    if (!silverOk) spotPrices.silverPerGram = 0.97;                                  // USD/g fallback
+    if (!goldOk) { spotPrices.gold10ctPerGram = 44.24; spotPrices.gold14ctPerGram = 61.86; } // USD/g fallbacks
+    if (!spotPrices.fetchedAt) { spotPrices.source = 'fallback-usd'; spotPrices.fetchedAt = new Date().toISOString(); }
     return spotPrices;
   }
 
@@ -111,6 +111,9 @@
     var labourCost = baseCost * labourRate;
     var profitCost = baseCost * profitRate;
     var finalPrice = baseCost + labourCost + profitCost;
+
+    // Metal price arrives from the workers already in USD/g — no currency conversion.
+    console.log('[Pricing] metal USD/g:', metalPerGram, '| final price USD:', finalPrice);
 
     return {
       metalGrams: weights.metalGrams, stoneCarats: stoneCarats, metalPerGram: metalPerGram,

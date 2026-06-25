@@ -54,7 +54,7 @@
     }
     return price;
   }
-  function fmtPrice(n) { return (n == null) ? '—' : '$' + n.toLocaleString('en-US') + ' CAD'; }
+  function fmtPrice(n) { return (n == null) ? '—' : '$' + n.toLocaleString('en-US') + ' USD'; }
 
   // ── Sidebar counts -> real number of items per category ──
   Array.prototype.forEach.call(filterBtns.querySelectorAll('.coll-filter-btn'), function (btn) {

@@ -4066,8 +4066,8 @@ async function fetchSpotPrices() {
               || d?.unit === 'oz' || d?.per === 'oz';
     const silverPerGram = rawField > 0 ? (isOz ? rawField / TROY : rawField) : null;
     if (silverPerGram > 0) {
-      spotPrices.silverPerGram = silverPerGram * 0.925; // 925 purity adjustment
-      console.log('[JWLZIFY] silver price CAD/g:', spotPrices.silverPerGram.toFixed(4));
+      spotPrices.silverPerGram = silverPerGram * 0.925; // 925 purity adjustment (unit-agnostic)
+      console.log('[JWLZIFY] silver price USD/g:', spotPrices.silverPerGram.toFixed(4));
       console.log('[JWLZIFY] silver price displayed:', spotPrices.silverPerGram.toFixed(4));
       silverOk = true;
     } else {
@@ -4079,9 +4079,9 @@ async function fetchSpotPrices() {
 
   if (goldResult.status === 'fulfilled') {
     console.log('[JWLZIFY] raw gold worker response:', JSON.stringify(goldResult.value));
-    const goldPerGram = goldResult.value?.price; // pure 24ct CAD/g
+    const goldPerGram = goldResult.value?.price; // pure 24ct USD/g
     if (goldPerGram > 0) {
-      console.log('[JWLZIFY] raw 24ct gold CAD/g:', goldPerGram);
+      console.log('[JWLZIFY] raw 24ct gold USD/g:', goldPerGram);
       console.log('[JWLZIFY] 10kt price:', goldPerGram * 0.417);
       console.log('[JWLZIFY] 14kt price:', goldPerGram * 0.583);
       spotPrices.gold10ctPerGram = goldPerGram * KARAT_PURITY['10ct'];
@@ -4093,22 +4093,22 @@ async function fetchSpotPrices() {
   }
 
   if (silverOk || goldOk) {
-    spotPrices.source    = 'cloudflare-worker-cad';
+    spotPrices.source    = 'cloudflare-worker-usd';
     spotPrices.fetchedAt = new Date().toISOString();
   }
 
-  // Apply fallback for any value that didn't load
+  // Apply fallback for any value that didn't load (USD/g — sensible spot-derived values)
   if (!silverOk) {
-    spotPrices.silverPerGram = 3.33;
-    console.log('[JWLZIFY] Using silver fallback: 3.33 CAD/g');
+    spotPrices.silverPerGram = 0.97;
+    console.log('[JWLZIFY] Using silver fallback: 0.97 USD/g');
   }
   if (!goldOk) {
-    spotPrices.gold10ctPerGram = 75.40;
-    spotPrices.gold14ctPerGram = 105.56;
-    console.log('[JWLZIFY] Using gold fallback: 10ct=75.40 14ct=105.56 CAD/g');
+    spotPrices.gold10ctPerGram = 44.24;
+    spotPrices.gold14ctPerGram = 61.86;
+    console.log('[JWLZIFY] Using gold fallback: 10ct=44.24 14ct=61.86 USD/g');
   }
   if (!spotPrices.fetchedAt) {
-    spotPrices.source    = 'fallback-cad';
+    spotPrices.source    = 'fallback-usd';
     spotPrices.fetchedAt = new Date().toISOString();
   }
 }
@@ -4249,9 +4249,9 @@ function updateSpecCostEstimate() {
   const s  = window.jwlSpecifications;
   const mt = LAB.material || '925silver';
   let metalRate = 0;
-  if      (mt === '925silver')  metalRate = spotPrices.silverPerGram   || 3.33;
-  else if (mt === '10ctgold')   metalRate = spotPrices.gold10ctPerGram || 75.40;
-  else if (mt === '14ctgold')   metalRate = spotPrices.gold14ctPerGram || 105.56;
+  if      (mt === '925silver')  metalRate = spotPrices.silverPerGram   || 0.97;
+  else if (mt === '10ctgold')   metalRate = spotPrices.gold10ctPerGram || 44.24;
+  else if (mt === '14ctgold')   metalRate = spotPrices.gold14ctPerGram || 61.86;
 
   // Necklace length scales metal weight (a 22" necklace uses more metal than 16").
   const lenFactor = (LAB.type === 'necklace') ? (_necklaceLengthInches() / 18) : 1;
@@ -4264,7 +4264,7 @@ function updateSpecCostEstimate() {
 
   const el     = document.getElementById('specCostEstimate');
   const detail = document.getElementById('specCostDetail');
-  if (el) el.textContent = total > 0 ? '$' + total.toFixed(2) + ' CAD' : '—';
+  if (el) el.textContent = total > 0 ? '$' + total.toFixed(2) + ' USD' : '—';
   if (detail) {
     const breakdown = s.stones.map(c => c + 'ct').join(' + ');
     detail.textContent = effGrams + 'g metal · '
@@ -4358,6 +4358,9 @@ function calculatePrice(metalType, stoneType, jewelryType, userCarats) {
   var profitCost = baseCost * profitRate;
   var finalPrice = baseCost + labourCost + profitCost;
 
+  // Metal price arrives from the workers already in USD/g — no currency conversion.
+  console.log('[Pricing] metal USD/g:', metalPerGram, '| final price USD:', finalPrice);
+
   console.log('DEBUG metalPerGram:', metalPerGram);
   console.log('DEBUG metalGrams:', weights.metalGrams);
   console.log('DEBUG metalCost:', metalCost);
@@ -4445,7 +4448,7 @@ async function displayPricing(metalType, stoneType, jewelryType, overrideCarats)
     + '</div>'
     + '<div id="priceTimestamp" style="font-family:Inter,sans-serif;font-size:10px;color:rgba(65,72,75,0.45);text-align:right;margin-top:10px;letter-spacing:0.06em;"></div>';
 
-  document.getElementById('quoteTotal').textContent = '$' + r.finalPrice.toFixed(2) + ' CAD';
+  document.getElementById('quoteTotal').textContent = '$' + r.finalPrice.toFixed(2) + ' USD';
   updateTimestamp();
 
   var INCLUDES = [
