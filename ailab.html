@@ -492,42 +492,7 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
       <!-- RIGHT: Preview Placeholder / Loading -->
       <div class="hidden lg:block">
 
-        <!-- Placeholder (initial) -->
-        <div id="previewPlaceholder">
-          <div class="relative rounded-2xl overflow-hidden flex flex-col items-center justify-center"
-               style="aspect-ratio:1;background:linear-gradient(135deg,#f5f3f3 0%,#e9e8e7 100%);border:1px solid rgba(193,199,203,0.3);">
-            <!-- Ambient orbs -->
-            <div class="ph-orb absolute" style="width:320px;height:320px;background:#b9e2f5;top:-20%;right:-15%;opacity:0.35;"></div>
-            <div class="ph-orb ph-orb-b absolute" style="width:260px;height:260px;background:#a4cddf;bottom:-15%;left:-10%;opacity:0.25;"></div>
-            <!-- Center content -->
-            <div class="relative z-10 text-center px-12">
-              <div style="width:72px;height:72px;border-radius:10px;background:linear-gradient(135deg,#b9e2f5,#3c6474);transform:rotate(45deg);margin:0 auto 32px;opacity:0.6;box-shadow:0 12px 36px rgba(60,100,116,0.25);"></div>
-              <p style="font-family:'Playfair Display',serif;font-size:22px;font-style:italic;color:#3c6474;opacity:0.7;line-height:1.4;">Your masterpiece<br>will appear here</p>
-              <p class="mt-4 body-copy" style="font-size:13px;color:#a0a6a9;">Fill in your vision and press Generate</p>
-            </div>
-          </div>
-          <!-- Prompt examples -->
-          <div class="mt-6 flex flex-col gap-3">
-            <p class="label" style="font-size:10px;letter-spacing:0.18em;color:#71787c;">INSPIRATION PROMPTS</p>
-            <button class="text-left p-4 rounded-xl border border-[#c1c7cb]/30 bg-white hover:border-[#3c6474]/40 hover:bg-[#f5f3f3] transition-all"
-                    onclick="useInspiration(this)"
-                    data-prompt="A delicate Art Nouveau ring with a pear-shaped moonstone center, flowing organic vine shoulders set with tiny diamonds, crafted in 18k rose gold">
-              <p class="body-copy" style="font-size:13px;font-style:italic;color:#41484b;">"Art Nouveau ring, pear moonstone, flowing vine shoulders, rose gold"</p>
-            </button>
-            <button class="text-left p-4 rounded-xl border border-[#c1c7cb]/30 bg-white hover:border-[#3c6474]/40 hover:bg-[#f5f3f3] transition-all"
-                    onclick="useInspiration(this)"
-                    data-prompt="A bold architectural necklace with geometric platinum links, each set with a channel of pavé diamonds, inspired by brutalist architecture">
-              <p class="body-copy" style="font-size:13px;font-style:italic;color:#41484b;">"Geometric platinum necklace, pavé diamond links, brutalist architecture"</p>
-            </button>
-            <button class="text-left p-4 rounded-xl border border-[#c1c7cb]/30 bg-white hover:border-[#3c6474]/40 hover:bg-[#f5f3f3] transition-all"
-                    onclick="useInspiration(this)"
-                    data-prompt="Long chandelier earrings in 18k white gold, cascading aquamarine drops with a diamond halo at each station, maximalist and dramatic">
-              <p class="body-copy" style="font-size:13px;font-style:italic;color:#41484b;">"Chandelier earrings, cascading aquamarine drops, diamond halos"</p>
-            </button>
-          </div>
-        </div>
-
-        <!-- ✨ AI Prompt-Enhancement panel (replaces placeholder once an idea is typed) -->
+        <!-- ✨ AI Prompt-Enhancement panel — always present, fully replaces the old placeholder -->
         <style>
           @keyframes enhanceSpin { to { transform: rotate(360deg); } }
           .enhance-spinner {
@@ -536,20 +501,27 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
             border-top-color:#C9A84C;
             animation: enhanceSpin 0.9s linear infinite;
           }
-          #enhancedTextArea::placeholder { color:#6b7280; }
+          #enhancedTextArea::placeholder { color:#a0a6a9; }
           #enhancedTextArea:focus { outline:none; border-color:#C9A84C; }
         </style>
-        <div id="enhancePanel" style="display:none;">
-          <div style="position:relative; border-radius:16px; overflow:hidden; aspect-ratio:1; display:flex; flex-direction:column; padding:26px;
-                      background:linear-gradient(160deg,#0B0F1A 0%,#141a2b 100%); border:1px solid rgba(201,168,76,0.35); box-shadow:0 18px 48px rgba(11,15,26,0.35);">
+        <div id="enhancePanel">
+          <div class="rounded-2xl overflow-hidden border border-[#C9A84C]/30"
+               style="position:relative; aspect-ratio:1; display:flex; flex-direction:column; padding:26px;
+                      background:linear-gradient(135deg,rgba(185,226,245,0.10),rgba(255,255,255,0.78)); box-shadow:0 14px 40px rgba(60,100,116,0.12);">
             <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
-              <span style="font-family:'Inter',sans-serif; font-size:10px; letter-spacing:0.22em; text-transform:uppercase; color:#C9A84C;">✨ Enhanced by AI</span>
-              <span id="enhanceStatusChip" style="font-family:'Inter',sans-serif; font-size:10px; letter-spacing:0.10em; color:#8a8f99;"></span>
+              <span style="font-family:'Inter',sans-serif; font-size:10px; letter-spacing:0.22em; text-transform:uppercase; color:#C9A84C; font-weight:600;">✨ Enhanced by AI</span>
+              <span id="enhanceStatusChip" style="font-family:'Inter',sans-serif; font-size:10px; letter-spacing:0.10em; color:#71787c;"></span>
             </div>
-            <h3 style="font-family:'Cormorant Garamond',serif; font-size:25px; font-weight:600; color:#f4f1ea; line-height:1.1; margin-bottom:6px;">Your vision, enriched</h3>
-            <p style="font-family:'Inter',sans-serif; font-size:12px; color:#9aa0ab; line-height:1.5; margin-bottom:16px;">
-              We expanded your idea with stylistic detail. Edit it, or switch back to your own words — stone count, size and metal always come from your selections.
+            <h3 style="font-family:'Cormorant Garamond',serif; font-size:26px; font-weight:600; color:#3c6474; line-height:1.1; margin-bottom:6px;">Your vision, enriched</h3>
+            <p style="font-family:'Inter',sans-serif; font-size:12px; color:#71787c; line-height:1.5; margin-bottom:16px;">
+              We expand your idea with concrete visual detail. Edit it, or switch back to your own words — stone count, size and metal always come from your selections.
             </p>
+
+            <!-- Idle (before the user has typed enough) -->
+            <div id="enhanceIdle" style="flex:1; display:flex; align-items:center; justify-content:center; flex-direction:column; gap:16px; text-align:center;">
+              <div style="width:60px;height:60px;border-radius:10px;background:linear-gradient(135deg,#b9e2f5,#C9A84C);transform:rotate(45deg);opacity:0.55;box-shadow:0 10px 30px rgba(60,100,116,0.2);"></div>
+              <p style="font-family:'Cormorant Garamond',serif; font-style:italic; font-size:19px; color:#a0a6a9; line-height:1.4; margin:0; max-width:260px;">Your enhanced description will appear here as you describe your piece</p>
+            </div>
 
             <!-- Loading -->
             <div id="enhanceLoading" style="display:none; flex:1; align-items:center; justify-content:center; flex-direction:column; gap:18px;">
@@ -561,25 +533,45 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
             <div id="enhanceContent" style="display:none; flex:1; flex-direction:column; min-height:0;">
               <textarea id="enhancedTextArea" spellcheck="true"
                 style="flex:1; min-height:110px; width:100%; resize:none; box-sizing:border-box;
-                       background:rgba(255,255,255,0.045); border:1px solid rgba(201,168,76,0.30); border-radius:10px;
-                       padding:13px 14px; color:#f4f1ea; font-family:'Inter',sans-serif; font-size:14px; line-height:1.6;"></textarea>
+                       background:#ffffff; border:1px solid rgba(193,199,203,0.6); border-radius:10px;
+                       padding:13px 14px; color:#1b1c1c; font-family:'Inter',sans-serif; font-size:14px; line-height:1.6;"></textarea>
 
               <!-- Toggle: enhanced vs original -->
               <div style="display:flex; align-items:center; gap:12px; margin-top:15px;">
                 <button id="enhanceToggle" type="button" role="switch" aria-checked="true" onclick="toggleEnhanceVersion()"
                   style="position:relative; width:46px; height:26px; border-radius:13px; border:none; cursor:pointer; background:#C9A84C; transition:background 0.2s; flex-shrink:0; padding:0;">
-                  <span id="enhanceToggleKnob" style="position:absolute; top:3px; left:23px; width:20px; height:20px; border-radius:50%; background:#0B0F1A; transition:left 0.2s;"></span>
+                  <span id="enhanceToggleKnob" style="position:absolute; top:3px; left:23px; width:20px; height:20px; border-radius:50%; background:#ffffff; box-shadow:0 1px 3px rgba(0,0,0,0.25); transition:left 0.2s;"></span>
                 </button>
-                <span id="enhanceToggleLabel" style="font-family:'Inter',sans-serif; font-size:13px; color:#f4f1ea;">Use enhanced description</span>
+                <span id="enhanceToggleLabel" style="font-family:'Inter',sans-serif; font-size:13px; color:#41484b;">Use enhanced description</span>
               </div>
 
               <!-- Original idea for reference -->
-              <div style="margin-top:14px; border-top:1px solid rgba(255,255,255,0.08); padding-top:11px;">
-                <span style="font-family:'Inter',sans-serif; font-size:9px; letter-spacing:0.18em; text-transform:uppercase; color:#6b7280;">Your original</span>
-                <p id="enhanceOriginalText" style="font-family:'Inter',sans-serif; font-size:12px; color:#8a8f99; font-style:italic; line-height:1.5; margin:4px 0 0;"></p>
+              <div style="margin-top:14px; border-top:1px solid rgba(193,199,203,0.45); padding-top:11px;">
+                <span style="font-family:'Inter',sans-serif; font-size:9px; letter-spacing:0.18em; text-transform:uppercase; color:#a0a6a9;">Your original</span>
+                <p id="enhanceOriginalText" style="font-family:'Inter',sans-serif; font-size:12px; color:#71787c; font-style:italic; line-height:1.5; margin:4px 0 0;"></p>
               </div>
             </div>
           </div>
+        </div>
+
+        <!-- Inspiration prompts -->
+        <div class="mt-6 flex flex-col gap-3">
+          <p class="label" style="font-size:10px;letter-spacing:0.18em;color:#71787c;">INSPIRATION PROMPTS</p>
+          <button class="text-left p-4 rounded-xl border border-[#c1c7cb]/30 bg-white hover:border-[#3c6474]/40 hover:bg-[#f5f3f3] transition-all"
+                  onclick="useInspiration(this)"
+                  data-prompt="A delicate Art Nouveau ring with a pear-shaped moonstone center, flowing organic vine shoulders set with tiny diamonds, crafted in 18k rose gold">
+            <p class="body-copy" style="font-size:13px;font-style:italic;color:#41484b;">"Art Nouveau ring, pear moonstone, flowing vine shoulders, rose gold"</p>
+          </button>
+          <button class="text-left p-4 rounded-xl border border-[#c1c7cb]/30 bg-white hover:border-[#3c6474]/40 hover:bg-[#f5f3f3] transition-all"
+                  onclick="useInspiration(this)"
+                  data-prompt="A bold architectural necklace with geometric platinum links, each set with a channel of pavé diamonds, inspired by brutalist architecture">
+            <p class="body-copy" style="font-size:13px;font-style:italic;color:#41484b;">"Geometric platinum necklace, pavé diamond links, brutalist architecture"</p>
+          </button>
+          <button class="text-left p-4 rounded-xl border border-[#c1c7cb]/30 bg-white hover:border-[#3c6474]/40 hover:bg-[#f5f3f3] transition-all"
+                  onclick="useInspiration(this)"
+                  data-prompt="Long chandelier earrings in 18k white gold, cascading aquamarine drops with a diamond halo at each station, maximalist and dramatic">
+            <p class="body-copy" style="font-size:13px;font-style:italic;color:#41484b;">"Chandelier earrings, cascading aquamarine drops, diamond halos"</p>
+          </button>
         </div>
 
         <!-- Loading state (hidden) -->
@@ -2204,6 +2196,17 @@ function setType(btn, type) {
   userSelections.jewelryType = type;
   console.log('[JWLZIFY] jewelry type in prompt:', userSelections.jewelryType);
 
+  // Re-enhance the typed idea against the newly selected jewelry type so the
+  // enhanced description always matches the chosen piece (pendant ≠ necklace).
+  if (window._enhanceState && typeof _onPromptInput === 'function') {
+    const _pa  = document.getElementById('promptArea');
+    const _raw = ((_pa && _pa.value) || '').trim();
+    if (_raw.length >= 8) {
+      window._enhanceState.rawText = '';   // force a fresh enhancement run
+      _onPromptInput();
+    }
+  }
+
   if (prevType && prevType !== type) {
     console.log('[JWLZIFY] jewelry type changed to:', type, '- state reset');
 
@@ -2315,23 +2318,15 @@ const ENHANCE_WORKER_URL = 'https://groq-enhance.sarkd333.workers.dev';
 window._enhanceState = { rawText: '', status: 'idle', useEnhanced: true, reqId: 0 };
 let _enhanceDebounce = null;
 
-function _showEnhancePanel() {
-  const ph = document.getElementById('previewPlaceholder');
-  const ep = document.getElementById('enhancePanel');
-  if (ph) ph.style.display = 'none';
-  if (ep) ep.style.display = '';
-}
-function _hideEnhancePanel() {
-  const ph = document.getElementById('previewPlaceholder');
-  const ep = document.getElementById('enhancePanel');
-  if (ep) ep.style.display = 'none';
-  if (ph) ph.style.display = '';
-}
+// The enhancer panel is always on screen; this swaps its inner body between
+// the idle prompt, the loading spinner, and the editable enhanced content.
 function _setEnhanceStatus(s) {
   window._enhanceState.status = s;
   const chip    = document.getElementById('enhanceStatusChip');
+  const idle    = document.getElementById('enhanceIdle');
   const loading = document.getElementById('enhanceLoading');
   const content = document.getElementById('enhanceContent');
+  if (idle)    idle.style.display    = (s === 'idle')    ? 'flex' : 'none';
   if (loading) loading.style.display = (s === 'loading') ? 'flex' : 'none';
   if (content) content.style.display = (s === 'ready')   ? 'flex' : 'none';
   if (chip)    chip.textContent      = s === 'loading' ? 'Refining…'
@@ -2346,7 +2341,7 @@ function _renderEnhanceToggle() {
   const ta   = document.getElementById('enhancedTextArea');
   if (!tg) return;
   tg.setAttribute('aria-checked', st.useEnhanced ? 'true' : 'false');
-  tg.style.background = st.useEnhanced ? '#C9A84C' : 'rgba(255,255,255,0.18)';
+  tg.style.background = st.useEnhanced ? '#C9A84C' : 'rgba(60,100,116,0.28)';
   if (knob) knob.style.left = st.useEnhanced ? '23px' : '3px';
   if (lbl)  lbl.textContent = st.useEnhanced ? 'Use enhanced description' : 'Use my original';
   if (ta)   ta.style.opacity = st.useEnhanced ? '1' : '0.45';
@@ -2361,14 +2356,18 @@ async function _runEnhance(raw) {
   const st   = window._enhanceState;
   const myId = ++st.reqId;            // token to discard stale responses
   st.rawText = raw;
-  _showEnhancePanel();
   _setEnhanceStatus('loading');
+  // Lock the enhancement to the currently selected jewelry type so Groq never
+  // describes a different piece (e.g. a necklace when PENDANT is selected).
+  const jewelryType = (window.LAB && LAB.type)
+    || (window.userSelections && userSelections.jewelryType) || '';
   console.log('[Enhance] original:', raw);
+  console.log('[Enhance] sending jewelryType:', jewelryType);
   try {
     const res = await fetch(ENHANCE_WORKER_URL, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ idea: raw })   // worker holds the key; no auth header
+      body:    JSON.stringify({ idea: raw, jewelryType })   // worker holds the key; no auth header
     });
     if (!res.ok) throw new Error('enhance worker HTTP ' + res.status);
     const data = await res.json();
@@ -2388,20 +2387,18 @@ async function _runEnhance(raw) {
     if (myId !== st.reqId) return;
     // Silent fallback — never block generation; the raw idea is used instead.
     console.warn('[Enhance] failed, falling back to original:', e.message);
-    st.status = 'error';
-    _hideEnhancePanel();
+    _setEnhanceStatus('idle');   // status !== 'ready' → active version stays the raw idea
   }
 }
 
 function _onPromptInput() {
   const raw = (document.getElementById('promptArea')?.value || '').trim();
   clearTimeout(_enhanceDebounce);
-  // Not enough to enhance (or cleared) → show the original placeholder.
+  // Not enough to enhance (or cleared) → panel returns to its idle state.
   if (raw.length < 8) {
     window._enhanceState.reqId++;      // cancel any in-flight request
-    window._enhanceState.status  = 'idle';
     window._enhanceState.rawText = '';
-    _hideEnhancePanel();
+    _setEnhanceStatus('idle');
     return;
   }
   if (raw === window._enhanceState.rawText && window._enhanceState.status === 'ready') return;
