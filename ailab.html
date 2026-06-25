@@ -671,6 +671,49 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
       </div>
     </div>
 
+    <!-- ════ BRACELET-ONLY SPECS (link width, length, per-stone tier) ════ -->
+    <style>
+      .bracelet-pill.active {
+        background:linear-gradient(135deg,rgba(201,168,76,0.18),rgba(255,255,255,0.88));
+        border-color:#C9A84C; color:#3c6474; box-shadow:0 2px 10px rgba(201,168,76,0.3);
+      }
+    </style>
+    <div id="braceletSpecWrap" style="display:none;">
+      <!-- LINK WIDTH -->
+      <div class="mb-8">
+        <label class="label block mb-3" style="font-size:10px;letter-spacing:0.18em;color:#3c6474;">LINK WIDTH</label>
+        <div class="flex flex-wrap gap-2">
+          <button class="spec-toggle bracelet-pill bracelet-linkwidth-btn" data-w="2" onclick="setBraceletLinkWidth(this,2)">2mm</button>
+          <button class="spec-toggle bracelet-pill bracelet-linkwidth-btn" data-w="3" onclick="setBraceletLinkWidth(this,3)">3mm</button>
+          <button class="spec-toggle bracelet-pill bracelet-linkwidth-btn" data-w="4" onclick="setBraceletLinkWidth(this,4)">4mm</button>
+          <button class="spec-toggle bracelet-pill bracelet-linkwidth-btn" data-w="5" onclick="setBraceletLinkWidth(this,5)">5mm</button>
+        </div>
+      </div>
+
+      <!-- BRACELET LENGTH -->
+      <div class="mb-8">
+        <label class="label block mb-3" style="font-size:10px;letter-spacing:0.18em;color:#3c6474;">BRACELET LENGTH</label>
+        <div class="flex flex-wrap gap-2">
+          <button class="spec-toggle bracelet-pill bracelet-length-btn" data-len="6.5" onclick="setBraceletLength(this,6.5)">6.5"</button>
+          <button class="spec-toggle bracelet-pill bracelet-length-btn" data-len="7.0" onclick="setBraceletLength(this,7.0)">7.0"</button>
+          <button class="spec-toggle bracelet-pill bracelet-length-btn" data-len="7.5" onclick="setBraceletLength(this,7.5)">7.5"</button>
+          <button class="spec-toggle bracelet-pill bracelet-length-btn" data-len="8.0" onclick="setBraceletLength(this,8.0)">8.0"</button>
+          <button class="spec-toggle bracelet-pill bracelet-length-btn" data-len="8.5" onclick="setBraceletLength(this,8.5)">8.5"</button>
+        </div>
+      </div>
+
+      <!-- STONE SIZE (per-stone carat tier) -->
+      <div class="mb-8">
+        <label class="label block mb-3" style="font-size:10px;letter-spacing:0.18em;color:#3c6474;">STONE SIZE</label>
+        <div class="flex flex-wrap gap-2">
+          <button class="spec-toggle bracelet-pill bracelet-tier-btn" data-tier="accent" onclick="setBraceletStoneTier(this,'accent')">Accent <span style="font-size:10px;font-weight:400;color:#9ca3af;margin-left:3px;">0.10 ct each</span></button>
+          <button class="spec-toggle bracelet-pill bracelet-tier-btn" data-tier="medium" onclick="setBraceletStoneTier(this,'medium')">Medium <span style="font-size:10px;font-weight:400;color:#9ca3af;margin-left:3px;">0.25 ct each</span></button>
+          <button class="spec-toggle bracelet-pill bracelet-tier-btn" data-tier="large"  onclick="setBraceletStoneTier(this,'large')">Large <span style="font-size:10px;font-weight:400;color:#9ca3af;margin-left:3px;">0.50 ct each</span></button>
+        </div>
+        <p style="font-family:Inter,sans-serif;font-size:11px;color:#9ca3af;margin:10px 0 0;">The number of stones is counted from your generated design — you can adjust it on the quote step.</p>
+      </div>
+    </div>
+
     <!-- Stone Shape (hidden for necklace and pendant) -->
     <div class="mb-8" id="stoneShapeSection">
       <label class="label block mb-3" style="font-size:10px;letter-spacing:0.18em;color:#3c6474;">Stone Shape</label>
@@ -1266,6 +1309,18 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
 
           <!-- Price rows -->
           <div id="priceRows"></div>
+
+          <!-- Bracelet: stone count estimated from the generated image (manual override) -->
+          <div id="braceletStoneCountPanel" style="display:none;margin:14px 0;padding:14px 16px;background:rgba(201,168,76,0.08);border:1px solid rgba(201,168,76,0.35);border-radius:12px;">
+            <label style="font-family:Inter,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.08em;color:#3c6474;text-transform:uppercase;display:block;margin-bottom:8px;">Stones in your design</label>
+            <div style="display:flex;align-items:center;gap:12px;">
+              <input id="braceletCountInput" type="number" min="0" max="60" step="1"
+                style="width:90px;font-family:Inter,sans-serif;font-size:15px;font-weight:600;padding:9px 12px;border:1.5px solid rgba(193,199,203,0.6);border-radius:10px;outline:none;color:#1b1c1c;box-sizing:border-box;transition:border-color 0.2s;"
+                oninput="setBraceletStoneCountManual(this.value)"
+                onfocus="this.style.borderColor='#C9A84C'" onblur="this.style.borderColor='rgba(193,199,203,0.6)'">
+              <span id="braceletCountNote" style="font-family:Inter,sans-serif;font-size:12px;color:#71787c;line-height:1.4;">Stone count estimated from your design — adjust if it looks wrong.</span>
+            </div>
+          </div>
 
           <!-- Total -->
           <div class="quote-total mt-2 pt-5" style="border-top:2px solid #1b1c1c;">
@@ -2143,10 +2198,12 @@ async function goStep(n) {
   LAB.step = n;
   updateProgress(n);
   window.scrollTo({ top: 0, behavior: 'smooth' });
-  if (n === 2) { _renderStoneRows(); updateSpecCostEstimate(); updateWeightHeading(); updateChainLengthVisibility(); if (LAB.type === 'necklace') { _updateNecklacePlacementUI(); _refreshNecklaceSpecs(); } if (LAB.type === 'ring') { const rf = document.getElementById('ringCaratFlow'); const gd = document.getElementById('specGrid'); if (rf) rf.style.display = ''; if (gd) gd.style.display = 'none'; _validateRingAllocation(); } updatePendantSpecVisibility(LAB.type); }
+  if (n === 2) { _renderStoneRows(); updateSpecCostEstimate(); updateWeightHeading(); updateChainLengthVisibility(); if (LAB.type === 'necklace') { _updateNecklacePlacementUI(); _refreshNecklaceSpecs(); } if (LAB.type === 'ring') { const rf = document.getElementById('ringCaratFlow'); const gd = document.getElementById('specGrid'); if (rf) rf.style.display = ''; if (gd) gd.style.display = 'none'; _validateRingAllocation(); } updatePendantSpecVisibility(LAB.type); updateBraceletSpecVisibility(LAB.type); }
   if (n === 4) setupTryOn();
   if (n === 5) {
     await fetchSpotPrices(); // always fetch live price at quote time
+    // Bracelet: estimate the stone count from the generated image before pricing.
+    if (LAB.type === 'bracelet') await countBraceletStonesFromImage();
     await displayPricing(LAB.material, LAB.gem, LAB.type);
     saveCurrentDesign();
   }
@@ -2360,6 +2417,15 @@ function setType(btn, type) {
     const _pce = document.getElementById('pendantCaratError');  if (_pce) _pce.style.display = 'none';
     const _pse = document.getElementById('pendantSizeError');   if (_pse) _pse.style.display = 'none';
     document.querySelectorAll('.pendant-tier-btn').forEach(b => b.classList.remove('active'));
+    // Reset bracelet-only inputs (link width, length, stone tier, image/manual count)
+    document.querySelectorAll('.bracelet-linkwidth-btn, .bracelet-length-btn, .bracelet-tier-btn')
+      .forEach(b => b.classList.remove('active'));
+    const _bcp = document.getElementById('braceletStoneCountPanel'); if (_bcp) _bcp.style.display = 'none';
+    const _bci = document.getElementById('braceletCountInput');      if (_bci) _bci.value = '';
+    LAB._braceletCountedUrl = null;
+    delete userSelections.linkWidthMm; delete userSelections.braceletLengthIn;
+    delete userSelections.perStoneCarat; delete userSelections.braceletStoneCountImage;
+    delete userSelections.braceletStoneCountManual;
 
     // Reset specifications to defaults
     window.jwlSpecifications.metalGrams  = 4.5;
@@ -2442,6 +2508,8 @@ function setType(btn, type) {
   }
   // Pendant gets a simpler, different spec set (overrides the show above).
   updatePendantSpecVisibility(type);
+  // Bracelet gets its own simpler spec set (runs last — authoritative for grid/aesthetic).
+  updateBraceletSpecVisibility(type);
   if (type === 'necklace') showChainStyleModal();
 }
 
@@ -2874,6 +2942,214 @@ function _resetRingFlow() {
   const btn = document.getElementById('generateBtn');        if (btn) btn.disabled = true; // gate until valid
 }
 
+/* ════════════════════════════════════════════════════════════════════
+   BRACELET-ONLY SPECS — link width + length drive a DERIVED metal weight,
+   a per-stone carat tier sets each stone's size, and the stone COUNT is
+   estimated from the generated image (with guardrails + manual override).
+   These feed the existing shared pricing formula via jwlSpecifications and
+   apply ONLY when LAB.type === 'bracelet'.
+═══════════════════════════════════════════════════════════════════════ */
+const BRACELET_PER_STONE_CARAT = { accent: 0.10, medium: 0.25, large: 0.50 };
+const BRACELET_METAL_DENSITY   = { '925silver': 10.36, '10ctgold': 11.57, '14ctgold': 13.07 };
+const BRACELET_THICKNESS_MM    = 1.2;   // assumed link/strand thickness
+const BRACELET_FILL_FACTOR     = 0.55;  // links aren't solid bars — proportional factor
+const STONE_COUNT_WORKER_URL   = 'https://stone-count.sarkd333.workers.dev';
+const BRACELET_DEFAULT_COUNT   = 10;    // fallback when the vision count is unavailable
+
+// Single, tunable derivation: link width (mm) × length (in) → metal grams.
+function deriveBraceletMetalGrams(linkWidthMm, lengthIn, metalType) {
+  const w = (linkWidthMm && linkWidthMm > 0) ? linkWidthMm : 3;
+  const L = (lengthIn && lengthIn > 0) ? lengthIn : 7;
+  const lengthMm  = L * 25.4;
+  const density   = BRACELET_METAL_DENSITY[metalType] || BRACELET_METAL_DENSITY['925silver'];
+  // cross-section ≈ width × thickness × fill (mm²); × length (mm) → mm³ → cm³
+  const volumeCm3 = (w * BRACELET_THICKNESS_MM * BRACELET_FILL_FACTOR * lengthMm) / 1000;
+  return Math.max(0.5, +(volumeCm3 * density).toFixed(2));
+}
+
+function _clampBraceletCount(n) { return Math.max(0, Math.min(60, n)); }
+
+// Effective stone count: manual override wins, then the image estimate, then default.
+function _braceletStoneCount() {
+  const manual = parseInt(userSelections.braceletStoneCountManual, 10);
+  if (!isNaN(manual)) return _clampBraceletCount(manual);
+  const img = parseInt(userSelections.braceletStoneCountImage, 10);
+  if (!isNaN(img)) return _clampBraceletCount(img);
+  return BRACELET_DEFAULT_COUNT;
+}
+
+// Write bracelet inputs into jwlSpecifications so the shared formula prices it.
+function _applyBraceletSpecs() {
+  if (LAB.type !== 'bracelet') return null;
+  const ws = window.jwlSpecifications = window.jwlSpecifications || {};
+  const w        = parseFloat(userSelections.linkWidthMm)     || 3;
+  const L        = parseFloat(userSelections.braceletLengthIn) || 7;
+  const perStone = parseFloat(userSelections.perStoneCarat)   || 0.10;
+  const count    = _braceletStoneCount();
+  const grams    = deriveBraceletMetalGrams(w, L, LAB.material);
+  ws.metalGrams  = grams;
+  ws.weightLabel = 'custom';
+  ws.stoneCount  = count;
+  ws.totalCarats = +(count * perStone).toFixed(2);   // shared formula: stoneCost = totalCarats × rate
+  ws.stones      = [perStone];                        // representative (kept small; not iterated for bracelet)
+  ws.braceletLinkWidthMm = w;
+  ws.braceletLengthIn    = L;
+  ws.perStoneCarat       = perStone;
+  return { grams, count, perStone, w, L };
+}
+
+function setBraceletLinkWidth(btn, width) {
+  document.querySelectorAll('.bracelet-linkwidth-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  userSelections.linkWidthMm = width;
+  console.log('[Bracelet] link width mm:', width);
+  const a = _applyBraceletSpecs();
+  if (a) console.log('[Bracelet] derived metal grams:', a.grams);
+  if (typeof updateSpecCostEstimate === 'function') updateSpecCostEstimate();
+}
+function setBraceletLength(btn, length) {
+  document.querySelectorAll('.bracelet-length-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  userSelections.braceletLengthIn = length;
+  console.log('[Bracelet] length in:', length);
+  const a = _applyBraceletSpecs();
+  if (a) console.log('[Bracelet] derived metal grams:', a.grams);
+  if (typeof updateSpecCostEstimate === 'function') updateSpecCostEstimate();
+}
+function setBraceletStoneTier(btn, tier) {
+  document.querySelectorAll('.bracelet-tier-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  userSelections.stoneSizeTier = tier;
+  const per = BRACELET_PER_STONE_CARAT[tier] || 0.10;
+  userSelections.perStoneCarat = per;
+  console.log('[Bracelet] per-stone carat:', per);
+  _applyBraceletSpecs();
+  if (typeof updateSpecCostEstimate === 'function') updateSpecCostEstimate();
+}
+
+// Bracelet hides Design Aesthetic + the weight/number-of-stones/stone-size grid;
+// keeps Metal, Primary Stone, Stone Shape. Runs last in setType, so it is the
+// authoritative writer for the shared aesthetic/grid elements.
+function updateBraceletSpecVisibility(type) {
+  const isBracelet = (type === 'bracelet');
+  const aesth = document.getElementById('specAestheticWrap');
+  const grid  = document.getElementById('specGrid');
+  const brac  = document.getElementById('braceletSpecWrap');
+  // Runs LAST in setType/goStep, so it is the authoritative writer for the shared
+  // grid. The grid (weight + count + sizes) is replaced for ring (carat-allocation
+  // flow), pendant, and bracelet. Design Aesthetic is hidden only for pendant +
+  // bracelet (ring keeps it).
+  const hideGrid  = (type === 'ring' || type === 'pendant' || type === 'bracelet');
+  const hideAesth = (type === 'pendant' || type === 'bracelet');
+  if (aesth) aesth.style.display = hideAesth ? 'none' : '';
+  if (grid)  grid.style.display  = hideGrid ? 'none' : '';
+  if (brac)  brac.style.display  = isBracelet ? 'block' : 'none';
+  if (isBracelet) {
+    _applyBraceletSpecs();
+    if (typeof updateSpecCostEstimate === 'function') updateSpecCostEstimate();
+  }
+}
+
+// Read the current bracelet image (blob URL) as a base64 data URL for the worker.
+async function _braceletImageDataUrl() {
+  const url = LAB.imageUrl;
+  if (!url) return null;
+  try {
+    const resp = await fetch(url);
+    const blob = await resp.blob();
+    return await new Promise((resolve, reject) => {
+      const fr = new FileReader();
+      fr.onload  = () => resolve(fr.result);
+      fr.onerror = reject;
+      fr.readAsDataURL(blob);
+    });
+  } catch (e) {
+    console.warn('[Bracelet] could not read image for counting:', e.message);
+    return null;
+  }
+}
+
+// Estimate the stone count from the generated bracelet image via the vision worker.
+async function countBraceletStonesFromImage() {
+  if (LAB.type !== 'bracelet') return;
+  // Skip re-counting the same image so a manual override survives re-entry.
+  if (LAB.imageUrl && LAB._braceletCountedUrl === LAB.imageUrl
+      && userSelections.braceletStoneCountImage != null) {
+    _renderBraceletCountPanel();
+    return;
+  }
+
+  let rawCount = null;
+  const imageUrl = await _braceletImageDataUrl();
+  if (imageUrl) {
+    try {
+      const res = await fetch(STONE_COUNT_WORKER_URL, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ image_url: imageUrl })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const parsed = parseInt(data && data.stoneCount, 10);
+        if (!isNaN(parsed)) rawCount = parsed;
+      } else {
+        console.warn('[Bracelet] stone-count worker HTTP', res.status);
+      }
+    } catch (e) {
+      console.warn('[Bracelet] stone-count call failed:', e.message);
+    }
+  }
+
+  let count;
+  if (rawCount == null) {
+    count = BRACELET_DEFAULT_COUNT;
+    console.warn('[Bracelet] stone count unavailable — defaulting to', BRACELET_DEFAULT_COUNT);
+  } else {
+    count = _clampBraceletCount(rawCount);
+  }
+
+  // Fresh image → set the image count and clear any stale manual override.
+  LAB._braceletCountedUrl = LAB.imageUrl;
+  userSelections.braceletStoneCountImage  = count;
+  userSelections.braceletStoneCountManual = null;
+  _applyBraceletSpecs();
+
+  const per  = parseFloat(userSelections.perStoneCarat) || 0.10;
+  const rate = (STONE_RATES[LAB.gem] != null) ? STONE_RATES[LAB.gem] : 2.00;
+  const stoneCost = count * per * rate;
+  console.log('[Bracelet] image stone count:', rawCount, '| clamped:', count,
+              '| per-stone ct:', per, '| stone cost:', stoneCost);
+
+  _renderBraceletCountPanel(rawCount);
+}
+
+function _renderBraceletCountPanel(rawCount) {
+  const panel = document.getElementById('braceletStoneCountPanel');
+  const input = document.getElementById('braceletCountInput');
+  const note  = document.getElementById('braceletCountNote');
+  if (!panel) return;
+  if (LAB.type !== 'bracelet') { panel.style.display = 'none'; return; }
+  panel.style.display = 'block';
+  if (input) input.value = _braceletStoneCount();
+  if (note) {
+    note.textContent = (rawCount == null || isNaN(rawCount))
+      ? 'We could not read the stone count automatically — defaulted to ' + BRACELET_DEFAULT_COUNT + '. Adjust if needed.'
+      : 'Stone count estimated from your design — adjust if it looks wrong.';
+  }
+}
+
+// Manual override of the image count — takes precedence and re-prices.
+function setBraceletStoneCountManual(val) {
+  if (val === '' || val == null || isNaN(parseInt(val, 10))) {
+    userSelections.braceletStoneCountManual = null;   // revert to the image estimate
+  } else {
+    userSelections.braceletStoneCountManual = _clampBraceletCount(parseInt(val, 10));
+  }
+  _applyBraceletSpecs();
+  // Re-price (updates priceRows + total) without re-rendering the panel/input.
+  if (typeof displayPricing === 'function') displayPricing(LAB.material, LAB.gem, LAB.type);
+}
+
 /* ── Style chip selector ─────────────────────── */
 function setStyle(btn) {
   document.querySelectorAll('.lab-chip').forEach(b => b.classList.remove('active'));
@@ -3060,7 +3336,9 @@ function _authoritativeStoneCount() {
 // Necklaces already encode count + placement in their own prompt language,
 // so we don't inject a conflicting discrete-count sentence there.
 function _authoritativeStoneClause(type) {
-  if (type === 'necklace') return '';
+  // Necklaces encode count via placement; bracelets leave the count emergent
+  // (it is later estimated from the generated image), so don't force a number.
+  if (type === 'necklace' || type === 'bracelet') return '';
   const n = _authoritativeStoneCount();
   return ' This piece has EXACTLY ' + n + ' stones in total, no more and no fewer. Total stone count: ' + n + '.';
 }
@@ -3190,7 +3468,16 @@ function _buildPromptCore(type, material, gem, style, desc) {
     // Face-on horizontal oval band so the bracelet can convincingly WRAP a raised wrist
     // in webcam try-on (mirrors the ring's face-on approach, oriented for the wrist).
     const _braceletShape = 'A single closed-loop bracelet viewed perfectly head-on as a horizontal oval band facing the camera, the front face of the bracelet pointing directly at the viewer, the band forming a clear symmetrical loop — the view you get looking straight at a bracelet on a wrist raised toward you. A perfectly horizontal level oval band, symmetrical left-to-right, not tilted, not angled down, the band sits flat and level like a horizontal ellipse viewed straight on. One single continuous band, isolated on plain white studio background, no person, no body parts.';
-    return `luxury ${style} ${wPart}bracelet${descPart}, ${mDisp}, ${gemPart}, isolated fine jewelry product photograph, pure white seamless studio background, no shadows, professional diffuse studio lighting, hyper realistic, 8K ultra high definition, sharp focus, precious metal gleam, gemstone sparkle and brilliance. ${_braceletShape} ${_BRACELET_SINGLE_BAND} ${_GEMINI_BRACELET_SINGLE} No humans. No person. No body parts. No hands. No wrist. No skin. No model. Product-only photography. The jewelry piece is the sole subject of the image.`;
+    // Bracelet: link width + per-stone tier drive the look. The stone COUNT is left
+    // emergent (estimated from the image later), so no fixed number is forced here.
+    const _bTier  = (userSelections && userSelections.stoneSizeTier) || 'medium';
+    const _bTierWord = ({ accent: 'small accent', medium: 'medium', large: 'large' })[_bTier] || 'medium';
+    const _bLinkW = (userSelections && userSelections.linkWidthMm)
+      ? `${userSelections.linkWidthMm}mm wide links` : 'fine links';
+    const _bStoneDesc = gDisp
+      ? `a continuous line of evenly spaced ${_bTierWord} ${gDisp} stones running along the entire band, tennis bracelet style, each stone prong-set`
+      : 'a plain polished band';
+    return `luxury ${style} bracelet${descPart}, ${mDisp}, ${_bLinkW}, ${_bStoneDesc}, isolated fine jewelry product photograph, pure white seamless studio background, no shadows, professional diffuse studio lighting, hyper realistic, 8K ultra high definition, sharp focus, precious metal gleam, gemstone sparkle and brilliance. ${_braceletShape} ${_BRACELET_SINGLE_BAND} ${_GEMINI_BRACELET_SINGLE} No humans. No person. No body parts. No hands. No wrist. No skin. No model. Product-only photography. The jewelry piece is the sole subject of the image.`;
   }
 
   if (type === 'ring') {
@@ -4550,6 +4837,24 @@ function updateSpecCostEstimate() {
   else if (mt === '10ctgold')   metalRate = spotPrices.gold10ctPerGram || 44.24;
   else if (mt === '14ctgold')   metalRate = spotPrices.gold14ctPerGram || 61.86;
 
+  // Bracelet: metal from link width × length, stones = count × per-stone carat.
+  // (Count is a preliminary estimate here; the real count comes from the image at quote time.)
+  if (LAB.type === 'bracelet') {
+    const b = _applyBraceletSpecs();
+    const count = (b && b.count) || BRACELET_DEFAULT_COUNT;
+    const per   = (b && b.perStone) || 0.10;
+    const _gemRateB = (STONE_RATES[LAB.gem] != null) ? STONE_RATES[LAB.gem] : 2.00;
+    const metalCostB = (s.metalGrams || 0) * metalRate;
+    const stoneCostB = count * per * _gemRateB;
+    const totalB = metalCostB + stoneCostB;
+    const elB     = document.getElementById('specCostEstimate');
+    const detailB = document.getElementById('specCostDetail');
+    if (elB) elB.textContent = totalB > 0 ? '$' + totalB.toFixed(2) + ' USD' : '—';
+    if (detailB) detailB.textContent = (s.metalGrams || 0).toFixed(1) + 'g metal · ~' + count
+      + ' stones × ' + per + 'ct (' + (count * per).toFixed(2) + 'ct total, est.)';
+    return;
+  }
+
   // Necklace metal weight is auto-derived (already encodes length + placement) —
   // use it directly, no extra length scaling. Other types: weight as-is.
   const effGrams  = +s.metalGrams.toFixed(2);
@@ -4728,14 +5033,26 @@ async function displayPricing(metalType, stoneType, jewelryType, overrideCarats)
     var _pendApplied = _applyPendantSpecs();
     userCarats = _pendApplied ? _pendApplied.carats
       : ((overrideCarats !== undefined) ? overrideCarats : extractCaratWeight(promptText));
+  } else if (jewelryType === 'bracelet') {
+    // Bracelet: metal grams derived from link width × length; stone carats = count ×
+    // per-stone carat (count from the image / manual override). Specs win.
+    var _braceApplied = _applyBraceletSpecs();
+    userCarats = _braceApplied ? window.jwlSpecifications.totalCarats
+      : ((overrideCarats !== undefined) ? overrideCarats : extractCaratWeight(promptText));
   } else {
     userCarats = (overrideCarats !== undefined) ? overrideCarats : extractCaratWeight(promptText);
   }
+  // Bracelet stone-count panel only shows for bracelet.
+  var _bracePanel = document.getElementById('braceletStoneCountPanel');
+  if (_bracePanel && jewelryType !== 'bracelet') _bracePanel.style.display = 'none';
   // Metal weight for necklaces is the auto-derived value (already encodes length +
   // placement) — do NOT scale it again by length here, that double-counts.
   var r = calculatePrice(metalType, stoneType, jewelryType, userCarats);
   if (jewelryType === 'pendant') {
     console.log('[Pendant] derived metal grams:', r.metalGrams, '| stone carats:', r.stoneCarats, '| final price:', r.finalPrice);
+  }
+  if (jewelryType === 'bracelet') {
+    console.log('[Bracelet] final price:', r.finalPrice);
   }
   LAB.quote = { total: r.finalPrice, grams: r.metalGrams };
 
