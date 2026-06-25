@@ -1696,9 +1696,9 @@ const MATERIAL_LABEL = {
   '14ctgold':   '14ct Gold',
 };
 const GEM_LABEL = {
-  'moissanite_vvsd':   'Moissanite VVSD',
-  'lab_diamond_vvs':   'Lab Diamond VVS',
-  'lab_diamond':       'Lab Diamond',
+  'moissanite_vvsd':   'Moissanite VVS/VVSD',
+  'lab_diamond_vvs':   'Lab Diamond VVS/VVSD',
+  'lab_diamond':       'Lab Diamond VVS/VVSD',
   'real_diamond_vsvvs':'Real Diamond VS/VVS',
   'natural_diamond':   'Natural Diamond VS/VVS',
 };
@@ -1707,9 +1707,9 @@ function gemLabel(v) { return GEM_LABEL[v] || v; }
 
 /* ── Metal → gem options ── */
 const GEM_OPTIONS = {
-  '925silver':  [['moissanite_vvsd','Moissanite VVSD'],['lab_diamond_vvs','Lab Diamond VVS']],
-  '10ctgold':   [['lab_diamond','Lab Diamond'],['real_diamond_vsvvs','Real Diamond VS/VVS']],
-  '14ctgold':   [['lab_diamond','Lab Diamond'],['real_diamond_vsvvs','Real Diamond VS/VVS']],
+  '925silver':  [['moissanite_vvsd','Moissanite VVS/VVSD'],['lab_diamond_vvs','Lab Diamond VVS/VVSD']],
+  '10ctgold':   [['lab_diamond','Lab Diamond VVS/VVSD'],['real_diamond_vsvvs','Real Diamond VS/VVS']],
+  '14ctgold':   [['lab_diamond','Lab Diamond VVS/VVSD'],['real_diamond_vsvvs','Real Diamond VS/VVS']],
 };
 function updateGemOptions() {
   const matEl = document.getElementById('materialSelect');
