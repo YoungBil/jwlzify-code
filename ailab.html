@@ -697,6 +697,43 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
       </div>
     </div>
 
+    <!-- ════ RING ONLY: sequential carat-allocation flow ════
+         Replaces the weight + stone selectors below. Each step appears only
+         after the previous is satisfied. The two-column grid (weight + stones)
+         is hidden for rings; shown for bracelet / earring / pendant / necklace. -->
+    <div id="ringCaratFlow" style="display:none;">
+
+      <!-- STEP A — Total carat weight -->
+      <div class="mb-8" id="ringStepA">
+        <label class="label block mb-3" style="font-size:10px;letter-spacing:0.18em;color:#3c6474;">Total Carat Weight</label>
+        <input id="ringTotalCtInput" type="number" min="0.25" step="0.25" placeholder="e.g. 3"
+          style="width:100%;max-width:320px;font-family:Inter,sans-serif;font-size:14px;padding:10px 14px;border:1.5px solid rgba(193,199,203,0.5);border-radius:10px;outline:none;color:#1b1c1c;box-sizing:border-box;transition:border-color 0.2s;"
+          oninput="setRingTotalCt(this.value)"
+          onfocus="this.style.borderColor='#3c6474'" onblur="this.style.borderColor='rgba(193,199,203,0.5)'">
+        <p style="font-family:Inter,sans-serif;font-size:11px;color:#9ca3af;margin:6px 0 0;">Total carats across all stones in the ring (min 0.25).</p>
+      </div>
+
+      <!-- STEP B — Number of stones (appears after a total is entered) -->
+      <div class="mb-8" id="ringStepB" style="display:none;">
+        <label class="label block mb-3" style="font-size:10px;letter-spacing:0.18em;color:#3c6474;">Number of Stones</label>
+        <input id="ringStoneCountInput" type="number" min="1" max="20" step="1" placeholder="e.g. 3"
+          style="width:100%;max-width:320px;font-family:Inter,sans-serif;font-size:14px;padding:10px 14px;border:1.5px solid rgba(193,199,203,0.5);border-radius:10px;outline:none;color:#1b1c1c;box-sizing:border-box;transition:border-color 0.2s;"
+          oninput="setRingStoneCount(this.value)"
+          onfocus="this.style.borderColor='#3c6474'" onblur="this.style.borderColor='rgba(193,199,203,0.5)'">
+        <p style="font-family:Inter,sans-serif;font-size:11px;color:#9ca3af;margin:6px 0 0;">How many individual stones (1–20). You'll size each one next.</p>
+      </div>
+
+      <!-- STEP C — per-stone size bucket + exact carat (appears after a count is set) -->
+      <div class="mb-8" id="ringStepC" style="display:none;">
+        <label class="label block mb-3" style="font-size:10px;letter-spacing:0.18em;color:#3c6474;">Per-Stone Sizes</label>
+        <div id="ringStoneRows" style="display:flex;flex-direction:column;gap:4px;"></div>
+        <!-- Live running total vs target -->
+        <div id="ringAllocSummary" style="margin-top:18px;font-family:Inter,sans-serif;font-size:13px;font-weight:600;color:#1b1c1c;"></div>
+        <p id="ringAllocMessage" style="display:none;font-family:Inter,sans-serif;font-size:12px;color:#dc2626;margin:8px 0 0;"></p>
+      </div>
+
+    </div>
+
     <div class="grid lg:grid-cols-2 gap-12" id="specGrid">
 
       <!-- LEFT: Ring Weight (hidden for necklace — weight is auto-derived from length + placement) -->
@@ -789,13 +826,13 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
           <!-- Necklace only: single carat value applied to every stone on the chain.
                Shown only when placement is Stations or Full (hidden for None). -->
           <div id="necklaceCtWrap" style="display:none;">
-            <label style="font-family:Inter,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.1em;color:#71787c;text-transform:uppercase;display:block;margin-bottom:10px;">Stone Size (ct)</label>
+            <label style="font-family:Inter,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.1em;color:#71787c;text-transform:uppercase;display:block;margin-bottom:10px;">Stone Size (ct) — Per Stone</label>
             <input id="necklaceCtInput" type="number" min="0.25" max="5" step="0.05" placeholder="e.g. 1.5"
               value="1"
               style="width:100%;font-family:Inter,sans-serif;font-size:14px;padding:10px 14px;border:1.5px solid rgba(193,199,203,0.5);border-radius:10px;outline:none;color:#1b1c1c;box-sizing:border-box;transition:border-color 0.2s;"
               oninput="setNecklaceCt(this.value)"
               onfocus="this.style.borderColor='#3c6474'" onblur="this.style.borderColor='rgba(193,199,203,0.5)'">
-            <p style="font-family:Inter,sans-serif;font-size:11px;color:#9ca3af;margin:6px 0 0;">Enter a number from 0.25 to 5 ct — applied to every stone on the necklace.</p>
+            <p style="font-family:Inter,sans-serif;font-size:11px;color:#9ca3af;margin:6px 0 0;">Enter a number from 0.25 to 5 ct — this size applies to EACH stone on the necklace.</p>
             <p id="necklaceCtError" style="display:none;font-family:Inter,sans-serif;font-size:12px;color:#dc2626;margin:8px 0 0;">Please enter a carat value between 0.25 and 5 ct.</p>
           </div>
         </div>
@@ -1795,6 +1832,13 @@ function _buildHfJewelryDesc(type, material, gem, style, desc) {
   // multi-angle core, plus the HuggingFace fallback.
   const cleaned  = stripStoneQuantities(desc);
   const userPart = cleaned ? cleaned + ', ' : '';
+  // Rings: encode the exact stone shape (cut) + per-stone carat layout so the
+  // rendered cut equals the user's Stone Shape selection. Specs source of truth.
+  if (type === 'ring') {
+    const cleanedR  = _stripShapeWords(cleaned); // shape from selector, not typed text
+    const userPartR = cleanedR ? cleanedR + ', ' : '';
+    return `${userPartR}luxury ${s} ${m} ring featuring ${_ringStoneDescriptor(g)}` + _authoritativeStoneClause('ring');
+  }
   return `${userPart}luxury ${s} ${m} ${type}, ${g}` + _authoritativeStoneClause(type);
 }
 const _HF_RING_NEGATIVE      = 'tilted, angled, three-quarter view, 3/4 view, perspective, side view, side angle, top-down, birds eye, isometric, diagonal, rotated, lying flat, flat lay, on its side, leaning, oblique, dutch angle, foreshortening, multiple rings, collage, grid, two rings, group of rings, blurry, deformed, asymmetrical';
@@ -2099,7 +2143,7 @@ async function goStep(n) {
   LAB.step = n;
   updateProgress(n);
   window.scrollTo({ top: 0, behavior: 'smooth' });
-  if (n === 2) { _renderStoneRows(); updateSpecCostEstimate(); updateWeightHeading(); updateChainLengthVisibility(); if (LAB.type === 'necklace') { _updateNecklacePlacementUI(); _refreshNecklaceSpecs(); } updatePendantSpecVisibility(LAB.type); }
+  if (n === 2) { _renderStoneRows(); updateSpecCostEstimate(); updateWeightHeading(); updateChainLengthVisibility(); if (LAB.type === 'necklace') { _updateNecklacePlacementUI(); _refreshNecklaceSpecs(); } if (LAB.type === 'ring') { const rf = document.getElementById('ringCaratFlow'); const gd = document.getElementById('specGrid'); if (rf) rf.style.display = ''; if (gd) gd.style.display = 'none'; _validateRingAllocation(); } updatePendantSpecVisibility(LAB.type); }
   if (n === 4) setupTryOn();
   if (n === 5) {
     await fetchSpotPrices(); // always fetch live price at quote time
@@ -2381,6 +2425,21 @@ function setType(btn, type) {
   } else {
     _updateNecklacePlacementUI();
   }
+  // Ring-only: the sequential carat-allocation flow replaces the weight + stone
+  // grid. Show it for rings (and hide the shared grid); restore the grid + ungate
+  // the button for every other type.
+  const _ringFlow = document.getElementById('ringCaratFlow');
+  const _specGrid = document.getElementById('specGrid');
+  if (type === 'ring') {
+    if (_ringFlow) _ringFlow.style.display = '';
+    if (_specGrid) _specGrid.style.display = 'none';
+    _resetRingFlow(); // fresh start; Generate stays gated until the allocation is valid
+  } else {
+    if (_ringFlow) _ringFlow.style.display = 'none';
+    if (_specGrid) _specGrid.style.display = '';
+    const _gb = document.getElementById('generateBtn');
+    if (_gb) _gb.disabled = false; // other types are not gated by the ring flow
+  }
   // Pendant gets a simpler, different spec set (overrides the show above).
   updatePendantSpecVisibility(type);
   if (type === 'necklace') showChainStyleModal();
@@ -2617,12 +2676,202 @@ function updatePendantSpecVisibility(type) {
   // necklace toggle in setType, so keep necklace hidden too); shown otherwise.
   if (shape) shape.style.display = (isPendant || type === 'necklace') ? 'none' : '';
   if (aesth) aesth.style.display = isPendant ? 'none' : '';
-  if (grid)  grid.style.display  = isPendant ? 'none' : '';
+  // Rings replace the shared grid with their own carat-allocation flow, so the
+  // grid stays hidden for rings too (the ring flow is toggled on in setType).
+  if (grid)  grid.style.display  = (isPendant || type === 'ring') ? 'none' : '';
   if (pend)  pend.style.display  = isPendant ? 'block' : 'none';
   if (isPendant) {
     _applyPendantSpecs();
     if (typeof updateSpecCostEstimate === 'function') updateSpecCostEstimate();
   }
+}
+
+/* ════════════════════════════════════════════════════════════════
+   RING ONLY — sequential carat-allocation flow
+   Total ct → number of stones → per-stone (size bucket + exact carat).
+   Specs are the source of truth; the Generate button is gated until the
+   per-stone carats are all in-range AND sum exactly to the total ct.
+   ════════════════════════════════════════════════════════════════ */
+
+// Size buckets with inclusive carat ranges.
+const RING_BUCKETS = {
+  small:  { label: 'Small',  min: 0.25, max: 2.0 },
+  medium: { label: 'Medium', min: 2.5,  max: 3.5 },
+  large:  { label: 'Large',  min: 4.0,  max: 5.0 },
+};
+
+let _ringTotalCt = 0;
+let _ringStones  = []; // [{ sizeBucket: 'small'|'medium'|'large'|null, carat: number|null }]
+
+// Carat accessor that tolerates either a number or a { carat } object,
+// so shared readers (estimate/logging) survive the rich ring stone shape.
+function _ctOf(x) { return (x && typeof x === 'object') ? x.carat : x; }
+
+function setRingTotalCt(val) {
+  const v = parseFloat(val);
+  _ringTotalCt = (!isNaN(v) && v > 0) ? v : 0;
+  const stepB = document.getElementById('ringStepB');
+  const stepC = document.getElementById('ringStepC');
+  if (stepB) stepB.style.display = _ringTotalCt > 0 ? '' : 'none';
+  if (_ringTotalCt <= 0 && stepC) stepC.style.display = 'none';
+  _validateRingAllocation();
+}
+
+function setRingStoneCount(val) {
+  let n = parseInt(val);
+  if (isNaN(n)) n = 0;
+  n = Math.max(0, Math.min(20, n));
+  const stepC = document.getElementById('ringStepC');
+  if (n < 1) { _ringStones = []; if (stepC) stepC.style.display = 'none'; _validateRingAllocation(); return; }
+  const prev = _ringStones;
+  _ringStones = Array.from({ length: n }, (_, i) => prev[i] || { sizeBucket: null, carat: null });
+  if (stepC) stepC.style.display = '';
+  _renderRingStoneRows();
+  _validateRingAllocation();
+}
+
+function _renderRingStoneRows() {
+  const container = document.getElementById('ringStoneRows');
+  if (!container) return;
+  container.innerHTML = _ringStones.map((st, i) => {
+    const bucketBtns = Object.keys(RING_BUCKETS).map(key => {
+      const b = RING_BUCKETS[key];
+      const active = st.sizeBucket === key ? ' active' : '';
+      return `<button class="spec-toggle ring-bucket-btn${active}" data-idx="${i}" data-bucket="${key}" onclick="setRingStoneBucket(${i},'${key}')">${b.label} <span style="font-size:10px;font-weight:400;color:#9ca3af;margin-left:2px;">${b.min}–${b.max}ct</span></button>`;
+    }).join('');
+    const caratShown = st.sizeBucket ? '' : 'display:none;';
+    const caratVal   = (st.carat != null && !isNaN(st.carat)) ? st.carat : '';
+    return `
+      <div style="padding:12px 0;border-bottom:1px solid rgba(193,199,203,0.18);">
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+          <span style="font-family:Inter,sans-serif;font-size:11px;font-weight:600;color:#71787c;letter-spacing:0.06em;min-width:60px;">Stone ${i + 1}</span>
+          <div style="display:flex;flex-wrap:wrap;gap:6px;">${bucketBtns}</div>
+        </div>
+        <div id="ringStoneCaratWrap${i}" style="${caratShown}margin-top:10px;">
+          <input id="ringStoneCarat${i}" type="number" step="0.25" placeholder="carat" value="${caratVal}"
+            style="width:150px;font-family:Inter,sans-serif;font-size:13px;padding:8px 12px;border:1.5px solid rgba(193,199,203,0.5);border-radius:8px;outline:none;color:#1b1c1c;box-sizing:border-box;transition:border-color 0.2s;"
+            oninput="setRingStoneCarat(${i},this.value)"
+            onfocus="this.style.borderColor='#3c6474'" onblur="this.style.borderColor='rgba(193,199,203,0.5)'">
+          <p id="ringStoneErr${i}" style="display:none;font-family:Inter,sans-serif;font-size:12px;color:#dc2626;margin:6px 0 0;"></p>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function setRingStoneBucket(idx, bucket) {
+  if (!_ringStones[idx]) _ringStones[idx] = { sizeBucket: null, carat: null };
+  _ringStones[idx].sizeBucket = bucket;
+  document.querySelectorAll('.ring-bucket-btn[data-idx="' + idx + '"]').forEach(b =>
+    b.classList.toggle('active', b.dataset.bucket === bucket));
+  const wrap = document.getElementById('ringStoneCaratWrap' + idx);
+  if (wrap) wrap.style.display = '';
+  _validateRingAllocation();
+}
+
+function setRingStoneCarat(idx, val) {
+  if (!_ringStones[idx]) _ringStones[idx] = { sizeBucket: null, carat: null };
+  const v = parseFloat(val);
+  _ringStones[idx].carat = isNaN(v) ? null : v;
+  _validateRingAllocation();
+}
+
+// Central validator + Generate-button gate. Returns true only when every stone
+// has a bucket + an in-range carat AND the sum equals totalCt (epsilon 0.001).
+function _validateRingAllocation() {
+  if (LAB.type !== 'ring') return true;
+  const summary = document.getElementById('ringAllocSummary');
+  const msgEl   = document.getElementById('ringAllocMessage');
+  const btn     = document.getElementById('generateBtn');
+
+  let sum = 0, allRowsValid = _ringStones.length > 0;
+  _ringStones.forEach((st, i) => {
+    const errEl = document.getElementById('ringStoneErr' + i);
+    const inEl  = document.getElementById('ringStoneCarat' + i);
+    let rowValid = false;
+    if (st.sizeBucket && st.carat != null && !isNaN(st.carat)) {
+      const b = RING_BUCKETS[st.sizeBucket];
+      if (st.carat >= b.min && st.carat <= b.max) { rowValid = true; sum += st.carat; }
+    }
+    const showErr = st.sizeBucket && st.carat != null && !isNaN(st.carat) && !rowValid;
+    if (errEl) {
+      if (showErr) {
+        const b = RING_BUCKETS[st.sizeBucket];
+        errEl.textContent = b.label + ' must be ' + b.min + '–' + b.max + 'ct';
+        errEl.style.display = 'block';
+      } else errEl.style.display = 'none';
+    }
+    if (inEl) inEl.style.borderColor = showErr ? '#dc2626' : 'rgba(193,199,203,0.5)';
+    if (!rowValid) allRowsValid = false;
+  });
+
+  sum = +sum.toFixed(2);
+  const target  = +(_ringTotalCt || 0).toFixed(2);
+  const matches = allRowsValid && _ringTotalCt > 0 && Math.abs(sum - target) < 0.001;
+
+  if (summary) summary.textContent = 'Allocated: ' + sum + ' / ' + target + ' ct';
+  if (msgEl) {
+    if (!_ringStones.length) { msgEl.style.display = 'none'; }
+    else if (!allRowsValid) {
+      msgEl.textContent = 'Each stone needs a size and an in-range carat value.';
+      msgEl.style.display = 'block';
+    } else if (Math.abs(sum - target) >= 0.001) {
+      const diff = +(sum - target).toFixed(2);
+      msgEl.textContent = diff > 0
+        ? ('Over by ' + diff + ' ct — reduce a stone or raise the total.')
+        : ('Under by ' + (-diff) + ' ct — add to a stone or lower the total.');
+      msgEl.style.display = 'block';
+    } else msgEl.style.display = 'none';
+  }
+
+  if (btn) btn.disabled = !matches; // gate the Generate action (ring only)
+  if (matches) _applyRingSpecs();
+  return matches;
+}
+
+// Write the ring allocation into jwlSpecifications. Stores the task-specified
+// rich shape PLUS the numeric mirrors the untouched pricing/prompt code reads.
+function _applyRingSpecs() {
+  const s = window.jwlSpecifications;
+  s.metal           = LAB.material || userSelections.material || null;
+  s.stoneShape      = userSelections.gemShape || 'Round';
+  s.designAesthetic = LAB.style || userSelections.style || 'Modern';
+  s.totalCt         = +(_ringTotalCt || 0).toFixed(2);
+  s.stoneCount      = _ringStones.length;
+  s.stones          = _ringStones.map(st => ({ sizeBucket: st.sizeBucket, carat: +(+st.carat).toFixed(2) }));
+  // ── compatibility mirrors (do not remove — read by existing consumers) ──
+  s.totalCarats     = s.totalCt;  // quote reads this as stoneCarats
+  // Weight selector was removed for rings; pricing formula is untouched, so use
+  // the engine's canonical ring metal weight as a fixed value.
+  s.metalGrams      = (typeof MATERIAL_WEIGHTS !== 'undefined' && MATERIAL_WEIGHTS.ring) ? MATERIAL_WEIGHTS.ring.metalGrams : 4;
+  s.weightLabel     = 'medium';
+}
+
+// Ring-stone descriptor for the generation prompt — encodes shape (cut) AND the
+// exact per-stone carats so the rendered ring matches the spec selectors.
+function _ringStoneDescriptor(gDisp) {
+  const specs  = window.jwlSpecifications || {};
+  const shape  = specs.stoneShape || userSelections.gemShape || 'Round';
+  const cut    = shape + '-cut';
+  const carats = (specs.stones || []).map(_ctOf).filter(c => c != null && !isNaN(c));
+  const n      = carats.length || specs.stoneCount || 1;
+  const total  = specs.totalCt != null ? specs.totalCt : (specs.totalCarats || carats.reduce((a, b) => a + b, 0));
+  if (n <= 1) {
+    return `a single ${(carats[0] != null ? carats[0] : total)}ct ${cut} ${gDisp} center stone`;
+  }
+  return `${n} ${cut} ${gDisp} stones of ${carats.join('ct, ')}ct (${total}ct total)`;
+}
+
+function _resetRingFlow() {
+  _ringTotalCt = 0;
+  _ringStones  = [];
+  const ti = document.getElementById('ringTotalCtInput');   if (ti) ti.value = '';
+  const ci = document.getElementById('ringStoneCountInput'); if (ci) ci.value = '';
+  const sb = document.getElementById('ringStepB'); if (sb) sb.style.display = 'none';
+  const sc = document.getElementById('ringStepC'); if (sc) sc.style.display = 'none';
+  const rows = document.getElementById('ringStoneRows');     if (rows) rows.innerHTML = '';
+  const sum = document.getElementById('ringAllocSummary');   if (sum) sum.textContent = '';
+  const msg = document.getElementById('ringAllocMessage');   if (msg) msg.style.display = 'none';
+  const btn = document.getElementById('generateBtn');        if (btn) btn.disabled = true; // gate until valid
 }
 
 /* ── Style chip selector ─────────────────────── */
@@ -2787,6 +3036,19 @@ function stripStoneQuantities(text) {
   return t;
 }
 
+// Strip conflicting stone SHAPE/CUT words from typed text (RING flow only — the
+// Stone Shape selector is the source of truth). Applied just to the ring prompt
+// paths so other jewelry types' typed descriptions are left untouched.
+function _stripShapeWords(text) {
+  if (!text) return '';
+  const SHAPES = 'round|oval|cushion|princess|emerald|pear|marquise|radiant|asscher|heart|baguette|trillion';
+  let t = String(text);
+  t = t.replace(new RegExp('\\b(?:' + SHAPES + ')[-\\s]?(?:cut|shaped|shape)\\b', 'gi'), ' ');
+  t = t.replace(new RegExp('\\b(?:' + SHAPES + ')\\s+(?=(?:diamonds?|stones?|gemstones?|gems?|cut)\\b)', 'gi'), ' ');
+  t = t.replace(/\s{2,}/g, ' ').replace(/\s+([,.;])/g, '$1').replace(/^[\s,;.]+|[\s,;.]+$/g, '').trim();
+  return t;
+}
+
 // Authoritative stone count — ONLY from the spec selectors (synced into
 // window.jwlSpecifications from userSelections.stoneCount/stoneSizes at
 // generate time). Never derived from the typed text.
@@ -2932,27 +3194,27 @@ function _buildPromptCore(type, material, gem, style, desc) {
   }
 
   if (type === 'ring') {
-    const userDesc = desc.trim();
-    const WEIGHT_LABELS = { light: 'Light (2-3g)', medium: 'Medium (4-6g)', heavy: 'Heavy (7-10g)' };
-    const ringWeight = weightLabel === 'custom'
-      ? (specs.metalGrams || 4.5) + 'g exact'
-      : (WEIGHT_LABELS[weightLabel] || 'Medium (4-6g)');
-    const stoneSizes = stones.map(s => s + 'ct');
+    const userDesc = _stripShapeWords(desc.trim()); // shape from selector, not typed text
+    // Stone shape (cut) comes from the Stone Shape selector — must match the render.
+    const ringShape = specs.stoneShape || userSelections.gemShape || 'Round';
+    const cut = ringShape + '-cut';
+    // Per-stone carats from the carat-allocation flow (object-tolerant).
+    const stoneSizes = stones.map(s => _ctOf(s) + 'ct');
     let stonePart;
     if (stoneCount === 1) {
-      stonePart = `with a single ${stoneSizes[0]} ${gDisp} center stone`;
+      stonePart = `with a single ${stoneSizes[0]} ${cut} ${gDisp} center stone`;
     } else if (stoneCount === 2) {
-      stonePart = `with 2 stones set into the band of a single ring — one ${stoneSizes[0]} ${gDisp} center stone and one ${stoneSizes[1] || stoneSizes[0]} ${gDisp} side stone`;
+      stonePart = `with 2 ${cut} stones set into the band of a single ring — one ${stoneSizes[0]} ${gDisp} center stone and one ${stoneSizes[1] || stoneSizes[0]} ${gDisp} side stone`;
     } else if (stoneCount === 3) {
-      stonePart = `with 3 stones set into the band of a single ring — one ${stoneSizes[0]} ${gDisp} center stone flanked by two ${stoneSizes[1] || stoneSizes[0]} ${gDisp} side stones`;
+      stonePart = `with 3 ${cut} stones set into the band of a single ring — one ${stoneSizes[0]} ${gDisp} center stone flanked by two side stones (${stoneSizes.slice(1).join(', ')})`;
     } else if (stoneCount === 4) {
-      stonePart = `with 4 stones set into the band of a single ring — one ${stoneSizes[0]} ${gDisp} center stone and three ${stoneSizes[1] || stoneSizes[0]} ${gDisp} accent stones`;
+      stonePart = `with 4 ${cut} stones set into the band of a single ring — one ${stoneSizes[0]} ${gDisp} center stone and three accent stones (${stoneSizes.slice(1).join(', ')})`;
     } else {
-      stonePart = `with ${stoneCount} stones set into the band of a single ring`;
+      stonePart = `with ${stoneCount} ${cut} ${gDisp} stones of ${stoneSizes.join(', ')} set into the band of a single ring`;
     }
-    const stoneClarity = 'All stones are set into ONE single ring. This is one ring with multiple stones, not multiple rings. Do not generate more than one ring.';
+    const stoneClarity = 'Every stone is the same ' + ringShape + ' cut. All stones are set into ONE single ring. This is one ring with multiple stones, not multiple rings. Do not generate more than one ring.';
     return 'Single product photograph, single viewpoint: A single custom jewelry ring. '
-      + [userDesc, mDisp + ' ring weighing ' + ringWeight, stonePart].filter(Boolean).join('. ')
+      + [userDesc, mDisp + ' ring', stonePart].filter(Boolean).join('. ')
       + '. ' + stoneClarity
       + ' Front view ring photography. The camera is positioned at exactly the same height as the center of the ring, pointing straight at the face of the ring. The ring is standing upright. The circular band is a perfect symmetrical oval at the bottom of the frame. The gemstone is dead center, pointing straight at the lens. This is NOT a hero shot. NOT a 3/4 angle. NOT shot from above or below. NOT tilted. The view is identical to looking directly through a telescope or tunnel straight at the ring face. Flat background. No hands. No fingers. No props. No fabric. Perfectly sharp focus on the stone and prongs. Soft even studio lighting. White or very light grey background. Luxury jewelry product photography, e-commerce style. No humans. No person. No body parts. No neck. No chest. No hands. No fingers. No ears. No skin. No model. Product-only photography. The jewelry piece is the sole subject of the image.'
       + ' CAMERA ANGLE: strict front elevation view, dead-on, eye-level, zero perspective distortion. The ring is standing perfectly upright and vertical, like the letter O or a wheel viewed straight on. The circular band is a full vertical circle facing the camera. The center stone and setting are at the top position, pointing straight up. The band opening runs vertically, top to bottom. The ring is perfectly symmetrical left-to-right. Both sides of the band are equally visible and mirror each other. The ring is centered in frame with equal margin on all sides.'
@@ -3203,6 +3465,32 @@ function resolveJewelryType(dropdownValue, descriptionText) {
 
 /* ── Read all spec values fresh from the DOM at generate-click time ── */
 function _readSpecsFromDOM() {
+  // Necklaces don't expose weight / stone-count selectors — those are auto-derived
+  // from placement + length. Use that single source of truth here too, so the
+  // refine / regenerate / tweak path can't clobber the specs back to page defaults
+  // (the old bug: hidden buttons fell through to 1 stone × 1.0ct = 1.00ct total).
+  if (LAB.type === 'necklace') {
+    _applyNecklaceAutoSpecs();
+    const s = window.jwlSpecifications;
+    return {
+      metalGrams: s.metalGrams, weightLabel: s.weightLabel, weightUserSet: true,
+      stoneCount: s.stoneCount, countUserSet: true,
+      stones: s.stones.slice(), totalCarats: s.totalCarats,
+    };
+  }
+
+  // Rings: the carat-allocation flow is the source of truth (the weight / count /
+  // size selectors are removed for rings). Return the stored specs so the refine /
+  // regenerate / tweak path never clobbers them back to page defaults.
+  if (LAB.type === 'ring') {
+    const s = window.jwlSpecifications;
+    return {
+      metalGrams: s.metalGrams || 4, weightLabel: s.weightLabel || 'medium', weightUserSet: true,
+      stoneCount: s.stoneCount || (Array.isArray(s.stones) ? s.stones.length : 1), countUserSet: true,
+      stones: Array.isArray(s.stones) ? s.stones.slice() : [], totalCarats: (s.totalCarats != null ? s.totalCarats : s.totalCt) || 0,
+    };
+  }
+
   const PRESET_GRAMS = { light: 2.5, medium: 4.5, heavy: 8.5 };
 
   // Metal weight — active preset button or custom input field
@@ -3362,7 +3650,7 @@ async function startGeneration(isTweak) {
     weightLabel: _domSpecs.weightLabel,
     metalGrams:  _domSpecs.metalGrams,
     stoneCount:  _domSpecs.stoneCount,
-    stoneSizes:  _domSpecs.stones.map(s => s + 'ct'),
+    stoneSizes:  _domSpecs.stones.map(s => _ctOf(s) + 'ct'),
     totalCarats: _domSpecs.totalCarats,
   });
 
@@ -3521,6 +3809,15 @@ async function confirmAndGenerate() {
       return; // block generation until carat is valid
     }
     _applyNecklaceAutoSpecs(); // overwrites grams/count/stones/totalCarats cleanly
+  } else if (LAB.type === 'ring') {
+    // Ring: the carat-allocation flow is the source of truth. Block unless every
+    // stone is in-range and the per-stone carats sum exactly to the total ct.
+    if (!_validateRingAllocation()) {
+      const flow = document.getElementById('ringCaratFlow');
+      if (flow) flow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+    _applyRingSpecs(); // writes metal/stoneShape/designAesthetic/totalCt/stoneCount/stones (+ mirrors)
   } else {
     if (userSelections.metalGrams)  ws.metalGrams  = userSelections.metalGrams;
     if (userSelections.weightLabel) ws.weightLabel = userSelections.weightLabel;
@@ -4253,9 +4550,9 @@ function updateSpecCostEstimate() {
   else if (mt === '10ctgold')   metalRate = spotPrices.gold10ctPerGram || 44.24;
   else if (mt === '14ctgold')   metalRate = spotPrices.gold14ctPerGram || 61.86;
 
-  // Necklace length scales metal weight (a 22" necklace uses more metal than 16").
-  const lenFactor = (LAB.type === 'necklace') ? (_necklaceLengthInches() / 18) : 1;
-  const effGrams  = +(s.metalGrams * lenFactor).toFixed(2);
+  // Necklace metal weight is auto-derived (already encodes length + placement) —
+  // use it directly, no extra length scaling. Other types: weight as-is.
+  const effGrams  = +s.metalGrams.toFixed(2);
   const metalCost = effGrams * metalRate;
   // Use the same per-gem rate as the quote step so lab grown diamonds estimate at $80/ct.
   const _gemRate  = (STONE_RATES[LAB.gem] != null) ? STONE_RATES[LAB.gem] : 2.00;
@@ -4266,10 +4563,17 @@ function updateSpecCostEstimate() {
   const detail = document.getElementById('specCostDetail');
   if (el) el.textContent = total > 0 ? '$' + total.toFixed(2) + ' USD' : '—';
   if (detail) {
-    const breakdown = s.stones.map(c => c + 'ct').join(' + ');
+    const cts = (s.stones || []).map(_ctOf); // tolerate numeric or { carat } stones
+    const n = cts.length;
+    // Collapse uniform stones (every stone the same ct) to "N × Xct" so a
+    // 60-stone tennis necklace doesn't print "1ct + 1ct + …" 60 times.
+    const allEqual = n > 0 && cts.every(c => c === cts[0]);
+    const breakdown = (n === 0) ? 'no stones'
+      : allEqual ? (n + ' × ' + cts[0] + 'ct')
+      : cts.map(c => c + 'ct').join(' + ');
     detail.textContent = effGrams + 'g metal · '
-      + s.stones.length + ' stone' + (s.stones.length > 1 ? 's' : '')
-      + ' (' + breakdown + ' = ' + s.totalCarats + 'ct total)';
+      + n + ' stone' + (n === 1 ? '' : 's')
+      + ' (' + breakdown + (n > 0 ? ' = ' + s.totalCarats + 'ct total' : '') + ')';
   }
 }
 
@@ -4327,12 +4631,21 @@ function calculatePrice(metalType, stoneType, jewelryType, userCarats) {
   // Override weights from Specifications step if user made selections
   if (specs && specs.metalGrams > 0) weights.metalGrams = specs.metalGrams;
 
-  var stoneCarats = (userCarats && userCarats > 0) ? userCarats
-    : (specs && specs.totalCarats > 0)             ? specs.totalCarats
-    : weights.stoneCarats;
-  var caratSource = (userCarats && userCarats > 0) ? 'user specified'
-    : (specs && specs.totalCarats > 0)             ? 'specifications'
-    : 'default';
+  var stoneCarats, caratSource;
+  if (jewelryType === 'necklace') {
+    // Necklace is fully authoritative: gemstone weight = per-stone ct × auto stone
+    // count (placement + length), already in specs.totalCarats. Honour an explicit
+    // 0 (None placement) instead of falling back to a default carat weight.
+    stoneCarats = (specs && specs.totalCarats >= 0) ? specs.totalCarats : 0;
+    caratSource = 'necklace auto (per-stone × count)';
+  } else {
+    stoneCarats = (userCarats && userCarats > 0) ? userCarats
+      : (specs && specs.totalCarats > 0)             ? specs.totalCarats
+      : weights.stoneCarats;
+    caratSource = (userCarats && userCarats > 0) ? 'user specified'
+      : (specs && specs.totalCarats > 0)             ? 'specifications'
+      : 'default';
+  }
 
   var metalPerGram = 0;
   if (metalType === '925silver')     metalPerGram = spotPrices.silverPerGram;
@@ -4402,22 +4715,25 @@ async function displayPricing(metalType, stoneType, jewelryType, overrideCarats)
   if (!spotPrices.fetchedAt) await fetchSpotPrices();
 
   var promptText = LAB.prompt || (document.getElementById('promptArea') ? document.getElementById('promptArea').value : '');
-  var userCarats = (overrideCarats !== undefined) ? overrideCarats : extractCaratWeight(promptText);
-  // Pendant: stone carats come from the tier input and metal grams are DERIVED
-  // from the mm × mm size — force both so prompt-extracted carats can't override.
-  if (jewelryType === 'pendant') {
+  var userCarats;
+  if (jewelryType === 'necklace' || jewelryType === 'ring') {
+    // Necklace + ring gemstone weight is authoritative from the spec selectors
+    // (necklace: per-stone ct × auto count; ring: the carat-allocation total),
+    // already in jwlSpecifications.totalCarats. Specs win over typed prompt text —
+    // never let extractCaratWeight pull a stray carat from the description.
+    var _wsCar = window.jwlSpecifications;
+    userCarats = (_wsCar && _wsCar.totalCarats > 0) ? _wsCar.totalCarats : 0;
+  } else if (jewelryType === 'pendant') {
+    // Pendant: stone carats from the tier input; metal grams DERIVED from mm × mm.
     var _pendApplied = _applyPendantSpecs();
-    if (_pendApplied) userCarats = _pendApplied.carats;
+    userCarats = _pendApplied ? _pendApplied.carats
+      : ((overrideCarats !== undefined) ? overrideCarats : extractCaratWeight(promptText));
+  } else {
+    userCarats = (overrideCarats !== undefined) ? overrideCarats : extractCaratWeight(promptText);
   }
-  // Necklace length scales metal weight (longer chain = more metal). Apply for the
-  // calc only, then restore — avoids double-scaling on re-quote and never affects collections.
-  var _wsP = window.jwlSpecifications;
-  var _savedGramsP = _wsP ? _wsP.metalGrams : null;
-  if (jewelryType === 'necklace' && _wsP && _wsP.metalGrams > 0) {
-    _wsP.metalGrams = +(_savedGramsP * (_necklaceLengthInches() / 18)).toFixed(2);
-  }
+  // Metal weight for necklaces is the auto-derived value (already encodes length +
+  // placement) — do NOT scale it again by length here, that double-counts.
   var r = calculatePrice(metalType, stoneType, jewelryType, userCarats);
-  if (jewelryType === 'necklace' && _wsP) _wsP.metalGrams = _savedGramsP; // restore
   if (jewelryType === 'pendant') {
     console.log('[Pendant] derived metal grams:', r.metalGrams, '| stone carats:', r.stoneCarats, '| final price:', r.finalPrice);
   }
