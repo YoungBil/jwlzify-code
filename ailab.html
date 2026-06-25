@@ -624,7 +624,54 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
       <div class="flex flex-wrap gap-2" id="s2GemBtns"></div>
     </div>
 
-    <!-- Stone Shape (hidden for necklace — necklaces do not use a stone shape) -->
+    <!-- ════ PENDANT-ONLY SPECS (Stone Size tier + Pendant mm×mm size) ════ -->
+    <style>
+      .pendant-tier-btn.active {
+        background:linear-gradient(135deg,rgba(201,168,76,0.18),rgba(255,255,255,0.88));
+        border-color:#C9A84C; color:#3c6474; box-shadow:0 2px 10px rgba(201,168,76,0.3);
+      }
+      .pendant-num-input {
+        width:100%;font-family:Inter,sans-serif;font-size:14px;padding:10px 14px;
+        border:1.5px solid rgba(193,199,203,0.5);border-radius:10px;outline:none;
+        color:#1b1c1c;box-sizing:border-box;transition:border-color 0.2s;
+      }
+      .pendant-num-input:focus { border-color:#C9A84C; }
+    </style>
+    <div id="pendantSpecWrap" style="display:none;">
+      <!-- STONE SIZE (tiered, constrained carat input) -->
+      <div class="mb-8">
+        <label class="label block mb-3" style="font-size:10px;letter-spacing:0.18em;color:#3c6474;">STONE SIZE</label>
+        <div class="flex flex-wrap gap-2">
+          <button class="spec-toggle pendant-tier-btn" data-tier="small"  onclick="setPendantTier(this,'small')">Small <span style="font-size:10px;font-weight:400;color:#9ca3af;margin-left:3px;">0.5–3 ct</span></button>
+          <button class="spec-toggle pendant-tier-btn" data-tier="medium" onclick="setPendantTier(this,'medium')">Medium <span style="font-size:10px;font-weight:400;color:#9ca3af;margin-left:3px;">4–7 ct</span></button>
+          <button class="spec-toggle pendant-tier-btn" data-tier="large"  onclick="setPendantTier(this,'large')">Large <span style="font-size:10px;font-weight:400;color:#9ca3af;margin-left:3px;">8–11 ct</span></button>
+        </div>
+        <div id="pendantCaratWrap" style="display:none;margin-top:14px;max-width:320px;">
+          <label style="font-family:Inter,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.1em;color:#71787c;text-transform:uppercase;display:block;margin-bottom:8px;">Enter exact carats <span id="pendantTierRange" style="color:#C9A84C;text-transform:none;letter-spacing:0;"></span></label>
+          <input id="pendantCaratInput" class="pendant-num-input" type="number" step="0.1" placeholder="e.g. 2" oninput="setPendantCarats(this.value)">
+          <p id="pendantCaratError" style="display:none;font-family:Inter,sans-serif;font-size:12px;color:#dc2626;margin-top:6px;"></p>
+        </div>
+      </div>
+
+      <!-- PENDANT SIZE (custom mm × mm) -->
+      <div class="mb-8">
+        <label class="label block mb-3" style="font-size:10px;letter-spacing:0.18em;color:#3c6474;">PENDANT SIZE</label>
+        <div style="display:flex;align-items:flex-end;gap:14px;max-width:360px;">
+          <div style="flex:1;">
+            <input id="pendantWidthInput" class="pendant-num-input" type="number" min="5" max="80" step="1" placeholder="15" oninput="setPendantSize()">
+            <p style="font-family:Inter,sans-serif;font-size:11px;color:#9ca3af;margin:6px 0 0;text-align:center;">Width (mm)</p>
+          </div>
+          <span style="font-family:'Cormorant Garamond',serif;font-size:24px;color:#C9A84C;padding-bottom:24px;">×</span>
+          <div style="flex:1;">
+            <input id="pendantHeightInput" class="pendant-num-input" type="number" min="5" max="80" step="1" placeholder="20" oninput="setPendantSize()">
+            <p style="font-family:Inter,sans-serif;font-size:11px;color:#9ca3af;margin:6px 0 0;text-align:center;">Height (mm)</p>
+          </div>
+        </div>
+        <p id="pendantSizeError" style="display:none;font-family:Inter,sans-serif;font-size:12px;color:#dc2626;margin-top:8px;">Enter values between 5 and 80&nbsp;mm for each dimension.</p>
+      </div>
+    </div>
+
+    <!-- Stone Shape (hidden for necklace and pendant) -->
     <div class="mb-8" id="stoneShapeSection">
       <label class="label block mb-3" style="font-size:10px;letter-spacing:0.18em;color:#3c6474;">Stone Shape</label>
       <div class="flex flex-wrap gap-2">
@@ -638,7 +685,7 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
     </div>
 
     <!-- Design Aesthetic -->
-    <div class="mb-8">
+    <div class="mb-8" id="specAestheticWrap">
       <label class="label block mb-3" style="font-size:10px;letter-spacing:0.18em;color:#3c6474;">Design Aesthetic</label>
       <div class="flex flex-wrap gap-2" id="styleChips">
         <button class="lab-chip" data-style="Art Deco"    onclick="setStyle(this)">Art Deco</button>
@@ -650,7 +697,7 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
       </div>
     </div>
 
-    <div class="grid lg:grid-cols-2 gap-12">
+    <div class="grid lg:grid-cols-2 gap-12" id="specGrid">
 
       <!-- LEFT: Ring Weight (hidden for necklace — weight is auto-derived from length + placement) -->
       <div>
@@ -2052,7 +2099,7 @@ async function goStep(n) {
   LAB.step = n;
   updateProgress(n);
   window.scrollTo({ top: 0, behavior: 'smooth' });
-  if (n === 2) { _renderStoneRows(); updateSpecCostEstimate(); updateWeightHeading(); updateChainLengthVisibility(); if (LAB.type === 'necklace') { _updateNecklacePlacementUI(); _refreshNecklaceSpecs(); } }
+  if (n === 2) { _renderStoneRows(); updateSpecCostEstimate(); updateWeightHeading(); updateChainLengthVisibility(); if (LAB.type === 'necklace') { _updateNecklacePlacementUI(); _refreshNecklaceSpecs(); } updatePendantSpecVisibility(LAB.type); }
   if (n === 4) setupTryOn();
   if (n === 5) {
     await fetchSpotPrices(); // always fetch live price at quote time
@@ -2261,6 +2308,14 @@ function setType(btn, type) {
     if (_ccw) _ccw.style.display = 'none';
     const _clcw = document.getElementById('specChainLengthCustomWrap');
     if (_clcw) _clcw.style.display = 'none';
+    // Reset pendant-only inputs (stone tier + carats + mm size)
+    const _pci = document.getElementById('pendantCaratInput');  if (_pci) _pci.value = '';
+    const _pwi = document.getElementById('pendantWidthInput');  if (_pwi) _pwi.value = '';
+    const _phi = document.getElementById('pendantHeightInput'); if (_phi) _phi.value = '';
+    const _pcw = document.getElementById('pendantCaratWrap');   if (_pcw) _pcw.style.display = 'none';
+    const _pce = document.getElementById('pendantCaratError');  if (_pce) _pce.style.display = 'none';
+    const _pse = document.getElementById('pendantSizeError');   if (_pse) _pse.style.display = 'none';
+    document.querySelectorAll('.pendant-tier-btn').forEach(b => b.classList.remove('active'));
 
     // Reset specifications to defaults
     window.jwlSpecifications.metalGrams  = 4.5;
@@ -2326,6 +2381,8 @@ function setType(btn, type) {
   } else {
     _updateNecklacePlacementUI();
   }
+  // Pendant gets a simpler, different spec set (overrides the show above).
+  updatePendantSpecVisibility(type);
   if (type === 'necklace') showChainStyleModal();
 }
 
@@ -2433,6 +2490,139 @@ function _applyNecklaceAutoSpecs() {
   s.stones      = count > 0 ? Array(count).fill(+ct.toFixed(2)) : [];
   s.totalCarats = +(count * ct).toFixed(2);
   return { inches, placement, ct, count, grams };
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   PENDANT-ONLY SPECS — tiered stone size (constrained carat input) and a
+   custom mm × mm pendant size from which the metal weight is DERIVED.
+   These feed the existing shared pricing formula and buildPrompt() via
+   window.jwlSpecifications; they apply ONLY when LAB.type === 'pendant'.
+═══════════════════════════════════════════════════════════════════════ */
+const PENDANT_TIERS = {
+  small:  { min: 0.5, max: 3,  label: '(0.5–3 ct)' },
+  medium: { min: 4,   max: 7,  label: '(4–7 ct)'   },
+  large:  { min: 8,   max: 11, label: '(8–11 ct)'  },
+};
+// Approx metal densities (g/cm³) and a tunable plate-thickness / fill model.
+const PENDANT_METAL_DENSITY = { '925silver': 10.36, '10ctgold': 11.57, '14ctgold': 13.07 };
+const PENDANT_THICKNESS_MM  = 1.6;   // assumed average plate thickness
+const PENDANT_FILL_FACTOR   = 0.62;  // pendants aren't solid rectangles — proportional factor
+
+// Single, tunable derivation: pendant mm × mm → metal grams for the chosen metal.
+function derivePendantMetalGrams(width, height, metalType) {
+  const w = (width  && width  > 0) ? width  : 15;
+  const h = (height && height > 0) ? height : 20;
+  const density   = PENDANT_METAL_DENSITY[metalType] || PENDANT_METAL_DENSITY['925silver'];
+  const volumeCm3 = (w * h * PENDANT_THICKNESS_MM * PENDANT_FILL_FACTOR) / 1000; // mm³ → cm³
+  return Math.max(0.5, +(volumeCm3 * density).toFixed(2));
+}
+
+function _pendantCarats() {
+  const c = parseFloat(userSelections.stoneCarats);
+  return (c && c > 0) ? c : 0.6;   // sensible default until a valid value is entered
+}
+function _pendantDims() {
+  const w = parseFloat(userSelections.pendantWidthMm);
+  const h = parseFloat(userSelections.pendantHeightMm);
+  return { w: (w && w > 0) ? w : 15, h: (h && h > 0) ? h : 20 };
+}
+
+// Write the pendant inputs into jwlSpecifications so every downstream reader
+// (cost estimate, buildPrompt, calculatePrice) sees a single source of truth.
+function _applyPendantSpecs() {
+  if (LAB.type !== 'pendant') return null;
+  const ws = window.jwlSpecifications = window.jwlSpecifications || {};
+  const carats = _pendantCarats();
+  const dims   = _pendantDims();
+  const grams  = derivePendantMetalGrams(dims.w, dims.h, LAB.material);
+  ws.stoneCount      = 1;
+  ws.stones          = [carats];
+  ws.totalCarats     = carats;
+  ws.metalGrams      = grams;
+  ws.weightLabel     = 'custom';
+  ws.pendantWidthMm  = dims.w;
+  ws.pendantHeightMm = dims.h;
+  return { carats, grams, dims };
+}
+
+function setPendantTier(btn, tier) {
+  document.querySelectorAll('.pendant-tier-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  userSelections.stoneSizeTier = tier;
+  const t     = PENDANT_TIERS[tier];
+  const wrap  = document.getElementById('pendantCaratWrap');
+  const range = document.getElementById('pendantTierRange');
+  const input = document.getElementById('pendantCaratInput');
+  const err   = document.getElementById('pendantCaratError');
+  if (range) range.textContent = t.label;
+  if (input) { input.min = t.min; input.max = t.max; input.placeholder = 'e.g. ' + t.min; }
+  if (wrap)  wrap.style.display = 'block';
+  if (err)   err.style.display = 'none';
+  // Re-validate any existing typed value against the newly selected tier.
+  const cur = input ? parseFloat(input.value) : NaN;
+  if (!isNaN(cur)) setPendantCarats(input.value);
+  else userSelections.stoneCarats = null;
+  console.log('[Pendant] stone tier:', tier, '| carats:', userSelections.stoneCarats);
+  _applyPendantSpecs();
+  if (typeof updateSpecCostEstimate === 'function') updateSpecCostEstimate();
+}
+
+function setPendantCarats(val) {
+  const tier = userSelections.stoneSizeTier;
+  const t    = PENDANT_TIERS[tier];
+  const err  = document.getElementById('pendantCaratError');
+  const c    = parseFloat(val);
+  if (!t) return;  // no tier chosen yet
+  if (isNaN(c) || c < t.min || c > t.max) {
+    if (err) {
+      err.textContent = 'Enter a value between ' + t.min + ' and ' + t.max + ' ct for the ' + tier + ' tier.';
+      err.style.display = 'block';
+    }
+    userSelections.stoneCarats = null;   // out of range — not accepted
+    console.log('[Pendant] stone tier:', tier, '| carats: rejected (' + val + ')');
+    return;
+  }
+  if (err) err.style.display = 'none';
+  userSelections.stoneCarats = c;
+  console.log('[Pendant] stone tier:', tier, '| carats:', c);
+  _applyPendantSpecs();
+  if (typeof updateSpecCostEstimate === 'function') updateSpecCostEstimate();
+}
+
+function setPendantSize() {
+  const wEl = document.getElementById('pendantWidthInput');
+  const hEl = document.getElementById('pendantHeightInput');
+  const err = document.getElementById('pendantSizeError');
+  const w = wEl ? parseFloat(wEl.value) : NaN;
+  const h = hEl ? parseFloat(hEl.value) : NaN;
+  const ok = v => !isNaN(v) && v >= 5 && v <= 80;
+  const wBad = wEl && wEl.value !== '' && !ok(w);
+  const hBad = hEl && hEl.value !== '' && !ok(h);
+  if (err) err.style.display = (wBad || hBad) ? 'block' : 'none';
+  userSelections.pendantWidthMm  = ok(w) ? w : null;
+  userSelections.pendantHeightMm = ok(h) ? h : null;
+  console.log('[Pendant] size mm:', userSelections.pendantWidthMm, 'x', userSelections.pendantHeightMm);
+  _applyPendantSpecs();
+  if (typeof updateSpecCostEstimate === 'function') updateSpecCostEstimate();
+}
+
+// Show pendant-only specs (and hide ring-style sections) when the type is pendant.
+function updatePendantSpecVisibility(type) {
+  const isPendant = (type === 'pendant');
+  const shape = document.getElementById('stoneShapeSection');
+  const aesth = document.getElementById('specAestheticWrap');
+  const grid  = document.getElementById('specGrid');
+  const pend  = document.getElementById('pendantSpecWrap');
+  // Stone shape is hidden for both pendant and necklace (this runs after the
+  // necklace toggle in setType, so keep necklace hidden too); shown otherwise.
+  if (shape) shape.style.display = (isPendant || type === 'necklace') ? 'none' : '';
+  if (aesth) aesth.style.display = isPendant ? 'none' : '';
+  if (grid)  grid.style.display  = isPendant ? 'none' : '';
+  if (pend)  pend.style.display  = isPendant ? 'block' : 'none';
+  if (isPendant) {
+    _applyPendantSpecs();
+    if (typeof updateSpecCostEstimate === 'function') updateSpecCostEstimate();
+  }
 }
 
 /* ── Style chip selector ─────────────────────── */
@@ -2655,8 +2845,18 @@ function _buildPromptCore(type, material, gem, style, desc) {
   const wPart = weightDesc[weightLabel] || '';
 
   if (isPendantType) {
+    // Pendant proportions come from the mm × mm size spec (taller vs wider).
+    const _pw = specs.pendantWidthMm, _ph = specs.pendantHeightMm;
+    let proportionStr = '';
+    if (_pw && _ph) {
+      const ratio = _ph / _pw;
+      proportionStr = (ratio >= 1.25 ? ', an elongated vertical pendant noticeably taller than it is wide'
+                     : ratio <= 0.8  ? ', a wide horizontal pendant noticeably broader than it is tall'
+                     :                 ', a pendant with balanced near-square proportions')
+                    + ` (approximately ${_pw}mm wide by ${_ph}mm tall)`;
+    }
     // Type keyword leads; user description follows as detail context
-    return `luxury ${style} ${wPart}pendant charm${descPart}, bail connector at top, ${mDisp}, ${gemPart}, close-up macro product photograph, pendant centered filling the frame, high contrast separation between pendant and background, soft even studio lighting with no shadows on background, pure white seamless background, ultra sharp focus, hyper realistic, 8K ultra high definition, precious metal gleam, gemstone sparkle and brilliance. No humans. No person. No body parts. No neck. No chest. No hands. No fingers. No ears. No skin. No model. Product-only photography. The jewelry piece is the sole subject of the image. No chain. No necklace cord. No string. The pendant is the only element in the image. Pendant displayed alone, flat lay on white surface, top-down view, studio lighting, luxury product photography.`;
+    return `luxury ${style} ${wPart}pendant charm${descPart}${proportionStr}, bail connector at top, ${mDisp}, ${gemPart}, close-up macro product photograph, pendant centered filling the frame, high contrast separation between pendant and background, soft even studio lighting with no shadows on background, pure white seamless background, ultra sharp focus, hyper realistic, 8K ultra high definition, precious metal gleam, gemstone sparkle and brilliance. No humans. No person. No body parts. No neck. No chest. No hands. No fingers. No ears. No skin. No model. Product-only photography. The jewelry piece is the sole subject of the image. No chain. No necklace cord. No string. The pendant is the only element in the image. Pendant displayed alone, flat lay on white surface, top-down view, studio lighting, luxury product photography.`;
   }
 
   if (type === 'necklace') {
@@ -3153,6 +3353,8 @@ async function startGeneration(isTweak) {
   window.jwlSpecifications.stoneCount  = _domSpecs.stoneCount;
   window.jwlSpecifications.stones      = _domSpecs.stones;
   window.jwlSpecifications.totalCarats = _domSpecs.totalCarats;
+  // Pendant overrides: carats from tier input, metal grams derived from mm × mm size.
+  _applyPendantSpecs();
   console.log('[JWLZIFY] specs collected:', {
     material:   LAB.material,
     gem:        LAB.gem,
@@ -3328,6 +3530,8 @@ async function confirmAndGenerate() {
       ws.totalCarats = +userSelections.stones.reduce((a, b) => a + b, 0).toFixed(2);
     }
   }
+  // Pendant: carats come from the tier input; metal grams derive from mm × mm size.
+  _applyPendantSpecs();
 
   userSelections.jewelryType = LAB.type;
   console.log('[JWLZIFY] confirmed user selections:', userSelections);
@@ -4196,6 +4400,12 @@ async function displayPricing(metalType, stoneType, jewelryType, overrideCarats)
 
   var promptText = LAB.prompt || (document.getElementById('promptArea') ? document.getElementById('promptArea').value : '');
   var userCarats = (overrideCarats !== undefined) ? overrideCarats : extractCaratWeight(promptText);
+  // Pendant: stone carats come from the tier input and metal grams are DERIVED
+  // from the mm × mm size — force both so prompt-extracted carats can't override.
+  if (jewelryType === 'pendant') {
+    var _pendApplied = _applyPendantSpecs();
+    if (_pendApplied) userCarats = _pendApplied.carats;
+  }
   // Necklace length scales metal weight (longer chain = more metal). Apply for the
   // calc only, then restore — avoids double-scaling on re-quote and never affects collections.
   var _wsP = window.jwlSpecifications;
@@ -4205,6 +4415,9 @@ async function displayPricing(metalType, stoneType, jewelryType, overrideCarats)
   }
   var r = calculatePrice(metalType, stoneType, jewelryType, userCarats);
   if (jewelryType === 'necklace' && _wsP) _wsP.metalGrams = _savedGramsP; // restore
+  if (jewelryType === 'pendant') {
+    console.log('[Pendant] derived metal grams:', r.metalGrams, '| stone carats:', r.stoneCarats, '| final price:', r.finalPrice);
+  }
   LAB.quote = { total: r.finalPrice, grams: r.metalGrams };
 
   // Store for automatic recalculation when metals refresh
