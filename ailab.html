@@ -2303,14 +2303,15 @@ function useInspiration(btn) {
 
 /* ════════════════════════════════════════════════════════════════════
    ✨ HYBRID AI PROMPT ENHANCEMENT
-   The user's raw idea is sent to Claude (via the enhance-prompt Cloudflare
-   worker) and expanded into a vivid STYLE/AESTHETIC description. The result
+   The user's raw idea is sent to the groq-enhance Cloudflare worker (which
+   holds the API key) and expanded into a vivid STYLE/AESTHETIC description.
+   Request body { idea }, response { enhanced }. The result
    is shown in the preview panel with an editable textarea + a toggle. The
    ACTIVE version (enhanced / edited / original) feeds the Flux prompt, but
    stone count/size, metal and length still come ONLY from the spec
    selectors — buildPrompt() strips any quantity words as a second guard.
 ═══════════════════════════════════════════════════════════════════════ */
-const ENHANCE_WORKER_URL = 'https://enhance-prompt.sarkd333.workers.dev';
+const ENHANCE_WORKER_URL = 'https://groq-enhance.sarkd333.workers.dev';
 window._enhanceState = { rawText: '', status: 'idle', useEnhanced: true, reqId: 0 };
 let _enhanceDebounce = null;
 
@@ -2367,11 +2368,12 @@ async function _runEnhance(raw) {
     const res = await fetch(ENHANCE_WORKER_URL, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ description: raw })
+      body:    JSON.stringify({ idea: raw })   // worker holds the key; no auth header
     });
     if (!res.ok) throw new Error('enhance worker HTTP ' + res.status);
     const data = await res.json();
-    const enhanced = ((data && (data.enhanced || data.text)) || '').trim();
+    console.log('[Enhance] groq response:', data);
+    const enhanced = ((data && data.enhanced) || '').trim();
     if (!enhanced) throw new Error('empty enhancement');
     if (myId !== st.reqId) return;     // superseded by a newer keystroke
     console.log('[Enhance] enhanced:', enhanced);
