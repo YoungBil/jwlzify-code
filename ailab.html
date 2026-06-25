@@ -624,8 +624,8 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
       <div class="flex flex-wrap gap-2" id="s2GemBtns"></div>
     </div>
 
-    <!-- Stone Shape -->
-    <div class="mb-8">
+    <!-- Stone Shape (hidden for necklace — necklaces do not use a stone shape) -->
+    <div class="mb-8" id="stoneShapeSection">
       <label class="label block mb-3" style="font-size:10px;letter-spacing:0.18em;color:#3c6474;">Stone Shape</label>
       <div class="flex flex-wrap gap-2">
         <button class="spec-toggle spec-gemshape-btn" data-shape="Round"    onclick="setUserGemShape(this,'Round')">Round</button>
@@ -652,8 +652,9 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
 
     <div class="grid lg:grid-cols-2 gap-12">
 
-      <!-- LEFT: Ring Weight -->
+      <!-- LEFT: Ring Weight (hidden for necklace — weight is auto-derived from length + placement) -->
       <div>
+        <div id="specWeightSection">
         <h3 id="specWeightHeading" style="font-family:'Playfair Display',serif;font-size:20px;font-weight:600;color:#1b1c1c;margin-bottom:20px;">Ring Weight</h3>
         <div class="grid grid-cols-3 gap-3 mb-6">
           <div class="spec-card-btn spec-weight-btn" data-preset="light" onclick="setSpecWeight('light',2.5)">
@@ -677,8 +678,9 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
           style="width:100%;font-family:Inter,sans-serif;font-size:14px;padding:10px 14px;border:1.5px solid rgba(193,199,203,0.5);border-radius:10px;outline:none;color:#1b1c1c;box-sizing:border-box;transition:border-color 0.2s;"
           oninput="setSpecWeightExact(this.value)"
           onfocus="this.style.borderColor='#3c6474'" onblur="this.style.borderColor='rgba(193,199,203,0.5)'">
+        </div><!-- /specWeightSection -->
 
-        <!-- Necklace Length — shown for ALL necklaces -->
+        <!-- Necklace Length — shown for ALL necklaces; drives auto weight + auto stone count -->
         <div id="specChainLengthWrap" style="display:none;margin-top:28px;">
           <h3 style="font-family:'Playfair Display',serif;font-size:20px;font-weight:600;color:#1b1c1c;margin-bottom:20px;">Necklace Length</h3>
           <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;">
@@ -686,13 +688,14 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
             <button class="spec-toggle spec-chainlen-btn active" data-len="18" onclick="setChainLength(this)">18" <span style="font-size:10px;font-weight:400;color:#9ca3af;margin-left:2px;">Standard</span></button>
             <button class="spec-toggle spec-chainlen-btn" data-len="20" onclick="setChainLength(this)">20" <span style="font-size:10px;font-weight:400;color:#9ca3af;margin-left:2px;">Classic</span></button>
             <button class="spec-toggle spec-chainlen-btn" data-len="22" onclick="setChainLength(this)">22" <span style="font-size:10px;font-weight:400;color:#9ca3af;margin-left:2px;">Long</span></button>
+            <button class="spec-toggle spec-chainlen-btn" data-len="24" onclick="setChainLength(this)">24"</button>
             <button class="spec-toggle spec-chainlen-btn" data-len="custom" onclick="setChainLength(this)">Custom</button>
           </div>
           <div id="specChainLengthCustomWrap" style="display:none;">
             <label style="font-family:Inter,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.1em;color:#71787c;text-transform:uppercase;display:block;margin-bottom:8px;">Enter length in inches</label>
             <input id="specChainLengthCustomInput" type="number" min="12" max="36" step="1" placeholder="19"
               style="width:100%;font-family:Inter,sans-serif;font-size:14px;padding:10px 14px;border:1.5px solid rgba(193,199,203,0.5);border-radius:10px;outline:none;color:#1b1c1c;box-sizing:border-box;transition:border-color 0.2s;"
-              oninput="setNecklaceCustomLength(this)"
+              oninput="setNecklaceCustomLength(this); _refreshNecklaceSpecs();"
               onfocus="this.style.borderColor='#3c6474'" onblur="this.style.borderColor='rgba(193,199,203,0.5)'">
           </div>
         </div>
@@ -714,23 +717,40 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
 
         <!-- Count and size fields — hidden for necklace when placement = None -->
         <div id="necklaceStoneDetailsWrap">
-          <label style="font-family:Inter,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.1em;color:#71787c;text-transform:uppercase;display:block;margin-bottom:10px;">Number of Stones</label>
-          <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;">
-            <button class="spec-toggle spec-count-btn" data-count="1" onclick="setSpecCount(1)">1</button>
-            <button class="spec-toggle spec-count-btn" data-count="2" onclick="setSpecCount(2)">2</button>
-            <button class="spec-toggle spec-count-btn" data-count="3" onclick="setSpecCount(3)">3</button>
-            <button class="spec-toggle spec-count-btn" data-count="4" onclick="setSpecCount(4)">4</button>
-            <button class="spec-toggle spec-count-btn" data-count="custom" onclick="setSpecCount('custom')">Custom</button>
-          </div>
-          <div id="specCountCustomWrap" style="display:none;margin-bottom:20px;">
-            <input id="specCountCustomInput" type="number" min="1" max="20" step="1" placeholder="e.g. 5 (max 20)"
-              style="width:100%;font-family:Inter,sans-serif;font-size:14px;padding:10px 14px;border:1.5px solid rgba(193,199,203,0.5);border-radius:10px;outline:none;color:#1b1c1c;box-sizing:border-box;transition:border-color 0.2s;"
-              oninput="setSpecCountCustom(this.value)"
-              onfocus="this.style.borderColor='#3c6474'" onblur="this.style.borderColor='rgba(193,199,203,0.5)'">
+          <!-- Standard count + per-stone sizes (rings, bracelets, earrings, pendants).
+               Hidden for necklaces: stone count is auto-derived from placement + length. -->
+          <div id="standardStoneFields">
+            <label style="font-family:Inter,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.1em;color:#71787c;text-transform:uppercase;display:block;margin-bottom:10px;">Number of Stones</label>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;">
+              <button class="spec-toggle spec-count-btn" data-count="1" onclick="setSpecCount(1)">1</button>
+              <button class="spec-toggle spec-count-btn" data-count="2" onclick="setSpecCount(2)">2</button>
+              <button class="spec-toggle spec-count-btn" data-count="3" onclick="setSpecCount(3)">3</button>
+              <button class="spec-toggle spec-count-btn" data-count="4" onclick="setSpecCount(4)">4</button>
+              <button class="spec-toggle spec-count-btn" data-count="custom" onclick="setSpecCount('custom')">Custom</button>
+            </div>
+            <div id="specCountCustomWrap" style="display:none;margin-bottom:20px;">
+              <input id="specCountCustomInput" type="number" min="1" max="20" step="1" placeholder="e.g. 5 (max 20)"
+                style="width:100%;font-family:Inter,sans-serif;font-size:14px;padding:10px 14px;border:1.5px solid rgba(193,199,203,0.5);border-radius:10px;outline:none;color:#1b1c1c;box-sizing:border-box;transition:border-color 0.2s;"
+                oninput="setSpecCountCustom(this.value)"
+                onfocus="this.style.borderColor='#3c6474'" onblur="this.style.borderColor='rgba(193,199,203,0.5)'">
+            </div>
+
+            <label style="font-family:Inter,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.1em;color:#71787c;text-transform:uppercase;display:block;margin-bottom:12px;">Stone Sizes</label>
+            <div id="specStonesContainer" style="display:flex;flex-direction:column;gap:12px;"></div>
           </div>
 
-          <label style="font-family:Inter,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.1em;color:#71787c;text-transform:uppercase;display:block;margin-bottom:12px;">Stone Sizes</label>
-          <div id="specStonesContainer" style="display:flex;flex-direction:column;gap:12px;"></div>
+          <!-- Necklace only: single carat value applied to every stone on the chain.
+               Shown only when placement is Stations or Full (hidden for None). -->
+          <div id="necklaceCtWrap" style="display:none;">
+            <label style="font-family:Inter,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.1em;color:#71787c;text-transform:uppercase;display:block;margin-bottom:10px;">Stone Size (ct)</label>
+            <input id="necklaceCtInput" type="number" min="0.25" max="5" step="0.05" placeholder="e.g. 1.5"
+              value="1"
+              style="width:100%;font-family:Inter,sans-serif;font-size:14px;padding:10px 14px;border:1.5px solid rgba(193,199,203,0.5);border-radius:10px;outline:none;color:#1b1c1c;box-sizing:border-box;transition:border-color 0.2s;"
+              oninput="setNecklaceCt(this.value)"
+              onfocus="this.style.borderColor='#3c6474'" onblur="this.style.borderColor='rgba(193,199,203,0.5)'">
+            <p style="font-family:Inter,sans-serif;font-size:11px;color:#9ca3af;margin:6px 0 0;">Enter a number from 0.25 to 5 ct — applied to every stone on the necklace.</p>
+            <p id="necklaceCtError" style="display:none;font-family:Inter,sans-serif;font-size:12px;color:#dc2626;margin:8px 0 0;">Please enter a carat value between 0.25 and 5 ct.</p>
+          </div>
         </div>
       </div>
 
@@ -1570,6 +1590,7 @@ let selectedChainPrompt     = '';
 let selectedChainLabel      = '';
 let selectedChainLength     = '18 inches (standard)';
 let selectedNecklacePlacement = 'stations'; // 'none' | 'stations' | 'full'
+let selectedNecklaceCt      = 1.0;          // single carat value applied to every stone (necklace only)
 
 /* ── BG removal cache — avoids repeat API calls per session ── */
 const bgRemovalCache = new Map();
@@ -1645,6 +1666,8 @@ function setUserGem(btn, val) {
 }
 
 function setUserGemShape(btn, val) {
+  // Necklaces have no stone shape — ignore any stray selection.
+  if (LAB.type === 'necklace') return;
   document.querySelectorAll('.spec-gemshape-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   userSelections.gemShape = val;
@@ -2014,6 +2037,7 @@ async function goStep(n) {
     selectedChainStyle = null; selectedChainPrompt = ''; selectedChainLabel = '';
     selectedChainLength = '18 inches (standard)';
     selectedNecklacePlacement = 'stations';
+    selectedNecklaceCt = 1.0;
     lastGeneratedImage = null;
   }
   // Kill camera when leaving step 4 (Try On)
@@ -2028,7 +2052,7 @@ async function goStep(n) {
   LAB.step = n;
   updateProgress(n);
   window.scrollTo({ top: 0, behavior: 'smooth' });
-  if (n === 2) { _renderStoneRows(); updateSpecCostEstimate(); updateWeightHeading(); updateChainLengthVisibility(); }
+  if (n === 2) { _renderStoneRows(); updateSpecCostEstimate(); updateWeightHeading(); updateChainLengthVisibility(); if (LAB.type === 'necklace') { _updateNecklacePlacementUI(); _refreshNecklaceSpecs(); } }
   if (n === 4) setupTryOn();
   if (n === 5) {
     await fetchSpotPrices(); // always fetch live price at quote time
@@ -2049,11 +2073,12 @@ function updateWeightHeading() {
 function updateChainLengthVisibility() {
   const wrap = document.getElementById('specChainLengthWrap');
   if (!wrap) return;
-  // Necklace LENGTH applies to every necklace (16/18/20/22/custom inches).
+  // Necklace length is a core spec for every necklace — it drives the auto
+  // weight + auto stone-count mappings, so it is always shown for necklaces.
   wrap.style.display = (LAB.type === 'necklace') ? 'block' : 'none';
 }
 
-const _chainLenMap = {'16':'16 inches (choker)','18':'18 inches (standard)','20':'20 inches (classic)','22':'22 inches (long)'};
+const _chainLenMap = {'16':'16 inches (choker)','18':'18 inches (standard)','20':'20 inches (classic)','22':'22 inches (long)','24':'24 inches'};
 function setChainLength(btn) {
   document.querySelectorAll('.spec-chainlen-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
@@ -2069,6 +2094,7 @@ function setChainLength(btn) {
     document.getElementById('specChainLengthCustomWrap').style.display = 'none';
     console.log('[Necklace] length selected:', userSelections.necklaceLength);
   }
+  _refreshNecklaceSpecs();
 }
 function setNecklaceCustomLength(input) {
   const v = parseFloat(input.value);
@@ -2248,6 +2274,16 @@ function setType(btn, type) {
     selectedChainStyle = null; selectedChainPrompt = ''; selectedChainLabel = '';
     selectedChainLength = '18 inches (standard)';
 
+    // Reset necklace placement + carat input
+    selectedNecklacePlacement = 'stations';
+    selectedNecklaceCt = 1.0;
+    document.querySelectorAll('.necklace-placement-btn').forEach(b =>
+      b.classList.toggle('active', b.dataset.placement === 'stations'));
+    const _nci = document.getElementById('necklaceCtInput');
+    if (_nci) { _nci.value = '1'; _nci.style.borderColor = 'rgba(193,199,203,0.5)'; }
+    const _nce = document.getElementById('necklaceCtError');
+    if (_nce) _nce.style.display = 'none';
+
     // Teardown try-on if active
     if (isTryOnActive) {
       isTryOnActive = false; isProcessing = false;
@@ -2268,9 +2304,25 @@ function setType(btn, type) {
   // Necklace-only: stone placement selector visibility
   const _placementWrap = document.getElementById('necklacePlacementWrap');
   if (_placementWrap) _placementWrap.style.display = type === 'necklace' ? 'block' : 'none';
+  // Weight section is hidden for necklaces (weight auto-derived from length + placement).
+  const _weightSection = document.getElementById('specWeightSection');
+  if (_weightSection) _weightSection.style.display = type === 'necklace' ? 'none' : '';
+  // Stone Shape section is removed for necklaces entirely — clear any shape selection
+  // so it never leaks into a necklace prompt or pricing.
+  const _shapeSection = document.getElementById('stoneShapeSection');
+  if (_shapeSection) _shapeSection.style.display = type === 'necklace' ? 'none' : '';
+  if (type === 'necklace') {
+    delete userSelections.gemShape;
+    document.querySelectorAll('.spec-gemshape-btn').forEach(b => b.classList.remove('active'));
+  }
+  const _stdFields = document.getElementById('standardStoneFields');
+  const _ctWrap    = document.getElementById('necklaceCtWrap');
   if (type !== 'necklace') {
+    // Non-necklace: standard count + per-stone sizes; no necklace ct input.
     const _stoneDetailsWrap = document.getElementById('necklaceStoneDetailsWrap');
     if (_stoneDetailsWrap) _stoneDetailsWrap.style.display = '';
+    if (_stdFields) _stdFields.style.display = '';
+    if (_ctWrap)    _ctWrap.style.display    = 'none';
   } else {
     _updateNecklacePlacementUI();
   }
@@ -2283,10 +2335,104 @@ function setNecklacePlacement(val) {
   document.querySelectorAll('.necklace-placement-btn').forEach(b =>
     b.classList.toggle('active', b.dataset.placement === val));
   _updateNecklacePlacementUI();
+  _refreshNecklaceSpecs();
 }
 function _updateNecklacePlacementUI() {
+  // None → no stones at all, hide the whole stone-details block.
+  // Stations / Full → show ONLY the single carat input (the standard count +
+  // per-stone size fields stay hidden for necklaces; count is auto-derived).
   const detailsWrap = document.getElementById('necklaceStoneDetailsWrap');
-  if (detailsWrap) detailsWrap.style.display = selectedNecklacePlacement === 'none' ? 'none' : '';
+  const ctWrap      = document.getElementById('necklaceCtWrap');
+  const stdFields   = document.getElementById('standardStoneFields');
+  const hasStones   = selectedNecklacePlacement !== 'none';
+  if (detailsWrap) detailsWrap.style.display = hasStones ? '' : 'none';
+  if (stdFields)   stdFields.style.display   = 'none';   // never shown for necklaces
+  if (ctWrap)      ctWrap.style.display      = hasStones ? '' : 'none';
+}
+
+/* ── Necklace single carat input (applies to every stone) ──────
+   Accepted range 0.25–5 ct. Invalid values block generation. */
+function setNecklaceCt(val) {
+  const ct = parseFloat(val);
+  if (!isNaN(ct)) selectedNecklaceCt = ct;
+  _validateNecklaceCt(); // live-clear/show inline message as the user types
+  _refreshNecklaceSpecs();
+}
+
+// Recompute auto weight + stone count and refresh the live cost estimate.
+function _refreshNecklaceSpecs() {
+  if (LAB.type !== 'necklace') return;
+  _applyNecklaceAutoSpecs();
+  if (typeof updateSpecCostEstimate === 'function') updateSpecCostEstimate();
+}
+function _validateNecklaceCt() {
+  const input = document.getElementById('necklaceCtInput');
+  const err   = document.getElementById('necklaceCtError');
+  const ct    = input ? parseFloat(input.value) : selectedNecklaceCt;
+  const valid = !isNaN(ct) && ct >= 0.25 && ct <= 5;
+  if (err)   err.style.display = valid ? 'none' : 'block';
+  if (input) input.style.borderColor = valid ? 'rgba(193,199,203,0.5)' : '#dc2626';
+  return valid;
+}
+
+/* ── Necklace auto-spec mappings ───────────────────────────────
+   Weight and stone count are no longer picked by the user; the system
+   derives them from necklace LENGTH + stone PLACEMENT. */
+
+// Numeric necklace length in inches — single source of truth shared with the prompt.
+function _necklaceInches() {
+  // Prefer the dedicated length tracker; fall back to parsing selectedChainLength.
+  if (typeof _necklaceLengthInches === 'function') return _necklaceLengthInches();
+  const m = (selectedChainLength || '').match(/(\d+(?:\.\d+)?)/);
+  return m ? parseFloat(m[1]) : 18; // default 18" if unset/custom-empty
+}
+
+// Auto METAL WEIGHT (grams): scales with length, with a bump for more stones.
+//   16–18" ≈ 3g (light) · 20–22" ≈ 5g (medium) · 24"+ ≈ 7g (heavier)
+//   + Full placement adds ~2g (stones run the whole chain = more material)
+//   + Stations adds ~0.5g (a handful of set stones)
+function _necklaceAutoWeight(inches, placement) {
+  let g;
+  if      (inches <= 18) g = 3;
+  else if (inches <= 22) g = 5;
+  else                   g = 7;
+  if      (placement === 'full')     g += 2;
+  else if (placement === 'stations') g += 0.5;
+  return +g.toFixed(1);
+}
+
+// Auto STONE COUNT: derived from placement + length.
+//   None     → 0
+//   Stations → evenly spaced count: 16–18" ≈ 5 · 20–22" ≈ 7 · 24"+ ≈ 9
+//   Full     → tennis-style continuous line; count scales with length
+//              (~3 stones per inch) purely to feed weight/pricing — the prompt
+//              describes it as "continuous", never as a fixed number.
+function _necklaceAutoStoneCount(inches, placement) {
+  if (placement === 'none') return 0;
+  if (placement === 'stations') {
+    if (inches <= 18) return 5;
+    if (inches <= 22) return 7;
+    return 9;
+  }
+  return Math.round(inches * 3); // full / tennis
+}
+
+// Push the auto-derived weight + stone array into jwlSpecifications so the
+// prompt, cost estimate and pricing engine all read consistent values.
+// Replaces any stale user-picked weight / count / per-stone sizes cleanly.
+function _applyNecklaceAutoSpecs() {
+  const inches    = _necklaceInches();
+  const placement = selectedNecklacePlacement;
+  const ct        = selectedNecklaceCt;
+  const count     = _necklaceAutoStoneCount(inches, placement);
+  const grams     = _necklaceAutoWeight(inches, placement);
+  const s = window.jwlSpecifications;
+  s.metalGrams  = grams;
+  s.weightLabel = grams <= 4 ? 'light' : (grams <= 6 ? 'medium' : 'heavy');
+  s.stoneCount  = count;
+  s.stones      = count > 0 ? Array(count).fill(+ct.toFixed(2)) : [];
+  s.totalCarats = +(count * ct).toFixed(2);
+  return { inches, placement, ct, count, grams };
 }
 
 /* ── Style chip selector ─────────────────────── */
@@ -2525,18 +2671,18 @@ function _buildPromptCore(type, material, gem, style, desc) {
     const chainLenStr = `This is a ${_neckLenIn} inch necklace${_neckLenDesc}.`;
     const specStr = [chainStyleStr, chainLenStr].filter(Boolean).join(' ');
     // Placement-aware gem description — chain-only necklaces, no pendant ever.
-    // Built from raw stone values, not gemPart, to avoid "center stone" language.
+    // A single carat value applies to EVERY stone; stone count is auto-derived
+    // from placement + length. Avoids "center stone" language entirely.
+    const _ct = selectedNecklaceCt;
+    const _autoStations = _necklaceAutoStoneCount(_necklaceInches(), selectedNecklacePlacement);
     let necklaceGemStr = '';
     if (selectedNecklacePlacement === 'none') {
       necklaceGemStr = 'plain polished chain, no stones';
     } else if (gDisp) {
-      const _placementDesc = selectedNecklacePlacement === 'full'
-        ? 'stones set continuously along the entire chain, tennis necklace style'
-        : 'individual stones spaced far apart along a plain chain with clearly visible bare chain links between each stone, NOT continuous, NOT a tennis necklace, distinct gaps between stones';
-      if (stoneCount === 1) {
-        necklaceGemStr = `featuring a ${totalCarats}ct ${gDisp} stone, ${_placementDesc}`;
+      if (selectedNecklacePlacement === 'full') {
+        necklaceGemStr = `featuring ${_ct}ct ${gDisp} stones set continuously along the entire chain, tennis necklace style, every stone the same ${_ct}ct size`;
       } else {
-        necklaceGemStr = `featuring ${stoneCount} ${gDisp} stones (${stones.map(s => s + 'ct').join(', ')}, ${totalCarats}ct total), ${_placementDesc}`;
+        necklaceGemStr = `featuring ${_autoStations} ${_ct}ct ${gDisp} stones spaced evenly as stations far apart along a plain chain with clearly visible bare chain links between each stone, NOT continuous, NOT a tennis necklace, distinct gaps between stones, every stone the same ${_ct}ct size`;
       }
     }
     const necklaceFraming = [
@@ -3164,12 +3310,23 @@ async function confirmAndGenerate() {
   LAB.style    = userSelections.style || 'Modern';
 
   const ws = window.jwlSpecifications;
-  if (userSelections.metalGrams)  ws.metalGrams  = userSelections.metalGrams;
-  if (userSelections.weightLabel) ws.weightLabel = userSelections.weightLabel;
-  if (userSelections.stoneCount)  ws.stoneCount  = userSelections.stoneCount;
-  if (userSelections.stones && userSelections.stones.length > 0) {
-    ws.stones      = userSelections.stones.slice();
-    ws.totalCarats = +userSelections.stones.reduce((a, b) => a + b, 0).toFixed(2);
+  if (LAB.type === 'necklace') {
+    // Necklace: weight + stone count are auto-derived, not user-picked. Validate
+    // the single carat value first (only relevant when the necklace has stones).
+    if (selectedNecklacePlacement !== 'none' && !_validateNecklaceCt()) {
+      const ctWrap = document.getElementById('necklaceCtWrap');
+      if (ctWrap) ctWrap.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return; // block generation until carat is valid
+    }
+    _applyNecklaceAutoSpecs(); // overwrites grams/count/stones/totalCarats cleanly
+  } else {
+    if (userSelections.metalGrams)  ws.metalGrams  = userSelections.metalGrams;
+    if (userSelections.weightLabel) ws.weightLabel = userSelections.weightLabel;
+    if (userSelections.stoneCount)  ws.stoneCount  = userSelections.stoneCount;
+    if (userSelections.stones && userSelections.stones.length > 0) {
+      ws.stones      = userSelections.stones.slice();
+      ws.totalCarats = +userSelections.stones.reduce((a, b) => a + b, 0).toFixed(2);
+    }
   }
 
   userSelections.jewelryType = LAB.type;
@@ -3229,8 +3386,8 @@ async function confirmAndGenerate() {
     const _hfPlacement = selectedNecklacePlacement === 'none'
       ? 'plain polished chain no stones'
       : selectedNecklacePlacement === 'full'
-        ? 'stones set continuously along entire chain tennis necklace'
-        : `${window.jwlSpecifications.stoneCount} individual stones spaced far apart along chain, bare chain links clearly visible between each stone, NOT tennis necklace, NOT continuous, distinct gaps between stones`;
+        ? `${selectedNecklaceCt}ct stones set continuously along entire chain tennis necklace, every stone same size`
+        : `${window.jwlSpecifications.stoneCount} ${selectedNecklaceCt}ct individual stones spaced far apart along chain, bare chain links clearly visible between each stone, NOT tennis necklace, NOT continuous, distinct gaps between stones, every stone same size`;
     const _hfNegNecklaceC = _HF_NECKLACE_NEGATIVE + (selectedNecklacePlacement === 'stations' ? ', tennis necklace, continuous stones, fully set chain, pave chain, stones touching, no gaps between stones' : '');
     const _hfInput = `${_hfDesc}, ${_hfPlacement}, chain-only necklace, no pendant, no charm, no hanging centerpiece, necklace displayed as if worn, front-facing view photographed straight on, chain forms a clean symmetrical U-shape draped down both sides evenly, displayed on an invisible ghost mannequin neck form, vertical portrait orientation, light grey background, studio lighting, sharp focus, photorealistic, 8k`;
     _hfOverridesC = { inputs: _hfInput, negative_prompt: _hfNegNecklaceC, guidance_scale: 9.0, num_inference_steps: 30 };
@@ -6512,5 +6669,6 @@ async function startRing3DTryOn() {
 document.getElementById('ringModalClose').addEventListener('click', closeRing3DModal);
 </script>
 
+<script src="mobile-nav.js"></script>
 </body>
 </html>
