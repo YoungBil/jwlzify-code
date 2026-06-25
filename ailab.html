@@ -706,7 +706,7 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
       <div class="mb-8">
         <label class="label block mb-3" style="font-size:10px;letter-spacing:0.18em;color:#3c6474;">STONE SIZE</label>
         <div class="flex flex-wrap gap-2">
-          <button class="spec-toggle bracelet-pill bracelet-tier-btn" data-tier="accent" onclick="setBraceletStoneTier(this,'accent')">Accent <span style="font-size:10px;font-weight:400;color:#9ca3af;margin-left:3px;">0.10 ct each</span></button>
+          <button class="spec-toggle bracelet-pill bracelet-tier-btn" data-tier="accent" onclick="setBraceletStoneTier(this,'accent')">Small <span style="font-size:10px;font-weight:400;color:#9ca3af;margin-left:3px;">0.10 ct each</span></button>
           <button class="spec-toggle bracelet-pill bracelet-tier-btn" data-tier="medium" onclick="setBraceletStoneTier(this,'medium')">Medium <span style="font-size:10px;font-weight:400;color:#9ca3af;margin-left:3px;">0.25 ct each</span></button>
           <button class="spec-toggle bracelet-pill bracelet-tier-btn" data-tier="large"  onclick="setBraceletStoneTier(this,'large')">Large <span style="font-size:10px;font-weight:400;color:#9ca3af;margin-left:3px;">0.50 ct each</span></button>
         </div>
@@ -3035,14 +3035,18 @@ function updateBraceletSpecVisibility(type) {
   const aesth = document.getElementById('specAestheticWrap');
   const grid  = document.getElementById('specGrid');
   const brac  = document.getElementById('braceletSpecWrap');
+  const shape = document.getElementById('stoneShapeSection');
   // Runs LAST in setType/goStep, so it is the authoritative writer for the shared
-  // grid. The grid (weight + count + sizes) is replaced for ring (carat-allocation
-  // flow), pendant, and bracelet. Design Aesthetic is hidden only for pendant +
-  // bracelet (ring keeps it).
+  // grid + stone-shape sections. The grid (weight + count + sizes) is replaced for
+  // ring (carat-allocation flow), pendant, and bracelet. Design Aesthetic is hidden
+  // only for pendant + bracelet (ring keeps it). Stone Shape is hidden for necklace,
+  // pendant, and bracelet.
   const hideGrid  = (type === 'ring' || type === 'pendant' || type === 'bracelet');
   const hideAesth = (type === 'pendant' || type === 'bracelet');
+  const hideShape = (type === 'necklace' || type === 'pendant' || type === 'bracelet');
   if (aesth) aesth.style.display = hideAesth ? 'none' : '';
   if (grid)  grid.style.display  = hideGrid ? 'none' : '';
+  if (shape) shape.style.display = hideShape ? 'none' : '';
   if (brac)  brac.style.display  = isBracelet ? 'block' : 'none';
   if (isBracelet) {
     _applyBraceletSpecs();
