@@ -777,6 +777,50 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
 
     </div>
 
+    <!-- ════ EARRING ONLY: mm-driven stone allocation ════
+         A matching pair of identical earrings. Total ct per pair → size bucket →
+         mm length. The stone count is system-derived (even, split equally between
+         the two earrings) and gated so the per-stone carat lands inside the chosen
+         bucket. Replaces the shared weight + stones grid for earrings only. -->
+    <div id="earringFlow" style="display:none;">
+
+      <!-- STEP A — Total carat weight per pair -->
+      <div class="mb-8" id="earStepA">
+        <label class="label block mb-3" style="font-size:10px;letter-spacing:0.18em;color:#3c6474;">Total Carat Weight (per pair)</label>
+        <input id="earTotalCtInput" type="number" min="0.25" step="0.25" placeholder="e.g. 2"
+          style="width:100%;max-width:320px;font-family:Inter,sans-serif;font-size:14px;padding:10px 14px;border:1.5px solid rgba(193,199,203,0.5);border-radius:10px;outline:none;color:#1b1c1c;box-sizing:border-box;transition:border-color 0.2s;"
+          oninput="setEarringTotalCt(this.value)"
+          onfocus="this.style.borderColor='#3c6474'" onblur="this.style.borderColor='rgba(193,199,203,0.5)'">
+        <p style="font-family:Inter,sans-serif;font-size:11px;color:#9ca3af;margin:6px 0 0;">Combined carats across the matching pair (min 0.25).</p>
+      </div>
+
+      <!-- STEP B — Stone size bucket (appears after a total is entered) -->
+      <div class="mb-8" id="earStepB" style="display:none;">
+        <label class="label block mb-3" style="font-size:10px;letter-spacing:0.18em;color:#3c6474;">Stone Size</label>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;">
+          <button class="spec-toggle ear-bucket-btn" data-bucket="small"  onclick="setEarringBucket('small')">Small <span style="font-size:10px;font-weight:400;color:#9ca3af;margin-left:2px;">0.25–2ct</span></button>
+          <button class="spec-toggle ear-bucket-btn" data-bucket="medium" onclick="setEarringBucket('medium')">Medium <span style="font-size:10px;font-weight:400;color:#9ca3af;margin-left:2px;">2.5–3.5ct</span></button>
+          <button class="spec-toggle ear-bucket-btn" data-bucket="large"  onclick="setEarringBucket('large')">Large <span style="font-size:10px;font-weight:400;color:#9ca3af;margin-left:2px;">4–5ct</span></button>
+        </div>
+      </div>
+
+      <!-- STEP C — Earring length in mm (appears after a size bucket is picked) -->
+      <div class="mb-8" id="earStepC" style="display:none;">
+        <label class="label block mb-3" style="font-size:10px;letter-spacing:0.18em;color:#3c6474;">Size per Earring (mm)</label>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;">
+          <button class="spec-toggle ear-mm-btn" data-mm="4"  onclick="setEarringMm(4)">4mm</button>
+          <button class="spec-toggle ear-mm-btn" data-mm="6"  onclick="setEarringMm(6)">6mm</button>
+          <button class="spec-toggle ear-mm-btn" data-mm="8"  onclick="setEarringMm(8)">8mm</button>
+          <button class="spec-toggle ear-mm-btn" data-mm="10" onclick="setEarringMm(10)">10mm</button>
+          <button class="spec-toggle ear-mm-btn" data-mm="12" onclick="setEarringMm(12)">12mm</button>
+        </div>
+        <!-- Live readout / conflict message -->
+        <div id="earSummary" style="margin-top:18px;font-family:Inter,sans-serif;font-size:13px;font-weight:600;color:#1b1c1c;"></div>
+        <p id="earMessage" style="display:none;font-family:Inter,sans-serif;font-size:12px;color:#dc2626;margin:8px 0 0;"></p>
+      </div>
+
+    </div>
+
     <div class="grid lg:grid-cols-2 gap-12" id="specGrid">
 
       <!-- LEFT: Ring Weight (hidden for necklace — weight is auto-derived from length + placement) -->
@@ -2192,7 +2236,7 @@ async function goStep(n) {
   LAB.step = n;
   updateProgress(n);
   window.scrollTo({ top: 0, behavior: 'smooth' });
-  if (n === 2) { _renderStoneRows(); updateSpecCostEstimate(); updateWeightHeading(); updateChainLengthVisibility(); if (LAB.type === 'necklace') { _updateNecklacePlacementUI(); _refreshNecklaceSpecs(); } if (LAB.type === 'ring') { const rf = document.getElementById('ringCaratFlow'); const gd = document.getElementById('specGrid'); if (rf) rf.style.display = ''; if (gd) gd.style.display = 'none'; _validateRingAllocation(); } updatePendantSpecVisibility(LAB.type); updateBraceletSpecVisibility(LAB.type); }
+  if (n === 2) { _renderStoneRows(); updateSpecCostEstimate(); updateWeightHeading(); updateChainLengthVisibility(); if (LAB.type === 'necklace') { _updateNecklacePlacementUI(); _refreshNecklaceSpecs(); } if (LAB.type === 'ring') { const rf = document.getElementById('ringCaratFlow'); const gd = document.getElementById('specGrid'); if (rf) rf.style.display = ''; if (gd) gd.style.display = 'none'; _validateRingAllocation(); } if (LAB.type === 'earrings') { const ef = document.getElementById('earringFlow'); const gd = document.getElementById('specGrid'); if (ef) ef.style.display = ''; if (gd) gd.style.display = 'none'; _validateEarringFlow(); } updatePendantSpecVisibility(LAB.type); updateBraceletSpecVisibility(LAB.type); }
   if (n === 4) setupTryOn();
   if (n === 5) {
     await fetchSpotPrices(); // always fetch live price at quote time
@@ -2484,20 +2528,24 @@ function setType(btn, type) {
   } else {
     _updateNecklacePlacementUI();
   }
-  // Ring-only: the sequential carat-allocation flow replaces the weight + stone
-  // grid. Show it for rings (and hide the shared grid); restore the grid + ungate
-  // the button for every other type.
+  // Ring + earrings each replace the shared weight + stone grid with their own
+  // gated sequential flow. Show the matching flow, hide the grid, and leave the
+  // Generate button gated by that flow. Every other type uses the shared grid.
   const _ringFlow = document.getElementById('ringCaratFlow');
+  const _earFlow  = document.getElementById('earringFlow');
   const _specGrid = document.getElementById('specGrid');
+  if (_ringFlow) _ringFlow.style.display = (type === 'ring') ? '' : 'none';
+  if (_earFlow)  _earFlow.style.display  = (type === 'earrings') ? '' : 'none';
   if (type === 'ring') {
-    if (_ringFlow) _ringFlow.style.display = '';
     if (_specGrid) _specGrid.style.display = 'none';
     _resetRingFlow(); // fresh start; Generate stays gated until the allocation is valid
+  } else if (type === 'earrings') {
+    if (_specGrid) _specGrid.style.display = 'none';
+    _resetEarringFlow(); // fresh start; Generate stays gated until valid
   } else {
-    if (_ringFlow) _ringFlow.style.display = 'none';
     if (_specGrid) _specGrid.style.display = '';
     const _gb = document.getElementById('generateBtn');
-    if (_gb) _gb.disabled = false; // other types are not gated by the ring flow
+    if (_gb) _gb.disabled = false; // other types are not gated by a custom flow
   }
   // Pendant gets a simpler, different spec set (overrides the show above).
   updatePendantSpecVisibility(type);
@@ -2737,9 +2785,9 @@ function updatePendantSpecVisibility(type) {
   // necklace toggle in setType, so keep necklace hidden too); shown otherwise.
   if (shape) shape.style.display = (isPendant || type === 'necklace') ? 'none' : '';
   if (aesth) aesth.style.display = isPendant ? 'none' : '';
-  // Rings replace the shared grid with their own carat-allocation flow, so the
-  // grid stays hidden for rings too (the ring flow is toggled on in setType).
-  if (grid)  grid.style.display  = (isPendant || type === 'ring') ? 'none' : '';
+  // Rings + earrings replace the shared grid with their own flow, so the grid
+  // stays hidden for them too (their flow is toggled on in setType).
+  if (grid)  grid.style.display  = (isPendant || type === 'ring' || type === 'earrings') ? 'none' : '';
   if (pend)  pend.style.display  = isPendant ? 'block' : 'none';
   if (isPendant) {
     _applyPendantSpecs();
@@ -3030,10 +3078,10 @@ function updateBraceletSpecVisibility(type) {
   const shape = document.getElementById('stoneShapeSection');
   // Runs LAST in setType/goStep, so it is the authoritative writer for the shared
   // grid + stone-shape sections. The grid (weight + count + sizes) is replaced for
-  // ring (carat-allocation flow), pendant, and bracelet. Design Aesthetic is hidden
-  // only for pendant + bracelet (ring keeps it). Stone Shape is hidden for necklace,
-  // pendant, and bracelet.
-  const hideGrid  = (type === 'ring' || type === 'pendant' || type === 'bracelet');
+  // ring (carat-allocation flow), earrings (mm-driven flow), pendant, and bracelet.
+  // Design Aesthetic is hidden only for pendant + bracelet (ring + earrings keep it).
+  // Stone Shape is hidden for necklace, pendant, and bracelet (ring + earrings keep it).
+  const hideGrid  = (type === 'ring' || type === 'earrings' || type === 'pendant' || type === 'bracelet');
   const hideAesth = (type === 'pendant' || type === 'bracelet');
   const hideShape = (type === 'necklace' || type === 'pendant' || type === 'bracelet');
   if (aesth) aesth.style.display = hideAesth ? 'none' : '';
@@ -3132,6 +3180,180 @@ function _renderBraceletCountPanel(rawCount, anglesUsed) {
   if (LAB.type !== 'bracelet') { panel.style.display = 'none'; return; }
   panel.style.display = 'block';
   if (valueEl) valueEl.textContent = _braceletStoneCount();
+}
+
+/* ════════════════════════════════════════════════════════════════
+   EARRING ONLY — mm-driven stone allocation (a matching identical pair)
+   Total ct per pair → size bucket → mm length. The stone count is system
+   determined: even (split equally between the two earrings) and chosen so the
+   per-stone carat lands inside the selected bucket. Specs are the source of
+   truth; Generate is gated until a valid in-bucket even count is resolved.
+   ════════════════════════════════════════════════════════════════ */
+
+const EARRING_BUCKETS = {
+  small:  { label: 'Small',  min: 0.25, max: 2.0 },
+  medium: { label: 'Medium', min: 2.5,  max: 3.5 },
+  large:  { label: 'Large',  min: 4.0,  max: 5.0 },
+};
+// Base stones-per-earring by mm length (mm controls physical length / density).
+const EARRING_MM_BASE = { 4: 1, 6: 1, 8: 2, 10: 3, 12: 4 };
+
+let _earTotalCtPair = 0;
+let _earBucket      = null;  // 'small' | 'medium' | 'large'
+let _earMm          = null;  // 4 | 6 | 8 | 10 | 12
+let _earResolved    = null;  // { totalStoneCount, perEarringCount, perStoneCt } | null
+
+function setEarringTotalCt(val) {
+  const v = parseFloat(val);
+  _earTotalCtPair = (!isNaN(v) && v > 0) ? v : 0;
+  const stepB = document.getElementById('earStepB');
+  const stepC = document.getElementById('earStepC');
+  if (stepB) stepB.style.display = _earTotalCtPair > 0 ? '' : 'none';
+  if (_earTotalCtPair <= 0 && stepC) stepC.style.display = 'none';
+  _validateEarringFlow();
+}
+
+function setEarringBucket(bucket) {
+  _earBucket = bucket;
+  document.querySelectorAll('.ear-bucket-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.bucket === bucket));
+  const stepC = document.getElementById('earStepC');
+  if (stepC) stepC.style.display = '';
+  _validateEarringFlow();
+}
+
+function setEarringMm(mm) {
+  _earMm = mm;
+  document.querySelectorAll('.ear-mm-btn').forEach(b =>
+    b.classList.toggle('active', String(b.dataset.mm) === String(mm)));
+  _validateEarringFlow();
+}
+
+// Resolve the system stone count for the current total ct + bucket + mm.
+// Returns { totalStoneCount, perEarringCount, perStoneCt } or null if no even
+// count can land the per-stone carat inside the chosen bucket.
+function _resolveEarringCount() {
+  if (!(_earTotalCtPair > 0) || !_earBucket || !_earMm) return null;
+  const b    = EARRING_BUCKETS[_earBucket];
+  const base = EARRING_MM_BASE[_earMm] || 1;     // stones per earring from mm
+  const mid  = (b.min + b.max) / 2;
+  const inBucket = ct => ct >= b.min - 1e-9 && ct <= b.max + 1e-9;
+
+  // 1) Prefer the mm-derived count if it lands in the bucket.
+  const baseTotal = base * 2;
+  const basePer   = _earTotalCtPair / baseTotal;
+  if (inBucket(basePer)) {
+    return { totalStoneCount: baseTotal, perEarringCount: base, perStoneCt: +basePer.toFixed(2) };
+  }
+
+  // 2) Otherwise search even totals 2..16 for any that land in-bucket; pick the
+  //    one closest to the bucket midpoint, tie-broken by nearness to the mm base.
+  let best = null;
+  for (let total = 2; total <= 16; total += 2) {
+    const per = _earTotalCtPair / total;
+    if (!inBucket(per)) continue;
+    const perEar  = total / 2;
+    const midDist = Math.abs(per - mid);
+    const baseDist = Math.abs(perEar - base);
+    if (!best || midDist < best.midDist - 1e-9 ||
+        (Math.abs(midDist - best.midDist) <= 1e-9 && baseDist < best.baseDist)) {
+      best = { totalStoneCount: total, perEarringCount: perEar, perStoneCt: +per.toFixed(2), midDist, baseDist };
+    }
+  }
+  if (best) return { totalStoneCount: best.totalStoneCount, perEarringCount: best.perEarringCount, perStoneCt: best.perStoneCt };
+  return null; // no even count makes per-stone ct fall in the bucket
+}
+
+// Central validator + Generate-button gate (earrings only).
+function _validateEarringFlow() {
+  if (LAB.type !== 'earrings') return true;
+  const summary = document.getElementById('earSummary');
+  const msgEl   = document.getElementById('earMessage');
+  const btn     = document.getElementById('generateBtn');
+
+  _earResolved = null;
+  const haveAll = _earTotalCtPair > 0 && _earBucket && _earMm;
+  let matches = false;
+
+  if (haveAll) {
+    _earResolved = _resolveEarringCount();
+    matches = !!_earResolved;
+  }
+
+  if (summary) {
+    if (matches) {
+      const r = _earResolved, bl = EARRING_BUCKETS[_earBucket].label;
+      summary.textContent = r.totalStoneCount + ' stones total (' + r.perEarringCount +
+        ' per earring) · ' + r.perStoneCt + ' ct each · ' + bl;
+    } else summary.textContent = '';
+  }
+  if (msgEl) {
+    if (haveAll && !matches) {
+      const b = EARRING_BUCKETS[_earBucket];
+      msgEl.textContent = _earTotalCtPair + 'ct total can’t reach ' + b.label +
+        ' (' + b.min + '–' + b.max + 'ct/stone) — increase total carat or pick a smaller size.';
+      msgEl.style.display = 'block';
+    } else msgEl.style.display = 'none';
+  }
+
+  if (btn) btn.disabled = !matches;
+  if (matches) _applyEarringSpecs();
+  return matches;
+}
+
+// Write the earring allocation into jwlSpecifications (task-specified fields +
+// the numeric mirrors the untouched pricing/prompt code reads).
+function _applyEarringSpecs() {
+  if (!_earResolved) return;
+  const s = window.jwlSpecifications;
+  const r = _earResolved;
+  s.metal           = LAB.material || userSelections.material || null;
+  s.primaryStone    = LAB.gem || userSelections.gem || null;
+  s.stoneShape      = userSelections.gemShape || 'Round';
+  s.designAesthetic = LAB.style || userSelections.style || 'Modern';
+  s.totalCtPair     = +(_earTotalCtPair || 0).toFixed(2);
+  s.sizeBucket      = _earBucket;
+  s.earringMm       = _earMm;
+  s.totalStoneCount = r.totalStoneCount;
+  s.perEarringCount = r.perEarringCount;
+  s.perStoneCt      = r.perStoneCt;
+  // ── compatibility mirrors ──
+  // Quote reads totalCarats as stoneCarats = total ct for the pair.
+  s.totalCarats     = s.totalCtPair;
+  // The image renders ONE earring (mirrored into a pair at try-on), so the
+  // authoritative count + stones describe a single earring's stones.
+  s.stoneCount      = r.perEarringCount;
+  s.stones          = Array(r.perEarringCount).fill(r.perStoneCt);
+  s.metalGrams      = (typeof MATERIAL_WEIGHTS !== 'undefined' && MATERIAL_WEIGHTS.earrings) ? MATERIAL_WEIGHTS.earrings.metalGrams : 3;
+  s.weightLabel     = 'medium';
+}
+
+// Earring descriptor for the generation prompt — one earring of an identical
+// matching pair: perEarringCount stones at perStoneCt, the selected shape (cut).
+function _earringDescriptor(gDisp) {
+  const specs = window.jwlSpecifications || {};
+  const shape = specs.stoneShape || userSelections.gemShape || 'Round';
+  const cut   = shape + '-cut';
+  const perEar = specs.perEarringCount || 1;
+  const perCt  = specs.perStoneCt != null ? specs.perStoneCt
+    : (specs.totalCtPair ? +(specs.totalCtPair / (specs.totalStoneCount || 2)).toFixed(2) : 1);
+  return perEar <= 1
+    ? `a single ${perCt}ct ${cut} ${gDisp} stone`
+    : `${perEar} matching ${perCt}ct ${cut} ${gDisp} stones`;
+}
+
+function _resetEarringFlow() {
+  _earTotalCtPair = 0;
+  _earBucket = null;
+  _earMm = null;
+  _earResolved = null;
+  const ti = document.getElementById('earTotalCtInput'); if (ti) ti.value = '';
+  const sb = document.getElementById('earStepB'); if (sb) sb.style.display = 'none';
+  const sc = document.getElementById('earStepC'); if (sc) sc.style.display = 'none';
+  document.querySelectorAll('.ear-bucket-btn, .ear-mm-btn').forEach(b => b.classList.remove('active'));
+  const sum = document.getElementById('earSummary'); if (sum) sum.textContent = '';
+  const msg = document.getElementById('earMessage'); if (msg) msg.style.display = 'none';
+  const btn = document.getElementById('generateBtn'); if (btn) btn.disabled = true; // gate until valid
 }
 
 /* ── Style chip selector ─────────────────────── */
@@ -3434,18 +3656,31 @@ function _buildPromptCore(type, material, gem, style, desc) {
   }
 
   if (type === 'earrings') {
-    // Single earring only — we mirror it ourselves in try-on to make a pair
+    // One earring is rendered (we mirror it ourselves in try-on to make the pair),
+    // but it is designed as one of a matching IDENTICAL pair. Stone shape (cut),
+    // per-earring stone count + per-stone carat and mm length come from the specs.
+    const earShape = specs.stoneShape || userSelections.gemShape || 'Round';
+    const earMm    = specs.earringMm || null;
+    const userDesc = _stripShapeWords(desc.trim()); // shape/count from specs, not typed text
+    const stoneStr = _earringDescriptor(gDisp);
+    const lenStr   = earMm ? `each earring ${earMm}mm long` : '';
     const earringAdditions = [
       'ONE single earring only',
       'single individual earring',
-      'NOT a pair',
       'only one earring in frame',
       'centered single earring',
       'isolated single piece',
       'white background'
     ].join(', ');
-    // Type keyword leads; earring constraints and user description follow
-    return `luxury ${style} ${wPart}earring${descPart}, ${earringAdditions}, ${mDisp}, ${gemPart}, professional jewelry product photography, pure white seamless background, no shadows, hyper realistic, 8K ultra high definition, macro lens, sharp focus, highly detailed, photorealistic, precious metal gleam, gemstone sparkle and brilliance. No humans. No person. No body parts. No neck. No chest. No hands. No fingers. No ears. No skin. No model. Product-only photography. The jewelry piece is the sole subject of the image.`;
+    const core = [
+      `luxury ${style} earring`,
+      'one earring from a matching identical pair',
+      userDesc,
+      lenStr,
+      `set with ${stoneStr}`,
+      `crafted in ${mDisp}`
+    ].filter(Boolean).join(', ');
+    return `${core}, ${earringAdditions}, professional jewelry product photography, pure white seamless background, no shadows, hyper realistic, 8K ultra high definition, macro lens, sharp focus, highly detailed, photorealistic, precious metal gleam, gemstone sparkle and brilliance. Both earrings in the pair are identical. No humans. No person. No body parts. No neck. No chest. No hands. No fingers. No ears. No skin. No model. Product-only photography. The jewelry piece is the sole subject of the image.`;
   }
 
   if (type === 'bracelet') {
@@ -3759,6 +3994,17 @@ function _readSpecsFromDOM() {
       metalGrams: s.metalGrams || 4, weightLabel: s.weightLabel || 'medium', weightUserSet: true,
       stoneCount: s.stoneCount || (Array.isArray(s.stones) ? s.stones.length : 1), countUserSet: true,
       stones: Array.isArray(s.stones) ? s.stones.slice() : [], totalCarats: (s.totalCarats != null ? s.totalCarats : s.totalCt) || 0,
+    };
+  }
+
+  // Earrings: the mm-driven flow is the source of truth (weight/count/size
+  // selectors are removed). Return the stored specs so refine/tweak can't clobber.
+  if (LAB.type === 'earrings') {
+    const s = window.jwlSpecifications;
+    return {
+      metalGrams: s.metalGrams || 3, weightLabel: s.weightLabel || 'medium', weightUserSet: true,
+      stoneCount: s.stoneCount || (Array.isArray(s.stones) ? s.stones.length : 1), countUserSet: true,
+      stones: Array.isArray(s.stones) ? s.stones.slice() : [], totalCarats: (s.totalCarats != null ? s.totalCarats : s.totalCtPair) || 0,
     };
   }
 
@@ -4094,6 +4340,14 @@ async function confirmAndGenerate() {
       return;
     }
     _applyRingSpecs(); // writes metal/stoneShape/designAesthetic/totalCt/stoneCount/stones (+ mirrors)
+  } else if (LAB.type === 'earrings') {
+    // Earrings: total ct per pair + bucket + mm resolve a valid even stone count.
+    if (!_validateEarringFlow()) {
+      const flow = document.getElementById('earringFlow');
+      if (flow) flow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+    _applyEarringSpecs(); // writes the earring spec fields (+ mirrors)
   } else {
     if (userSelections.metalGrams)  ws.metalGrams  = userSelections.metalGrams;
     if (userSelections.weightLabel) ws.weightLabel = userSelections.weightLabel;
@@ -5121,11 +5375,11 @@ async function displayPricing(metalType, stoneType, jewelryType, overrideCarats)
 
   var promptText = LAB.prompt || (document.getElementById('promptArea') ? document.getElementById('promptArea').value : '');
   var userCarats;
-  if (jewelryType === 'necklace' || jewelryType === 'ring') {
-    // Necklace + ring gemstone weight is authoritative from the spec selectors
-    // (necklace: per-stone ct × auto count; ring: the carat-allocation total),
-    // already in jwlSpecifications.totalCarats. Specs win over typed prompt text —
-    // never let extractCaratWeight pull a stray carat from the description.
+  if (jewelryType === 'necklace' || jewelryType === 'ring' || jewelryType === 'earrings') {
+    // Necklace + ring + earrings gemstone weight is authoritative from the spec
+    // selectors (necklace: per-stone ct × auto count; ring: carat-allocation total;
+    // earrings: total ct per pair), already in jwlSpecifications.totalCarats. Specs
+    // win over typed prompt text — never let extractCaratWeight override it.
     var _wsCar = window.jwlSpecifications;
     userCarats = (_wsCar && _wsCar.totalCarats > 0) ? _wsCar.totalCarats : 0;
   } else if (jewelryType === 'pendant') {
