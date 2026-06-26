@@ -710,7 +710,17 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
           <button class="spec-toggle bracelet-pill bracelet-tier-btn" data-tier="medium" onclick="setBraceletStoneTier(this,'medium')">Medium <span style="font-size:10px;font-weight:400;color:#9ca3af;margin-left:3px;">0.25 ct each</span></button>
           <button class="spec-toggle bracelet-pill bracelet-tier-btn" data-tier="large"  onclick="setBraceletStoneTier(this,'large')">Large <span style="font-size:10px;font-weight:400;color:#9ca3af;margin-left:3px;">0.50 ct each</span></button>
         </div>
-        <p style="font-family:Inter,sans-serif;font-size:11px;color:#9ca3af;margin:10px 0 0;">The number of stones is counted from your generated design — you can adjust it on the quote step.</p>
+      </div>
+
+      <!-- STONE LAYOUT -->
+      <div class="mb-8">
+        <label class="label block mb-3" style="font-size:10px;letter-spacing:0.18em;color:#3c6474;">STONE LAYOUT</label>
+        <div class="flex flex-wrap gap-2">
+          <button class="spec-toggle bracelet-pill bracelet-layout-btn active" data-layout="full" onclick="setBraceletStoneLayout(this,'full')">Full <span style="font-size:10px;font-weight:400;color:#9ca3af;margin-left:3px;">stone in every setting</span></button>
+          <button class="spec-toggle bracelet-pill bracelet-layout-btn" data-layout="everyOther" onclick="setBraceletStoneLayout(this,'everyOther')">Every Other <span style="font-size:10px;font-weight:400;color:#9ca3af;margin-left:3px;">every 2nd position</span></button>
+          <button class="spec-toggle bracelet-pill bracelet-layout-btn" data-layout="everyFourth" onclick="setBraceletStoneLayout(this,'everyFourth')">Every Fourth <span style="font-size:10px;font-weight:400;color:#9ca3af;margin-left:3px;">every 4th position</span></button>
+        </div>
+        <p style="font-family:Inter,sans-serif;font-size:11px;color:#9ca3af;margin:10px 0 0;">Stone count is calculated from your length, stone size, and layout — shown on the quote step.</p>
       </div>
     </div>
 
@@ -1363,7 +1373,7 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
           <!-- Bracelet: deterministic math stone count (display-only) -->
           <div id="braceletStoneCountPanel" style="display:none;margin:14px 0;padding:14px 16px;background:rgba(201,168,76,0.08);border:1px solid rgba(201,168,76,0.35);border-radius:12px;">
             <p style="font-family:Inter,sans-serif;font-size:14px;font-weight:600;color:#1b1c1c;margin:0;">Stones in your design: <span id="braceletCountValue" style="color:#3c6474;">—</span></p>
-            <p style="font-family:Inter,sans-serif;font-size:12px;color:#71787c;line-height:1.4;margin:6px 0 0;">Calculated from your bracelet length and stone size.</p>
+            <p id="braceletCountSubtext" style="font-family:Inter,sans-serif;font-size:12px;color:#71787c;line-height:1.4;margin:6px 0 0;">Calculated from your length, stone size, and layout.</p>
           </div>
 
           <!-- Total -->
@@ -2461,14 +2471,14 @@ function setType(btn, type) {
     const _pce = document.getElementById('pendantCaratError');  if (_pce) _pce.style.display = 'none';
     const _pse = document.getElementById('pendantSizeError');   if (_pse) _pse.style.display = 'none';
     document.querySelectorAll('.pendant-tier-btn').forEach(b => b.classList.remove('active'));
-    // Reset bracelet-only inputs (link width, length, stone tier, image count)
-    document.querySelectorAll('.bracelet-linkwidth-btn, .bracelet-length-btn, .bracelet-tier-btn')
+    // Reset bracelet-only inputs (link width, length, stone tier, stone layout)
+    document.querySelectorAll('.bracelet-linkwidth-btn, .bracelet-length-btn, .bracelet-tier-btn, .bracelet-layout-btn')
       .forEach(b => b.classList.remove('active'));
     const _bcp = document.getElementById('braceletStoneCountPanel'); if (_bcp) _bcp.style.display = 'none';
     const _bmn = document.getElementById('braceletMismatchNotice');  if (_bmn) _bmn.style.display = 'none';
     LAB.braceletAngles = null;
     delete userSelections.linkWidthMm; delete userSelections.braceletLengthIn;
-    delete userSelections.perStoneCarat;
+    delete userSelections.perStoneCarat; delete userSelections.stoneLayout;
 
     // Reset specifications to defaults
     window.jwlSpecifications.metalGrams  = 4.5;
@@ -3004,8 +3014,24 @@ const BRACELET_DEFAULT_COUNT   = 10;    // safety fallback only
 
 // ── Deterministic stone-count MATH (source of truth for pricing) ──
 const BRACELET_SPACING_FACTOR  = 1.15;  // center-to-center spacing = stone diameter × this
-// Round-brilliant approx stone diameter (mm) by per-stone carat tier (Small/Medium/Large).
-const BRACELET_STONE_DIAMETER_MM = { 0.10: 3.0, 0.25: 4.1, 0.50: 5.2 };
+// Standardized round-brilliant stone diameter (mm) by carat (Small/Medium/Large).
+const DIAMOND_MM_BY_CARAT = { 0.10: 3.0, 0.25: 4.0, 0.50: 5.0 };
+// Stone-layout divisor: stones in every / every 2nd / every 4th setting.
+const BRACELET_LAYOUT_DIVISOR = { full: 1, everyOther: 2, everyFourth: 4 };
+
+// Stone diameter (mm) for a carat — exact at the tier points, linearly interpolated between.
+function _diamondDiameterMm(carat) {
+  const c = (carat && carat > 0) ? carat : 0.10;
+  const pts = [[0.10, 3.0], [0.25, 4.0], [0.50, 5.0]];
+  for (const [k, v] of pts) if (Math.abs(k - c) < 1e-9) return v;     // exact tier
+  if (c <= pts[0][0]) return pts[0][1];
+  if (c >= pts[pts.length - 1][0]) return pts[pts.length - 1][1];
+  for (let i = 0; i < pts.length - 1; i++) {
+    const [k0, v0] = pts[i], [k1, v1] = pts[i + 1];
+    if (c >= k0 && c <= k1) return +(v0 + ((c - k0) / (k1 - k0)) * (v1 - v0)).toFixed(3);
+  }
+  return pts[0][1];
+}
 
 // ── OpenCV.js sanity-check tunables (non-AI; flags mismatch only, never prices) ──
 const OPENCV_JS_URL               = 'https://docs.opencv.org/4.x/opencv.js';
@@ -3029,25 +3055,28 @@ function deriveBraceletMetalGrams(linkWidthMm, lengthIn, metalType) {
 
 function _clampBraceletCount(n) { return Math.max(0, Math.min(60, n)); }
 
-// DETERMINISTIC stone count — full-length tennis-bracelet style, stones run the
-// entire length. This is the SOURCE OF TRUTH that drives the price.
-function calcBraceletStoneCount(lengthInches, perStoneCarat) {
-  const L   = (lengthInches  && lengthInches  > 0) ? lengthInches  : 7;
-  const per = (perStoneCarat && perStoneCarat > 0) ? perStoneCarat : 0.10;
-  const lengthMm = L * 25.4;
-  const diameter = BRACELET_STONE_DIAMETER_MM[per] || BRACELET_STONE_DIAMETER_MM[0.10];
-  const stoneCount = Math.floor(lengthMm / (diameter * BRACELET_SPACING_FACTOR));
-  console.log('[Bracelet] MATH stone count:', stoneCount, '| length:', lengthInches,
-              '| perStoneCt:', perStoneCarat, '| diameter mm:', diameter);
+// DETERMINISTIC stone count — SOURCE OF TRUTH that drives the price.
+// First the full tennis count (stones run the entire length), then the layout divisor.
+function calcBraceletStoneCount(lengthInches, perStoneCarat, stoneLayout) {
+  const L      = (lengthInches  && lengthInches  > 0) ? lengthInches  : 7;
+  const per    = (perStoneCarat && perStoneCarat > 0) ? perStoneCarat : 0.10;
+  const layout = stoneLayout || 'full';
+  const lengthMm  = L * 25.4;
+  const diameter  = _diamondDiameterMm(per);
+  const fullCount = Math.floor(lengthMm / (diameter * BRACELET_SPACING_FACTOR));
+  const divisor   = BRACELET_LAYOUT_DIVISOR[layout] || 1;
+  const stoneCount = Math.floor(fullCount / divisor);
+  console.log('[Bracelet] fullCount:', fullCount, '| layout:', layout, '| final stoneCount:', stoneCount);
   return stoneCount;
 }
 
-// Effective stone count for pricing/display — computed deterministically from the
-// selected bracelet length + per-stone carat tier (no AI, no image counting).
+// Effective stone count for pricing/display — deterministic from the selected
+// bracelet length + per-stone carat tier + stone layout (no AI, no image counting).
 function _braceletStoneCount() {
-  const L   = parseFloat(userSelections.braceletLengthIn) || 7;
-  const per = parseFloat(userSelections.perStoneCarat)    || 0.10;
-  return calcBraceletStoneCount(L, per);
+  const L      = parseFloat(userSelections.braceletLengthIn) || 7;
+  const per    = parseFloat(userSelections.perStoneCarat)    || 0.10;
+  const layout = userSelections.stoneLayout || 'full';
+  return calcBraceletStoneCount(L, per, layout);
 }
 
 // Write bracelet inputs into jwlSpecifications so the shared formula prices it.
@@ -3098,6 +3127,14 @@ function setBraceletStoneTier(btn, tier) {
   _applyBraceletSpecs();
   if (typeof updateSpecCostEstimate === 'function') updateSpecCostEstimate();
 }
+function setBraceletStoneLayout(btn, layout) {
+  document.querySelectorAll('.bracelet-layout-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  userSelections.stoneLayout = layout;
+  console.log('[Bracelet] stone layout:', layout);
+  _applyBraceletSpecs();
+  if (typeof updateSpecCostEstimate === 'function') updateSpecCostEstimate();
+}
 
 // Bracelet hides Design Aesthetic + the weight/number-of-stones/stone-size grid;
 // keeps Metal, Primary Stone, Stone Shape. Runs last in setType, so it is the
@@ -3121,19 +3158,38 @@ function updateBraceletSpecVisibility(type) {
   if (shape) shape.style.display = hideShape ? 'none' : '';
   if (brac)  brac.style.display  = isBracelet ? 'block' : 'none';
   if (isBracelet) {
+    // Default stone layout to Full and highlight its pill if none chosen yet.
+    if (!userSelections.stoneLayout) {
+      userSelections.stoneLayout = 'full';
+      const fullBtn = document.querySelector('.bracelet-layout-btn[data-layout="full"]');
+      if (fullBtn) {
+        document.querySelectorAll('.bracelet-layout-btn').forEach(b => b.classList.remove('active'));
+        fullBtn.classList.add('active');
+      }
+    }
     _applyBraceletSpecs();
     if (typeof updateSpecCostEstimate === 'function') updateSpecCostEstimate();
   }
 }
 
+// Human-readable label for a stone layout.
+function _braceletLayoutLabel(layout) {
+  return ({ full: 'full', everyOther: 'every-other', everyFourth: 'every-fourth' })[layout] || 'full';
+}
+
 // Display-only render of the MATH stone count (no input, no editing).
 function _renderBraceletCountPanel() {
-  const panel    = document.getElementById('braceletStoneCountPanel');
-  const valueEl  = document.getElementById('braceletCountValue');
+  const panel     = document.getElementById('braceletStoneCountPanel');
+  const valueEl   = document.getElementById('braceletCountValue');
+  const subtextEl = document.getElementById('braceletCountSubtext');
   if (!panel) return;
   if (LAB.type !== 'bracelet') { panel.style.display = 'none'; return; }
   panel.style.display = 'block';
   if (valueEl) valueEl.textContent = _braceletStoneCount();
+  if (subtextEl) {
+    const layoutLabel = _braceletLayoutLabel(userSelections.stoneLayout || 'full');
+    subtextEl.textContent = 'Calculated from your length, stone size, and ' + layoutLabel + ' layout.';
+  }
 }
 
 /* ════════════════════════════════════════════════════════════════
@@ -4724,8 +4780,16 @@ function _buildBraceletDescription(desc) {
   const linkW    = (userSelections && userSelections.linkWidthMm) ? `${userSelections.linkWidthMm}mm wide links` : 'fine links';
   const gd = gemLabel(LAB.gem);
   const md = matLabel(LAB.material);
+  const layout = (userSelections && userSelections.stoneLayout) || 'full';
+  const count  = _braceletStoneCount();
+  // Layout drives the spacing language so the image matches the priced count.
+  const layoutDesc = ({
+    full:        `a tennis bracelet with ${tierWord} ${gd} diamonds set continuously in every position along the entire band, one after another with no gaps`,
+    everyOther:  `a station bracelet with ${tierWord} ${gd} diamonds spaced evenly, one stone in every other position, with small gaps of plain metal between each stone`,
+    everyFourth: `a station bracelet with ${tierWord} ${gd} diamonds spaced widely, one stone every fourth position, with noticeable plain metal gaps between stones`,
+  })[layout] || `a tennis bracelet with ${tierWord} ${gd} diamonds set continuously along the band`;
   const userPart = (desc && desc.trim()) ? `, ${desc.trim()}` : '';
-  return `luxury ${LAB.style} ${md} bracelet, ${linkW}, a continuous line of evenly spaced ${tierWord} ${gd} stones running along the entire band, tennis bracelet style, each stone prong-set${userPart}`;
+  return `luxury ${LAB.style} ${md} bracelet, ${linkW}, ${layoutDesc}, approximately ${count} evenly spaced stones, each stone prong-set${userPart}`;
 }
 
 // Generate one bracelet angle (Gemini-first → Flux → HF). Returns blob URL or null.
