@@ -1008,6 +1008,12 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
             <span class="label" style="font-size:10px;letter-spacing:0.12em;color:#3c6474;" id="refineBadge">RING · 18K YELLOW GOLD · ART DECO</span>
           </div>
         </div>
+        <!-- Bracelet: non-AI OpenCV sanity-check notice (shown only on a math/image mismatch) -->
+        <div id="braceletMismatchNotice" style="display:none;margin-top:16px;padding:14px 16px;background:rgba(201,168,76,0.10);border:1px solid rgba(201,168,76,0.4);border-radius:12px;align-items:center;gap:14px;flex-wrap:wrap;">
+          <span class="material-symbols-outlined" style="font-size:22px;color:#C9A84C;flex-shrink:0;">info</span>
+          <p style="font-family:Inter,sans-serif;font-size:13px;color:#41484b;line-height:1.45;margin:0;flex:1;min-width:200px;">This generated image may not perfectly match your specs — you can regenerate for a closer match.</p>
+          <button onclick="regenerateBracelet()" style="font-family:Inter,sans-serif;font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;background:#3c6474;color:#fff;border:none;border-radius:10px;padding:10px 18px;cursor:pointer;flex-shrink:0;">Regenerate</button>
+        </div>
         <!-- Post-generation: Refine / Start Fresh flow -->
         <div id="post-gen-ui" style="display:none;margin-top:20px;">
           <!-- Step 1: mode buttons — always visible once shown -->
@@ -1354,10 +1360,10 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
           <!-- Price rows -->
           <div id="priceRows"></div>
 
-          <!-- Bracelet: stone count counted across the 3 generated angles (display-only) -->
+          <!-- Bracelet: deterministic math stone count (display-only) -->
           <div id="braceletStoneCountPanel" style="display:none;margin:14px 0;padding:14px 16px;background:rgba(201,168,76,0.08);border:1px solid rgba(201,168,76,0.35);border-radius:12px;">
             <p style="font-family:Inter,sans-serif;font-size:14px;font-weight:600;color:#1b1c1c;margin:0;">Stones in your design: <span id="braceletCountValue" style="color:#3c6474;">—</span></p>
-            <p style="font-family:Inter,sans-serif;font-size:12px;color:#71787c;line-height:1.4;margin:6px 0 0;">Calculated from your generated design across multiple angles.</p>
+            <p style="font-family:Inter,sans-serif;font-size:12px;color:#71787c;line-height:1.4;margin:6px 0 0;">Calculated from your bracelet length and stone size.</p>
           </div>
 
           <!-- Total -->
@@ -2241,7 +2247,7 @@ async function goStep(n) {
   if (n === 5) {
     await fetchSpotPrices(); // always fetch live price at quote time
     // Bracelet: estimate the stone count from the generated image before pricing.
-    if (LAB.type === 'bracelet') await countBraceletStonesFromImage();
+    if (LAB.type === 'bracelet') { _applyBraceletSpecs(); _renderBraceletCountPanel(); }
     await displayPricing(LAB.material, LAB.gem, LAB.type);
     saveCurrentDesign();
   }
@@ -2459,10 +2465,10 @@ function setType(btn, type) {
     document.querySelectorAll('.bracelet-linkwidth-btn, .bracelet-length-btn, .bracelet-tier-btn')
       .forEach(b => b.classList.remove('active'));
     const _bcp = document.getElementById('braceletStoneCountPanel'); if (_bcp) _bcp.style.display = 'none';
-    LAB._braceletCountedKey = null;
+    const _bmn = document.getElementById('braceletMismatchNotice');  if (_bmn) _bmn.style.display = 'none';
     LAB.braceletAngles = null;
     delete userSelections.linkWidthMm; delete userSelections.braceletLengthIn;
-    delete userSelections.perStoneCarat; delete userSelections.braceletStoneCountImage;
+    delete userSelections.perStoneCarat;
 
     // Reset specifications to defaults
     window.jwlSpecifications.metalGrams  = 4.5;
@@ -2994,8 +3000,21 @@ const BRACELET_PER_STONE_CARAT = { accent: 0.10, medium: 0.25, large: 0.50 };
 const BRACELET_METAL_DENSITY   = { '925silver': 10.36, '10ctgold': 11.57, '14ctgold': 13.07 };
 const BRACELET_THICKNESS_MM    = 1.2;   // assumed link/strand thickness
 const BRACELET_FILL_FACTOR     = 0.55;  // links aren't solid bars — proportional factor
-const STONE_COUNT_WORKER_URL   = 'https://stone-count.sarkd333.workers.dev';
-const BRACELET_DEFAULT_COUNT   = 10;    // fallback when the vision count is unavailable
+const BRACELET_DEFAULT_COUNT   = 10;    // safety fallback only
+
+// ── Deterministic stone-count MATH (source of truth for pricing) ──
+const BRACELET_SPACING_FACTOR  = 1.15;  // center-to-center spacing = stone diameter × this
+// Round-brilliant approx stone diameter (mm) by per-stone carat tier (Small/Medium/Large).
+const BRACELET_STONE_DIAMETER_MM = { 0.10: 3.0, 0.25: 4.1, 0.50: 5.2 };
+
+// ── OpenCV.js sanity-check tunables (non-AI; flags mismatch only, never prices) ──
+const OPENCV_JS_URL               = 'https://docs.opencv.org/4.x/opencv.js';
+const BRACELET_CV_THRESHOLD       = 200;   // grayscale bright-stone threshold (0–255)
+const BRACELET_CV_MIN_AREA        = 12;    // min blob area (px²) — drop noise
+const BRACELET_CV_MAX_AREA        = 9000;  // max blob area (px²) — drop huge regions
+const BRACELET_CV_MIN_CIRCULARITY = 0.45;  // 4πA/P² lower bound — stones are roundish
+const BRACELET_CV_LOW_RATIO       = 0.50;  // mismatch if openCvCount < 50% of math count
+const BRACELET_CV_HIGH_RATIO      = 2.00;  // mismatch if openCvCount > 200% of math count
 
 // Single, tunable derivation: link width (mm) × length (in) → metal grams.
 function deriveBraceletMetalGrams(linkWidthMm, lengthIn, metalType) {
@@ -3010,12 +3029,25 @@ function deriveBraceletMetalGrams(linkWidthMm, lengthIn, metalType) {
 
 function _clampBraceletCount(n) { return Math.max(0, Math.min(60, n)); }
 
-// Effective stone count: manual override wins, then the image estimate, then default.
+// DETERMINISTIC stone count — full-length tennis-bracelet style, stones run the
+// entire length. This is the SOURCE OF TRUTH that drives the price.
+function calcBraceletStoneCount(lengthInches, perStoneCarat) {
+  const L   = (lengthInches  && lengthInches  > 0) ? lengthInches  : 7;
+  const per = (perStoneCarat && perStoneCarat > 0) ? perStoneCarat : 0.10;
+  const lengthMm = L * 25.4;
+  const diameter = BRACELET_STONE_DIAMETER_MM[per] || BRACELET_STONE_DIAMETER_MM[0.10];
+  const stoneCount = Math.floor(lengthMm / (diameter * BRACELET_SPACING_FACTOR));
+  console.log('[Bracelet] MATH stone count:', stoneCount, '| length:', lengthInches,
+              '| perStoneCt:', perStoneCarat, '| diameter mm:', diameter);
+  return stoneCount;
+}
+
+// Effective stone count for pricing/display — computed deterministically from the
+// selected bracelet length + per-stone carat tier (no AI, no image counting).
 function _braceletStoneCount() {
-  // Display-only count: comes solely from the multi-angle image estimate (no manual edit).
-  const img = parseInt(userSelections.braceletStoneCountImage, 10);
-  if (!isNaN(img)) return _clampBraceletCount(img);
-  return BRACELET_DEFAULT_COUNT;
+  const L   = parseFloat(userSelections.braceletLengthIn) || 7;
+  const per = parseFloat(userSelections.perStoneCarat)    || 0.10;
+  return calcBraceletStoneCount(L, per);
 }
 
 // Write bracelet inputs into jwlSpecifications so the shared formula prices it.
@@ -3094,86 +3126,8 @@ function updateBraceletSpecVisibility(type) {
   }
 }
 
-// Read a blob URL as a base64 data URL the worker can decode server-side.
-async function _blobToDataUrl(url) {
-  if (!url) return null;
-  try {
-    const resp = await fetch(url);
-    const blob = await resp.blob();
-    return await new Promise((resolve, reject) => {
-      const fr = new FileReader();
-      fr.onload  = () => resolve(fr.result);
-      fr.onerror = reject;
-      fr.readAsDataURL(blob);
-    });
-  } catch (e) {
-    console.warn('[Bracelet] could not read image for counting:', e.message);
-    return null;
-  }
-}
-
-// Estimate UNIQUE stone count across ALL 3 generated angles via the vision worker.
-// Display-only: the result is shown on the quote step, not editable.
-async function countBraceletStonesFromImage() {
-  if (LAB.type !== 'bracelet') return;
-  const angles = (LAB.braceletAngles && LAB.braceletAngles.length)
-    ? LAB.braceletAngles.filter(Boolean)
-    : (LAB.imageUrl ? [LAB.imageUrl] : []);
-  const key = angles.join('|');
-  // Skip re-counting the same set of angles.
-  if (key && LAB._braceletCountedKey === key && userSelections.braceletStoneCountImage != null) {
-    _renderBraceletCountPanel();
-    return;
-  }
-
-  let rawCount = null, anglesUsed = null;
-  if (angles.length) {
-    const dataUrls = (await Promise.all(angles.map(_blobToDataUrl))).filter(Boolean);
-    if (dataUrls.length) {
-      try {
-        const res = await fetch(STONE_COUNT_WORKER_URL, {
-          method:  'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body:    JSON.stringify({ image_urls: dataUrls })   // all angles; worker dedups unique stones
-        });
-        if (res.ok) {
-          const data = await res.json();
-          let parsed = parseInt(data && data.stoneCount, 10);
-          if (isNaN(parsed) && data && data.raw != null) parsed = parseInt(data.raw, 10);
-          if (!isNaN(parsed)) rawCount = parsed;
-          anglesUsed = data && data.anglesUsed;
-        } else {
-          console.warn('[Bracelet] stone-count worker HTTP', res.status);
-        }
-      } catch (e) {
-        console.warn('[Bracelet] stone-count call failed:', e.message);
-      }
-    }
-  }
-
-  let count;
-  if (rawCount == null) {
-    count = BRACELET_DEFAULT_COUNT;
-    console.warn('[Bracelet] stone count unavailable — defaulting to', BRACELET_DEFAULT_COUNT);
-  } else {
-    count = _clampBraceletCount(rawCount);
-  }
-
-  LAB._braceletCountedKey = key;
-  userSelections.braceletStoneCountImage = count;
-  _applyBraceletSpecs();
-
-  const per  = parseFloat(userSelections.perStoneCarat) || 0.10;
-  const rate = (STONE_RATES[LAB.gem] != null) ? STONE_RATES[LAB.gem] : 2.00;
-  const stoneCost = count * per * rate;
-  console.log('[Bracelet] multi-angle count:', rawCount, '| clamped:', count,
-              '| angles used:', anglesUsed, '| stone cost:', stoneCost);
-
-  _renderBraceletCountPanel(rawCount, anglesUsed);
-}
-
-// Display-only render: just the number + a subtext. No input, no adjust.
-function _renderBraceletCountPanel(rawCount, anglesUsed) {
+// Display-only render of the MATH stone count (no input, no editing).
+function _renderBraceletCountPanel() {
   const panel    = document.getElementById('braceletStoneCountPanel');
   const valueEl  = document.getElementById('braceletCountValue');
   if (!panel) return;
@@ -3338,6 +3292,109 @@ function _resetEarringFlow() {
   const sum = document.getElementById('earSummary'); if (sum) sum.textContent = '';
   const msg = document.getElementById('earMessage'); if (msg) msg.style.display = 'none';
   const btn = document.getElementById('generateBtn'); if (btn) btn.disabled = true; // gate until valid
+}
+
+/* ── OpenCV.js (non-AI) image sanity check — flags a mismatch only, never prices ── */
+let _openCvLoading = null;
+function _loadOpenCv() {
+  if (window.cv && window.cv.Mat) return Promise.resolve(window.cv);
+  if (_openCvLoading) return _openCvLoading;
+  _openCvLoading = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = OPENCV_JS_URL;
+    s.async = true;
+    s.onload = () => {
+      if (window.cv && window.cv.Mat) { resolve(window.cv); return; }
+      if (window.cv) { window.cv.onRuntimeInitialized = () => resolve(window.cv); return; }
+      // Some builds expose cv slightly after onload; poll briefly.
+      let tries = 0;
+      const iv = setInterval(() => {
+        if (window.cv && window.cv.Mat) { clearInterval(iv); resolve(window.cv); }
+        else if (window.cv) { clearInterval(iv); window.cv.onRuntimeInitialized = () => resolve(window.cv); }
+        else if (++tries > 100) { clearInterval(iv); reject(new Error('cv not available')); }
+      }, 50);
+    };
+    s.onerror = () => reject(new Error('opencv.js failed to load'));
+    document.head.appendChild(s);
+  });
+  return _openCvLoading;
+}
+
+// Deterministic bright-blob/contour count of visible stones in one image. NOT used for pricing.
+async function _openCvCountStones(imageUrl) {
+  const cv = await _loadOpenCv();
+  const img = await new Promise((resolve, reject) => {
+    const im = new Image();
+    im.crossOrigin = 'anonymous';
+    im.onload  = () => resolve(im);
+    im.onerror = reject;
+    im.src = imageUrl;
+  });
+  const canvas = document.createElement('canvas');
+  canvas.width  = img.naturalWidth  || img.width;
+  canvas.height = img.naturalHeight || img.height;
+  canvas.getContext('2d').drawImage(img, 0, 0);
+
+  const src = cv.imread(canvas);
+  const gray = new cv.Mat();
+  const thresh = new cv.Mat();
+  const contours = new cv.MatVector();
+  const hierarchy = new cv.Mat();
+  let count = 0;
+  try {
+    cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+    // Isolate bright stone reflections from the metal/background.
+    cv.threshold(gray, thresh, BRACELET_CV_THRESHOLD, 255, cv.THRESH_BINARY);
+    cv.findContours(thresh, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+    for (let i = 0; i < contours.size(); i++) {
+      const c = contours.get(i);
+      const area = cv.contourArea(c);
+      if (area >= BRACELET_CV_MIN_AREA && area <= BRACELET_CV_MAX_AREA) {
+        const peri = cv.arcLength(c, true);
+        const circularity = peri > 0 ? (4 * Math.PI * area) / (peri * peri) : 0;
+        if (circularity >= BRACELET_CV_MIN_CIRCULARITY) count++;
+      }
+      c.delete();
+    }
+  } finally {
+    src.delete(); gray.delete(); thresh.delete(); contours.delete(); hierarchy.delete();
+  }
+  return count;
+}
+
+function _showBraceletMismatchNotice(show) {
+  const n = document.getElementById('braceletMismatchNotice');
+  if (n) n.style.display = show ? 'flex' : 'none';
+}
+
+// Runs after a bracelet generates: compare the non-AI OpenCV count to the MATH count
+// and surface a non-blocking notice if they diverge. Price is NEVER touched here.
+async function _runBraceletImageSanityCheck() {
+  if (LAB.type !== 'bracelet') return;
+  _showBraceletMismatchNotice(false);
+  const headOn = (LAB.braceletAngles && LAB.braceletAngles[0]) ? LAB.braceletAngles[0] : LAB.imageUrl;
+  if (!headOn) return;
+  const stoneCount = _braceletStoneCount();   // MATH count (source of truth)
+  let openCvCount = null, imageMismatch = false;
+  try {
+    openCvCount = await _openCvCountStones(headOn);
+    if (stoneCount > 0) {
+      imageMismatch = (openCvCount < stoneCount * BRACELET_CV_LOW_RATIO)
+                   || (openCvCount > stoneCount * BRACELET_CV_HIGH_RATIO);
+    }
+  } catch (e) {
+    console.warn('[Bracelet] OpenCV sanity check skipped:', e.message);
+    openCvCount = null;
+    imageMismatch = false;   // never block / never false-flag if CV is unavailable
+  }
+  console.log('[Bracelet] OpenCV sanity count:', openCvCount, '| math count:', stoneCount, '| mismatch:', imageMismatch);
+  _showBraceletMismatchNotice(imageMismatch);
+}
+
+// Regenerate the bracelet for a closer match (price stays on the math).
+function regenerateBracelet() {
+  _showBraceletMismatchNotice(false);
+  if (typeof confirmAndGenerate === 'function') confirmAndGenerate();
 }
 
 /* ── Style chip selector ─────────────────────── */
@@ -4715,7 +4772,6 @@ async function _generateBraceletMultiAngle(opts) {
 
   LAB.braceletAngles = urls;       // fixed order: [headOn, threeQuarter, stoneDetail]
   LAB.imageUrl       = urls[0];    // head-on — try-on + remove.bg key
-  LAB._braceletCountedKey = null;  // new design → recount on the quote step
   bgRemovalCache.clear();
   console.log('[Bracelet] generated 3 angles:', urls);
 
@@ -4736,6 +4792,9 @@ async function _generateBraceletMultiAngle(opts) {
   setGenLoading(false);
   window._lastFullPrompt = opts.fullPromptForLog || '';
   showPostGenUI();
+
+  // Non-AI OpenCV.js sanity check on the head-on image (non-blocking; never prices).
+  _runBraceletImageSanityCheck();
 }
 
 /* ── Post-generation Refine / Fresh (all types) ── */
