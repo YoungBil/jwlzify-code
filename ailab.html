@@ -4773,52 +4773,89 @@ const BRACELET_ANGLES = [
 ];
 const BRACELET_GALLERY_HF_NEG = 'person, hand, wrist, skin, two bracelets, multiple bracelets, collage, grid, deformed';
 
-// Build one shared design description so all 3 angles are clearly the same bracelet.
+// Layout-FREE design core (metal / style / link width / gem / user idea). The stone
+// LAYOUT is enforced separately and redundantly by the helpers below so it leads and
+// trails the prompt — never buried in the middle where models under-weight it.
 function _buildBraceletDescription(desc) {
   const tier     = (userSelections && userSelections.stoneSizeTier) || 'medium';
   const tierWord = ({ accent: 'small', medium: 'medium', large: 'large' })[tier] || 'medium';
   const linkW    = (userSelections && userSelections.linkWidthMm) ? `${userSelections.linkWidthMm}mm wide links` : 'fine links';
   const gd = gemLabel(LAB.gem);
   const md = matLabel(LAB.material);
-  const layout = (userSelections && userSelections.stoneLayout) || 'full';
-  const count  = _braceletStoneCount();
-  // Layout drives the spacing language so the image matches the priced count.
-  const layoutDesc = ({
-    full:        `a tennis bracelet with ${tierWord} ${gd} diamonds set continuously in every position along the entire band, one after another with no gaps`,
-    everyOther:  `a station bracelet with ${tierWord} ${gd} diamonds spaced evenly, one stone in every other position, with small gaps of plain metal between each stone`,
-    everyFourth: `a station bracelet with ${tierWord} ${gd} diamonds spaced widely, one stone every fourth position, with noticeable plain metal gaps between stones`,
-  })[layout] || `a tennis bracelet with ${tierWord} ${gd} diamonds set continuously along the band`;
   const userPart = (desc && desc.trim()) ? `, ${desc.trim()}` : '';
-  return `luxury ${LAB.style} ${md} bracelet, ${linkW}, ${layoutDesc}, approximately ${count} evenly spaced stones, each stone prong-set${userPart}`;
+  return `luxury ${LAB.style} ${md} bracelet, ${linkW}, set with ${tierWord} ${gd} diamonds, each stone prong-set${userPart}`;
 }
 
-// Generate one bracelet angle (Gemini-first → Flux → HF). Returns blob URL or null.
-function _genBraceletAngle(braceletDescription, shared, angle) {
-  const prompt = `${angle.clause} ${shared}`;
+// ── Maximal STONE LAYOUT enforcement: concrete countable spatial language, stated
+//    up front (prepended) and restated at the end (appended), with the exact target
+//    {stoneCount} from the math, plus aggressive layout-specific negatives. ──
+function _braceletLayoutPositive(layout, stoneCount) {
+  if (layout === 'everyOther') {
+    return `A station-style diamond bracelet with a STRICT alternating pattern: exactly one diamond, then a clearly visible gap of plain bare polished metal of equal size, then exactly one diamond, then another equal gap of plain metal, repeating this diamond-gap-diamond-gap rhythm evenly along the entire band. Every diamond is separated from the next by a distinct empty section of plain metal. Approximately ${stoneCount} evenly spaced individual diamonds in total, with bare metal visible between each and every stone.`;
+  }
+  if (layout === 'everyFourth') {
+    return `A widely-spaced station diamond bracelet: exactly one single diamond, then a LONG gap of plain bare polished metal roughly three to four times wider than the diamond, then one single diamond, then another long plain metal gap, repeating evenly. The diamonds are sparse and clearly separated, set far apart with large visible stretches of plain metal between each stone. Approximately ${stoneCount} diamonds in total, widely and evenly spaced, with large bare metal sections dominating the space between stones.`;
+  }
+  return `A classic tennis bracelet where diamonds are set directly next to each other in an unbroken continuous line, every single setting filled, stones touching edge to edge with absolutely no gaps of plain metal between them, a solid continuous row of diamonds running the entire length of the band.`;
+}
+function _braceletLayoutReminder(layout, stoneCount) {
+  if (layout === 'everyOther') {
+    return `Remember: this is a STATION bracelet — one diamond, then a gap of bare plain metal, then one diamond, then a gap, alternating evenly with clearly visible plain metal between every pair of stones; approximately ${stoneCount} stones only, NOT a continuous tennis bracelet.`;
+  }
+  if (layout === 'everyFourth') {
+    return `Remember: diamonds are sparse and widely spaced with large plain metal gaps between each stone, approximately ${stoneCount} stones only, NOT a continuous or densely set bracelet.`;
+  }
+  return `Remember: every setting is filled with diamonds touching edge to edge in one unbroken continuous line, with no gaps of plain metal anywhere along the band.`;
+}
+function _braceletLayoutNegative(layout) {
+  if (layout === 'everyOther') {
+    return 'continuous diamonds, tennis bracelet, diamonds touching, unbroken row of stones, fully paved, diamonds set next to each other, no gaps, solid line of diamonds, densely set stones';
+  }
+  if (layout === 'everyFourth') {
+    return 'continuous diamonds, tennis bracelet, diamonds touching, densely set, fully paved, closely spaced stones, many diamonds, diamonds next to each other, unbroken row, no gaps';
+  }
+  return 'spaced diamonds, gaps between stones, station bracelet, plain metal sections, scattered stones, widely spaced, intermittent stones, bare metal between diamonds';
+}
+
+// Generate one bracelet angle (Gemini-first → Flux → HF). Layout positive FIRST,
+// design + view + constraints in the middle, restated layout reminder LAST.
+function _genBraceletAngle(designCore, layout, stoneCount, angle) {
+  const layoutPos = _braceletLayoutPositive(layout, stoneCount);
+  const layoutRem = _braceletLayoutReminder(layout, stoneCount);
+  const layoutNeg = _braceletLayoutNegative(layout);
+  const positivePrompt =
+    `${layoutPos} ${designCore}. ${angle.clause} Single closed-loop bracelet, one bracelet only, ` +
+    `white seamless studio background, professional studio lighting, photorealistic, 8k, sharp focus, ` +
+    `no person, no hands, no wrist, no body parts. ${layoutRem}`;
+  const negativePrompt = `${layoutNeg}, ${BRACELET_GALLERY_HF_NEG}`;
+  console.log('[Bracelet] layout:', layout, '| target count:', stoneCount);
+  console.log('[Bracelet] positive prompt:', positivePrompt);
+  console.log('[Bracelet] negative prompt:', negativePrompt);
   const hfOverride = {
-    inputs: `${braceletDescription}, ${angle.hf}, ${shared}`,
-    negative_prompt: BRACELET_GALLERY_HF_NEG,
-    guidance_scale: 9.0,
+    inputs: positivePrompt,
+    negative_prompt: negativePrompt,
+    guidance_scale: 9.0,            // higher adherence for structural layout control
     num_inference_steps: 30,
   };
-  return _enqueueGen(() => _generateImage(prompt, BRACELET_GALLERY_HF_NEG, null, hfOverride)).catch(() => null);
+  return _enqueueGen(() => _generateImage(positivePrompt, negativePrompt, null, hfOverride)).catch(() => null);
 }
 
 async function _generateBraceletMultiAngle(opts) {
-  const braceletDescription = opts.braceletDescription;
+  const designCore = opts.braceletDescription;   // layout-free design core
   const thisGen = opts.thisGen;
   const isTweak = !!opts.isTweak;
   const ri = document.getElementById('refineImg');
   _setRingLoadingMsg();   // reuse the multi-angle loading copy
 
-  const shared = `${braceletDescription}, single closed-loop bracelet, one bracelet only, white studio background, photorealistic, 8k, no person, no body parts`;
+  const layout     = (userSelections && userSelections.stoneLayout) || 'full';
+  const stoneCount = _braceletStoneCount();   // exact math target stated in the prompt
 
-  let urls = await Promise.all(BRACELET_ANGLES.map(a => _genBraceletAngle(braceletDescription, shared, a)));
+  let urls = await Promise.all(BRACELET_ANGLES.map(a => _genBraceletAngle(designCore, layout, stoneCount, a)));
 
   // Try-on REQUIRES head-on (index 0): retry it specifically before falling back.
   if (!urls[0]) {
     console.log('[Bracelet] head-on (index 0) failed — retrying specifically before fallback');
-    urls[0] = await _genBraceletAngle(braceletDescription, shared, BRACELET_ANGLES[0]);
+    urls[0] = await _genBraceletAngle(designCore, layout, stoneCount, BRACELET_ANGLES[0]);
   }
   if (!urls[0]) {
     urls[0] = urls[1] || urls[2] || null;
