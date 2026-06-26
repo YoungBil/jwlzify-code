@@ -1310,16 +1310,10 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
           <!-- Price rows -->
           <div id="priceRows"></div>
 
-          <!-- Bracelet: stone count estimated from the generated image (manual override) -->
+          <!-- Bracelet: stone count counted across the 3 generated angles (display-only) -->
           <div id="braceletStoneCountPanel" style="display:none;margin:14px 0;padding:14px 16px;background:rgba(201,168,76,0.08);border:1px solid rgba(201,168,76,0.35);border-radius:12px;">
-            <label style="font-family:Inter,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.08em;color:#3c6474;text-transform:uppercase;display:block;margin-bottom:8px;">Stones in your design</label>
-            <div style="display:flex;align-items:center;gap:12px;">
-              <input id="braceletCountInput" type="number" min="0" max="60" step="1"
-                style="width:90px;font-family:Inter,sans-serif;font-size:15px;font-weight:600;padding:9px 12px;border:1.5px solid rgba(193,199,203,0.6);border-radius:10px;outline:none;color:#1b1c1c;box-sizing:border-box;transition:border-color 0.2s;"
-                oninput="setBraceletStoneCountManual(this.value)"
-                onfocus="this.style.borderColor='#C9A84C'" onblur="this.style.borderColor='rgba(193,199,203,0.6)'">
-              <span id="braceletCountNote" style="font-family:Inter,sans-serif;font-size:12px;color:#71787c;line-height:1.4;">Stone count estimated from your design — adjust if it looks wrong.</span>
-            </div>
+            <p style="font-family:Inter,sans-serif;font-size:14px;font-weight:600;color:#1b1c1c;margin:0;">Stones in your design: <span id="braceletCountValue" style="color:#3c6474;">—</span></p>
+            <p style="font-family:Inter,sans-serif;font-size:12px;color:#71787c;line-height:1.4;margin:6px 0 0;">Calculated from your generated design across multiple angles.</p>
           </div>
 
           <!-- Total -->
@@ -2417,15 +2411,14 @@ function setType(btn, type) {
     const _pce = document.getElementById('pendantCaratError');  if (_pce) _pce.style.display = 'none';
     const _pse = document.getElementById('pendantSizeError');   if (_pse) _pse.style.display = 'none';
     document.querySelectorAll('.pendant-tier-btn').forEach(b => b.classList.remove('active'));
-    // Reset bracelet-only inputs (link width, length, stone tier, image/manual count)
+    // Reset bracelet-only inputs (link width, length, stone tier, image count)
     document.querySelectorAll('.bracelet-linkwidth-btn, .bracelet-length-btn, .bracelet-tier-btn')
       .forEach(b => b.classList.remove('active'));
     const _bcp = document.getElementById('braceletStoneCountPanel'); if (_bcp) _bcp.style.display = 'none';
-    const _bci = document.getElementById('braceletCountInput');      if (_bci) _bci.value = '';
-    LAB._braceletCountedUrl = null;
+    LAB._braceletCountedKey = null;
+    LAB.braceletAngles = null;
     delete userSelections.linkWidthMm; delete userSelections.braceletLengthIn;
     delete userSelections.perStoneCarat; delete userSelections.braceletStoneCountImage;
-    delete userSelections.braceletStoneCountManual;
 
     // Reset specifications to defaults
     window.jwlSpecifications.metalGrams  = 4.5;
@@ -2971,8 +2964,7 @@ function _clampBraceletCount(n) { return Math.max(0, Math.min(60, n)); }
 
 // Effective stone count: manual override wins, then the image estimate, then default.
 function _braceletStoneCount() {
-  const manual = parseInt(userSelections.braceletStoneCountManual, 10);
-  if (!isNaN(manual)) return _clampBraceletCount(manual);
+  // Display-only count: comes solely from the multi-angle image estimate (no manual edit).
   const img = parseInt(userSelections.braceletStoneCountImage, 10);
   if (!isNaN(img)) return _clampBraceletCount(img);
   return BRACELET_DEFAULT_COUNT;
@@ -3054,9 +3046,8 @@ function updateBraceletSpecVisibility(type) {
   }
 }
 
-// Read the current bracelet image (blob URL) as a base64 data URL for the worker.
-async function _braceletImageDataUrl() {
-  const url = LAB.imageUrl;
+// Read a blob URL as a base64 data URL the worker can decode server-side.
+async function _blobToDataUrl(url) {
   if (!url) return null;
   try {
     const resp = await fetch(url);
@@ -3073,34 +3064,42 @@ async function _braceletImageDataUrl() {
   }
 }
 
-// Estimate the stone count from the generated bracelet image via the vision worker.
+// Estimate UNIQUE stone count across ALL 3 generated angles via the vision worker.
+// Display-only: the result is shown on the quote step, not editable.
 async function countBraceletStonesFromImage() {
   if (LAB.type !== 'bracelet') return;
-  // Skip re-counting the same image so a manual override survives re-entry.
-  if (LAB.imageUrl && LAB._braceletCountedUrl === LAB.imageUrl
-      && userSelections.braceletStoneCountImage != null) {
+  const angles = (LAB.braceletAngles && LAB.braceletAngles.length)
+    ? LAB.braceletAngles.filter(Boolean)
+    : (LAB.imageUrl ? [LAB.imageUrl] : []);
+  const key = angles.join('|');
+  // Skip re-counting the same set of angles.
+  if (key && LAB._braceletCountedKey === key && userSelections.braceletStoneCountImage != null) {
     _renderBraceletCountPanel();
     return;
   }
 
-  let rawCount = null;
-  const imageUrl = await _braceletImageDataUrl();
-  if (imageUrl) {
-    try {
-      const res = await fetch(STONE_COUNT_WORKER_URL, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ image_url: imageUrl })
-      });
-      if (res.ok) {
-        const data = await res.json();
-        const parsed = parseInt(data && data.stoneCount, 10);
-        if (!isNaN(parsed)) rawCount = parsed;
-      } else {
-        console.warn('[Bracelet] stone-count worker HTTP', res.status);
+  let rawCount = null, anglesUsed = null;
+  if (angles.length) {
+    const dataUrls = (await Promise.all(angles.map(_blobToDataUrl))).filter(Boolean);
+    if (dataUrls.length) {
+      try {
+        const res = await fetch(STONE_COUNT_WORKER_URL, {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ image_urls: dataUrls })   // all angles; worker dedups unique stones
+        });
+        if (res.ok) {
+          const data = await res.json();
+          let parsed = parseInt(data && data.stoneCount, 10);
+          if (isNaN(parsed) && data && data.raw != null) parsed = parseInt(data.raw, 10);
+          if (!isNaN(parsed)) rawCount = parsed;
+          anglesUsed = data && data.anglesUsed;
+        } else {
+          console.warn('[Bracelet] stone-count worker HTTP', res.status);
+        }
+      } catch (e) {
+        console.warn('[Bracelet] stone-count call failed:', e.message);
       }
-    } catch (e) {
-      console.warn('[Bracelet] stone-count call failed:', e.message);
     }
   }
 
@@ -3112,46 +3111,27 @@ async function countBraceletStonesFromImage() {
     count = _clampBraceletCount(rawCount);
   }
 
-  // Fresh image → set the image count and clear any stale manual override.
-  LAB._braceletCountedUrl = LAB.imageUrl;
-  userSelections.braceletStoneCountImage  = count;
-  userSelections.braceletStoneCountManual = null;
+  LAB._braceletCountedKey = key;
+  userSelections.braceletStoneCountImage = count;
   _applyBraceletSpecs();
 
   const per  = parseFloat(userSelections.perStoneCarat) || 0.10;
   const rate = (STONE_RATES[LAB.gem] != null) ? STONE_RATES[LAB.gem] : 2.00;
   const stoneCost = count * per * rate;
-  console.log('[Bracelet] image stone count:', rawCount, '| clamped:', count,
-              '| per-stone ct:', per, '| stone cost:', stoneCost);
+  console.log('[Bracelet] multi-angle count:', rawCount, '| clamped:', count,
+              '| angles used:', anglesUsed, '| stone cost:', stoneCost);
 
-  _renderBraceletCountPanel(rawCount);
+  _renderBraceletCountPanel(rawCount, anglesUsed);
 }
 
-function _renderBraceletCountPanel(rawCount) {
-  const panel = document.getElementById('braceletStoneCountPanel');
-  const input = document.getElementById('braceletCountInput');
-  const note  = document.getElementById('braceletCountNote');
+// Display-only render: just the number + a subtext. No input, no adjust.
+function _renderBraceletCountPanel(rawCount, anglesUsed) {
+  const panel    = document.getElementById('braceletStoneCountPanel');
+  const valueEl  = document.getElementById('braceletCountValue');
   if (!panel) return;
   if (LAB.type !== 'bracelet') { panel.style.display = 'none'; return; }
   panel.style.display = 'block';
-  if (input) input.value = _braceletStoneCount();
-  if (note) {
-    note.textContent = (rawCount == null || isNaN(rawCount))
-      ? 'We could not read the stone count automatically — defaulted to ' + BRACELET_DEFAULT_COUNT + '. Adjust if needed.'
-      : 'Stone count estimated from your design — adjust if it looks wrong.';
-  }
-}
-
-// Manual override of the image count — takes precedence and re-prices.
-function setBraceletStoneCountManual(val) {
-  if (val === '' || val == null || isNaN(parseInt(val, 10))) {
-    userSelections.braceletStoneCountManual = null;   // revert to the image estimate
-  } else {
-    userSelections.braceletStoneCountManual = _clampBraceletCount(parseInt(val, 10));
-  }
-  _applyBraceletSpecs();
-  // Re-price (updates priceRows + total) without re-rendering the panel/input.
-  if (typeof displayPricing === 'function') displayPricing(LAB.material, LAB.gem, LAB.type);
+  if (valueEl) valueEl.textContent = _braceletStoneCount();
 }
 
 /* ── Style chip selector ─────────────────────── */
@@ -4013,6 +3993,11 @@ async function startGeneration(isTweak) {
     _generateRingMultiAngle({ core: _ringCore, thisGen: thisGen, isTweak: isTweak, fullPromptForLog: fullPrompt });
     return;
   }
+  // BRACELET: generate 3 angles (head-on / three-quarter / stone detail) of the same design.
+  if (resolvedType === 'bracelet') {
+    _generateBraceletMultiAngle({ braceletDescription: _buildBraceletDescription(desc), thisGen: thisGen, isTweak: isTweak, fullPromptForLog: fullPrompt });
+    return;
+  }
 
   _enqueueGen(() => _generateImage(fullPrompt, negativePrompt, initImage, _hfOverrides)).then((blobUrl) => {
     console.log('[JWLZIFY] setting image src to:', blobUrl?.slice(0, 50));
@@ -4197,6 +4182,11 @@ async function confirmAndGenerate() {
     _generateRingMultiAngle({ core: _ringCore, thisGen: thisGen, isTweak: false, fullPromptForLog: fullPrompt });
     return;
   }
+  // BRACELET: generate 3 angles (head-on / three-quarter / stone detail) of the same design.
+  if (LAB.type === 'bracelet') {
+    _generateBraceletMultiAngle({ braceletDescription: _buildBraceletDescription(userIdea), thisGen: thisGen, isTweak: false, fullPromptForLog: fullPrompt });
+    return;
+  }
 
   _enqueueGen(() => _generateImage(fullPrompt, negativePrompt, null, _hfOverridesC)).then(blobUrl => {
     if (!blobUrl) {
@@ -4337,10 +4327,11 @@ async function _generateRingMultiAngle(opts) {
   showPostGenUI();
 }
 
-// Build the swipeable gallery DOM from whichever angles succeeded; default to the hero angle.
-function setupRingGallery(urls) {
+// Build the swipeable gallery DOM from whichever angles succeeded.
+// Generic over jewelry type — rings and bracelets share the same gallery DOM.
+function _setupAngleGallery(urls, caps, altLabel, defaultOrig) {
   const avail = [];
-  urls.forEach((u, i) => { if (u) avail.push({ url: u, cap: RING_ANGLES[i].cap, orig: i }); });
+  urls.forEach((u, i) => { if (u) avail.push({ url: u, cap: caps[i], orig: i }); });
   _ringGalleryUrls = avail;
 
   const track    = document.getElementById('ringGalleryTrack');
@@ -4348,14 +4339,13 @@ function setupRingGallery(urls) {
   if (!track || !dotsWrap) return;
 
   track.innerHTML = avail.map(a =>
-    `<div class="ring-angle-slide"><img src="${a.url}" alt="Ring — ${a.cap} view" loading="lazy"></div>`
+    `<div class="ring-angle-slide"><img src="${a.url}" alt="${altLabel} — ${a.cap} view" loading="lazy"></div>`
   ).join('');
   dotsWrap.innerHTML = avail.map((a, idx) =>
     `<button class="ring-gallery-dot" data-i="${idx}" aria-label="${a.cap}"></button>`
   ).join('');
 
-  // Default view: three-quarter hero (original index 1) when available.
-  let def = avail.findIndex(a => a.orig === 1);
+  let def = avail.findIndex(a => a.orig === defaultOrig);
   if (def < 0) def = 0;
 
   const showNav = avail.length > 1;
@@ -4365,6 +4355,12 @@ function setupRingGallery(urls) {
 
   _wireRingGallery();
   _ringGalleryGoTo(def);
+}
+function setupRingGallery(urls) {
+  _setupAngleGallery(urls, RING_ANGLES.map(a => a.cap), 'Ring', 1);   // default to three-quarter hero
+}
+function setupBraceletGallery(urls) {
+  _setupAngleGallery(urls, BRACELET_ANGLES.map(a => a.cap), 'Bracelet', 0); // default to head-on
 }
 
 function _ringGalleryGoTo(idx) {
@@ -4377,7 +4373,7 @@ function _ringGalleryGoTo(idx) {
     d.classList.toggle('active', i === _ringGalleryIndex));
   const cap = document.getElementById('ringGalleryCaption');
   if (cap && _ringGalleryUrls[_ringGalleryIndex]) cap.textContent = _ringGalleryUrls[_ringGalleryIndex].cap;
-  console.log('[Ring] gallery angle viewed:', _ringGalleryIndex);
+  console.log('[' + (LAB.type === 'bracelet' ? 'Bracelet' : 'Ring') + '] gallery angle viewed:', _ringGalleryIndex);
 }
 
 // Wire arrows, dot delegation and touch-swipe ONCE.
@@ -4404,6 +4400,104 @@ function _wireRingGallery() {
       startX = null;
     }, { passive: true });
   }
+}
+
+/* ══════════════════════════════════════════════════════════
+   BRACELET MULTI-ANGLE GENERATION (mirrors rings)
+   - 3 images of the SAME bracelet design from 3 angles.
+   - braceletAngles[0] = HEAD-ON front view (ALWAYS used by try-on).
+   - braceletAngles[1] = three-quarter angle.
+   - braceletAngles[2] = closer/top view showing the stones.
+   ══════════════════════════════════════════════════════════ */
+const BRACELET_ANGLES = [
+  { cap: 'Head-On',
+    clause: 'Head-on front view: a single closed-loop bracelet viewed perfectly head-on as a horizontal oval band facing the camera, the front face pointing directly at the viewer, symmetrical left-to-right, level, not tilted — the view of a bracelet on a wrist raised toward you.',
+    hf: 'head-on front view, horizontal oval band facing the camera, symmetrical, level, not tilted' },
+  { cap: 'Three-Quarter',
+    clause: 'Three-quarter angle view of the same bracelet, the flattering hero shot showing the front and side of the band together, the loop turned slightly so depth is visible, stones catching the light.',
+    hf: 'three-quarter angle view, front and side of the band together, slight turn showing depth, stones catching light' },
+  { cap: 'Stone Detail',
+    clause: 'Close-up top view of the same bracelet band, the camera close so the individual set stones are clearly visible and countable along the length, sharp macro detail of the stones and links.',
+    hf: 'close-up top view of the band, individual set stones clearly visible and countable, macro detail' },
+];
+const BRACELET_GALLERY_HF_NEG = 'person, hand, wrist, skin, two bracelets, multiple bracelets, collage, grid, deformed';
+
+// Build one shared design description so all 3 angles are clearly the same bracelet.
+function _buildBraceletDescription(desc) {
+  const tier     = (userSelections && userSelections.stoneSizeTier) || 'medium';
+  const tierWord = ({ accent: 'small', medium: 'medium', large: 'large' })[tier] || 'medium';
+  const linkW    = (userSelections && userSelections.linkWidthMm) ? `${userSelections.linkWidthMm}mm wide links` : 'fine links';
+  const gd = gemLabel(LAB.gem);
+  const md = matLabel(LAB.material);
+  const userPart = (desc && desc.trim()) ? `, ${desc.trim()}` : '';
+  return `luxury ${LAB.style} ${md} bracelet, ${linkW}, a continuous line of evenly spaced ${tierWord} ${gd} stones running along the entire band, tennis bracelet style, each stone prong-set${userPart}`;
+}
+
+// Generate one bracelet angle (Gemini-first → Flux → HF). Returns blob URL or null.
+function _genBraceletAngle(braceletDescription, shared, angle) {
+  const prompt = `${angle.clause} ${shared}`;
+  const hfOverride = {
+    inputs: `${braceletDescription}, ${angle.hf}, ${shared}`,
+    negative_prompt: BRACELET_GALLERY_HF_NEG,
+    guidance_scale: 9.0,
+    num_inference_steps: 30,
+  };
+  return _enqueueGen(() => _generateImage(prompt, BRACELET_GALLERY_HF_NEG, null, hfOverride)).catch(() => null);
+}
+
+async function _generateBraceletMultiAngle(opts) {
+  const braceletDescription = opts.braceletDescription;
+  const thisGen = opts.thisGen;
+  const isTweak = !!opts.isTweak;
+  const ri = document.getElementById('refineImg');
+  _setRingLoadingMsg();   // reuse the multi-angle loading copy
+
+  const shared = `${braceletDescription}, single closed-loop bracelet, one bracelet only, white studio background, photorealistic, 8k, no person, no body parts`;
+
+  let urls = await Promise.all(BRACELET_ANGLES.map(a => _genBraceletAngle(braceletDescription, shared, a)));
+
+  // Try-on REQUIRES head-on (index 0): retry it specifically before falling back.
+  if (!urls[0]) {
+    console.log('[Bracelet] head-on (index 0) failed — retrying specifically before fallback');
+    urls[0] = await _genBraceletAngle(braceletDescription, shared, BRACELET_ANGLES[0]);
+  }
+  if (!urls[0]) {
+    urls[0] = urls[1] || urls[2] || null;
+    if (urls[0]) console.log('[Bracelet] head-on unavailable — falling back to next available angle for index 0');
+  }
+
+  if (thisGen !== generationId) { urls.forEach(u => { if (u) URL.revokeObjectURL(u); }); return; }
+
+  if (!urls[0]) {
+    setGenLoading(false);
+    const errOverlay = document.getElementById('genErrorOverlay');
+    if (errOverlay) errOverlay.style.display = 'flex';
+    return;
+  }
+
+  LAB.braceletAngles = urls;       // fixed order: [headOn, threeQuarter, stoneDetail]
+  LAB.imageUrl       = urls[0];    // head-on — try-on + remove.bg key
+  LAB._braceletCountedKey = null;  // new design → recount on the quote step
+  bgRemovalCache.clear();
+  console.log('[Bracelet] generated 3 angles:', urls);
+
+  // Capture head-on as base64 for any later img2img refine pass.
+  fetch(urls[0]).then(r => r.blob()).then(blob => {
+    const fr = new FileReader();
+    fr.onload = () => { lastGeneratedImage = fr.result.split(',')[1]; };
+    fr.readAsDataURL(blob);
+  }).catch(() => {});
+
+  const q = document.getElementById('quoteImg'); if (q) q.src = urls[0];
+  const ot = document.getElementById('orderThumb'); if (ot) ot.src = urls[0];
+
+  setupBraceletGallery(urls);
+
+  if (isTweak) { if (ri) ri.style.filter = 'none'; }
+  else { showRefineStep(); }
+  setGenLoading(false);
+  window._lastFullPrompt = opts.fullPromptForLog || '';
+  showPostGenUI();
 }
 
 /* ── Post-generation Refine / Fresh (all types) ── */
@@ -4539,10 +4633,12 @@ function showRefineStep() {
   const ot = document.getElementById('orderThumb');
   if (ot) ot.src = LAB.imageUrl;
 
-  // Ring multi-angle gallery vs single-image toggle
+  // Multi-angle gallery (ring + bracelet) vs single-image toggle
   const _rg = document.getElementById('ringAngleGallery');
   const _ri = document.getElementById('refineImg');
-  if (LAB.type === 'ring' && LAB.ringAngles && LAB.ringAngles.length) {
+  const _hasRingGallery     = (LAB.type === 'ring'     && LAB.ringAngles     && LAB.ringAngles.length);
+  const _hasBraceletGallery = (LAB.type === 'bracelet' && LAB.braceletAngles && LAB.braceletAngles.length);
+  if (_hasRingGallery || _hasBraceletGallery) {
     if (_rg) _rg.style.display = '';
     if (_ri) _ri.style.display = 'none';
   } else {
