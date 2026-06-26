@@ -3230,38 +3230,17 @@ function setEarringMm(mm) {
 }
 
 // Resolve the system stone count for the current total ct + bucket + mm.
-// Returns { totalStoneCount, perEarringCount, perStoneCt } or null if no even
-// count can land the per-stone carat inside the chosen bucket.
+// mm is FIRM — earringMm alone dictates the count (no fallback search). Returns
+// the mm-derived { totalStoneCount, perEarringCount, perStoneCt, inBucket } where
+// inBucket flags whether the resulting per-stone carat lands in the chosen bucket.
 function _resolveEarringCount() {
   if (!(_earTotalCtPair > 0) || !_earBucket || !_earMm) return null;
-  const b    = EARRING_BUCKETS[_earBucket];
-  const base = EARRING_MM_BASE[_earMm] || 1;     // stones per earring from mm
-  const mid  = (b.min + b.max) / 2;
-  const inBucket = ct => ct >= b.min - 1e-9 && ct <= b.max + 1e-9;
-
-  // 1) Prefer the mm-derived count if it lands in the bucket.
-  const baseTotal = base * 2;
-  const basePer   = _earTotalCtPair / baseTotal;
-  if (inBucket(basePer)) {
-    return { totalStoneCount: baseTotal, perEarringCount: base, perStoneCt: +basePer.toFixed(2) };
-  }
-
-  // 2) Otherwise search even totals 2..16 for any that land in-bucket; pick the
-  //    one closest to the bucket midpoint, tie-broken by nearness to the mm base.
-  let best = null;
-  for (let total = 2; total <= 16; total += 2) {
-    const per = _earTotalCtPair / total;
-    if (!inBucket(per)) continue;
-    const perEar  = total / 2;
-    const midDist = Math.abs(per - mid);
-    const baseDist = Math.abs(perEar - base);
-    if (!best || midDist < best.midDist - 1e-9 ||
-        (Math.abs(midDist - best.midDist) <= 1e-9 && baseDist < best.baseDist)) {
-      best = { totalStoneCount: total, perEarringCount: perEar, perStoneCt: +per.toFixed(2), midDist, baseDist };
-    }
-  }
-  if (best) return { totalStoneCount: best.totalStoneCount, perEarringCount: best.perEarringCount, perStoneCt: best.perStoneCt };
-  return null; // no even count makes per-stone ct fall in the bucket
+  const b          = EARRING_BUCKETS[_earBucket];
+  const base       = EARRING_MM_BASE[_earMm] || 1;   // stones per earring from mm (firm)
+  const totalCount = base * 2;
+  const perStoneCt = +(_earTotalCtPair / totalCount).toFixed(2);
+  const inBucket   = perStoneCt >= b.min - 1e-9 && perStoneCt <= b.max + 1e-9;
+  return { totalStoneCount: totalCount, perEarringCount: base, perStoneCt: perStoneCt, inBucket: inBucket };
 }
 
 // Central validator + Generate-button gate (earrings only).
@@ -3274,24 +3253,29 @@ function _validateEarringFlow() {
   _earResolved = null;
   const haveAll = _earTotalCtPair > 0 && _earBucket && _earMm;
   let matches = false;
+  let firm = null;
 
   if (haveAll) {
-    _earResolved = _resolveEarringCount();
-    matches = !!_earResolved;
+    firm = _resolveEarringCount();      // firm mm-derived count (no fallback search)
+    _earResolved = firm;
+    matches = !!(firm && firm.inBucket); // proceed ONLY if the firm count lands in-bucket
   }
 
   if (summary) {
+    // Always reflects the firm mm-derived count (shown when the gate passes).
     if (matches) {
-      const r = _earResolved, bl = EARRING_BUCKETS[_earBucket].label;
+      const r = firm, bl = EARRING_BUCKETS[_earBucket].label;
       summary.textContent = r.totalStoneCount + ' stones total (' + r.perEarringCount +
         ' per earring) · ' + r.perStoneCt + ' ct each · ' + bl;
     } else summary.textContent = '';
   }
   if (msgEl) {
-    if (haveAll && !matches) {
+    if (haveAll && !matches && firm) {
+      // mm is firm — never silently change the count. Explain the conflict + fixes.
       const b = EARRING_BUCKETS[_earBucket];
-      msgEl.textContent = _earTotalCtPair + 'ct total can’t reach ' + b.label +
-        ' (' + b.min + '–' + b.max + 'ct/stone) — increase total carat or pick a smaller size.';
+      msgEl.textContent = 'At ' + _earMm + 'mm we use ' + firm.totalStoneCount + ' stones → ' +
+        firm.perStoneCt + 'ct each, which isn’t ' + b.label + ' (' + b.min + '–' + b.max +
+        'ct). Adjust total carat, stone size, or earring length.';
       msgEl.style.display = 'block';
     } else msgEl.style.display = 'none';
   }
