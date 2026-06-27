@@ -4471,6 +4471,31 @@ const RING_ANGLES = [
 ];
 const RING_GALLERY_HF_NEG = 'person, human, hand, fingers, body part, worn, multiple rings, two rings, collage, grid, blurry, deformed, asymmetrical';
 
+/* ── RING exact-stone-count enforcement ──────────────────────────────
+   The user's selected stone count (specs → _authoritativeStoneCount) is the
+   absolute, exact number. Flux/Gemini default to adding decorative extras
+   (pavé, halo, accents, side stones); these helpers push hard against that with
+   explicit positive count language + an aggressive negative list. RING ONLY. */
+const _RING_NUM_WORDS = ['ZERO','ONE','TWO','THREE','FOUR','FIVE','SIX','SEVEN','EIGHT','NINE','TEN',
+  'ELEVEN','TWELVE','THIRTEEN','FOURTEEN','FIFTEEN','SIXTEEN','SEVENTEEN','EIGHTEEN','NINETEEN','TWENTY'];
+function _ringSpellNum(n) { return _RING_NUM_WORDS[n] || String(n); }
+
+// Strong positive clause stating the exact count (leads the prompt).
+function _ringExactCountClause(n) {
+  if (n === 1) {
+    return 'A ring with EXACTLY ONE (1) single solitaire stone and absolutely no other stones anywhere. One stone only. The band is completely plain, smooth, and bare metal with no diamonds, no accent stones, no pavé, no side stones, and no decorative gems of any kind — only the one single center stone.';
+  }
+  const W = _ringSpellNum(n), w = W.toLowerCase();
+  return 'A ring with EXACTLY ' + W + ' (' + n + ') stones total and no other stones anywhere on the ring. Only ' + w + ' stones. The rest of the band is plain bare metal with no additional diamonds, accents, pavé, or side stones.';
+}
+// Restated count reminder (closes the prompt).
+function _ringExactCountReminder(n) {
+  return 'Final reminder: this ring has EXACTLY ' + _ringSpellNum(n) + ' (' + n + ') stone' + (n === 1 ? '' : 's') +
+    ' and the band is plain bare metal with no other diamonds or accent stones whatsoever.';
+}
+// Aggressive negative list — what removes the model's default decorative extras.
+const _RING_EXTRA_STONES_NEG = 'extra diamonds, additional stones, accent stones, pave, pave band, pave setting, side stones, halo, halo setting, encrusted band, diamonds on the band, stones on the shoulders, decorative gems, micro pave, channel set stones, eternity band, cluster, extra gems, more stones than specified, embellished band, gem-encrusted';
+
 let _ringGalleryUrls  = [];   // [{url, cap, orig}] of the angles that succeeded
 let _ringGalleryIndex = 0;
 let _ringGalleryWired = false;
@@ -4492,14 +4517,28 @@ function _setRingLoadingMsg() {
 
 // Generate one angle (Gemini-first → Flux → HF fallback, via _generateImage). Returns blob URL or null.
 function _genRingAngle(core, shared, angle) {
-  const prompt = `${angle.clause} ${shared}`;
+  // Exact stone count is absolute — from the spec selectors (never typed text).
+  const stoneCount    = _authoritativeStoneCount();
+  const exactClause   = _ringExactCountClause(stoneCount);   // strong count language, FIRST
+  const exactReminder = _ringExactCountReminder(stoneCount); // restated count, LAST
+  // Aggressive negative pushes the model off its add-decorative-stones default.
+  const negativePrompt = RING_GALLERY_HF_NEG + ', ' + _RING_EXTRA_STONES_NEG;
+
+  // Assembly order: exact-count clause → design description → exact-count reminder.
+  const positivePrompt = `${exactClause} ${angle.clause} ${shared}. ${exactReminder}`;
+  const hfInput        = `${exactClause} ${core}, ${angle.hf}, ${shared}. ${exactReminder}`;
   const hfOverride = {
-    inputs: `${core}, ${angle.hf}, ${shared}`,
-    negative_prompt: RING_GALLERY_HF_NEG,
-    guidance_scale: 9.0,
+    inputs: hfInput,
+    negative_prompt: negativePrompt,
+    guidance_scale: 9.0,            // tighter adherence to the exact-count instruction
     num_inference_steps: 30,
   };
-  return _enqueueGen(() => _generateImage(prompt, RING_GALLERY_HF_NEG, null, hfOverride)).catch(() => null);
+
+  console.log('[Ring] exact stone count enforced:', stoneCount);
+  console.log('[Ring] positive prompt:', positivePrompt);
+  console.log('[Ring] negative prompt:', negativePrompt);
+
+  return _enqueueGen(() => _generateImage(positivePrompt, negativePrompt, null, hfOverride)).catch(() => null);
 }
 
 async function _generateRingMultiAngle(opts) {
