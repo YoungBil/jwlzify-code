@@ -1018,6 +1018,11 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
             <span class="label" style="font-size:10px;letter-spacing:0.12em;color:#3c6474;" id="refineBadge">RING · 18K YELLOW GOLD · ART DECO</span>
           </div>
         </div>
+        <!-- Pendant size mismatch note (pendant only; shown when the rendered proportions
+             don't visually match the selected mm × mm size) -->
+        <p id="pendantSizeNote" style="display:none;margin-top:12px;font-family:Inter,sans-serif;
+           font-size:12px;line-height:1.5;color:#8a6d1f;background:rgba(201,168,76,0.12);
+           border:1px solid rgba(201,168,76,0.4);border-radius:10px;padding:10px 14px;"></p>
         <!-- Post-generation: Refine / Start Fresh flow -->
         <div id="post-gen-ui" style="display:none;margin-top:20px;">
           <!-- Step 1: mode buttons — always visible once shown -->
@@ -1265,6 +1270,29 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
           <div style="width:36px;height:36px;border-radius:50%;border:2px solid rgba(201,168,76,0.3);
                border-top-color:#C9A84C;animation:dSpin 0.9s linear infinite;"></div>
           <p style="font-family:Inter,sans-serif;font-size:12px;color:#C9A84C;letter-spacing:0.08em;">Removing background…</p>
+        </div>
+
+        <!-- Pendant chain-choice prompt (pendant try-on only) -->
+        <div id="pendant-chain-choice" style="display:none;position:absolute;inset:0;z-index:16;
+             background:rgba(11,15,26,0.84);align-items:center;justify-content:center;flex-direction:column;gap:14px;padding:26px;text-align:center;">
+          <p style="font-family:'Playfair Display',serif;font-size:19px;color:#fff;max-width:380px;line-height:1.4;margin:0;">
+            A pendant hangs from a chain. How would you like to try it on?
+          </p>
+          <p style="font-family:Inter,sans-serif;font-size:12px;color:rgba(255,255,255,0.72);max-width:340px;line-height:1.5;margin:0;">
+            This is just so the pendant has something to hang from — the chain isn't a separate product.
+          </p>
+          <div style="display:flex;flex-direction:column;gap:10px;width:100%;max-width:300px;margin-top:4px;">
+            <button onclick="choosePendantChain('own')"
+                    style="background:transparent;border:1.5px solid #C9A84C;border-radius:10px;padding:12px 16px;cursor:pointer;text-align:center;">
+              <span style="display:block;font-family:Inter,sans-serif;font-size:13px;font-weight:700;letter-spacing:0.04em;color:#C9A84C;">I'm wearing a chain</span>
+              <span style="display:block;font-family:Inter,sans-serif;font-size:11px;color:rgba(255,255,255,0.65);margin-top:3px;">Line the pendant up with your own chain</span>
+            </button>
+            <button onclick="choosePendantChain('generated')"
+                    style="background:#C9A84C;border:1.5px solid #C9A84C;border-radius:10px;padding:12px 16px;cursor:pointer;text-align:center;">
+              <span style="display:block;font-family:Inter,sans-serif;font-size:13px;font-weight:700;letter-spacing:0.04em;color:#1b1c1c;">Add a chain for me</span>
+              <span style="display:block;font-family:Inter,sans-serif;font-size:11px;color:rgba(27,28,28,0.7);margin-top:3px;">We'll draw a neutral chain to hang it from</span>
+            </button>
+          </div>
         </div>
 
       </div>
@@ -4983,6 +5011,9 @@ function showRefineStep() {
     </div>
   `).join('');
 
+  // Pendant only: flag a size/proportion mismatch vs the selected mm × mm (no-op otherwise).
+  _checkPendantSizeMismatch();
+
   goStep(3);
   fetchSpecCard();
 
@@ -5637,12 +5668,21 @@ function submitOrder(e) {
 // Shared state on window so the module script can read/write it too
 window._tryonPendantImg  = null;
 window._tryonPendantSize = 160;
+// Pendant chain choice: 'generated' (draw a neutral U-chain) or 'own' (no chain,
+// user lines the pendant up with their own chain). Set via choosePendantChain().
+window._pendantChainMode   = 'generated';
+window._pendantChainChosen = false;
+const PENDANT_TRYON_PX_PER_MM = 8; // maps the selected mm size to a default on-screen size
 
 function drawNecklace(pendantImg, pendantSize) {
   const canvas = document.getElementById('tryon-necklace');
   if (!canvas) return;
-  const chainH = 80;
-  const totalW = pendantSize + 80; // narrower V to match natural neck width
+
+  // 'own' chain → no chain drawn (user aligns pendant with their own chain).
+  // 'generated' → a soft U-curve neutral chain above the pendant.
+  const drawChain = (window._pendantChainMode !== 'own');
+  const chainH = drawChain ? 80 : 0;
+  const totalW = drawChain ? (pendantSize + 80) : pendantSize;
   const totalH = chainH + pendantSize;
 
   const dpr = window.devicePixelRatio || 1;
@@ -5654,28 +5694,65 @@ function drawNecklace(pendantImg, pendantSize) {
   ctx.scale(dpr, dpr);
   ctx.clearRect(0, 0, totalW, totalH); // fully transparent — never fill
 
-  console.log('[JWLZIFY] canvas size:', canvas.width, canvas.height);
-  console.log('[JWLZIFY] pendant img naturalSize:', pendantImg.naturalWidth, pendantImg.naturalHeight);
+  console.log('[JWLZIFY] canvas size:', canvas.width, canvas.height, '| chain mode:', window._pendantChainMode);
 
-  // V-shape chain: two thin lines from top corners to pendant top center
-  ctx.strokeStyle = 'rgba(100, 100, 110, 0.85)';
-  ctx.lineWidth   = 0.8;
+  if (drawChain) {
+    // Soft U-shaped curve (gravity hang), NOT a sharp V. A symmetric parabola from
+    // the two top corners dipping to the pendant top-centre at the bottom of the U.
+    // Control point at 2×chainH makes the quadratic pass exactly through (mid, chainH).
+    const midX = totalW / 2;
+    // Subtle light-to-dark vertical gradient so it reads as real metal, not a flat line.
+    const grad = ctx.createLinearGradient(0, 0, 0, chainH);
+    grad.addColorStop(0,   'rgba(226,228,234,0.95)'); // bright highlight at the top
+    grad.addColorStop(0.5, 'rgba(176,180,190,0.95)');
+    grad.addColorStop(1,   'rgba(120,124,134,0.95)'); // darker toward the dip
+    ctx.strokeStyle = grad;
+    ctx.lineWidth   = 2.2;
+    ctx.lineCap     = 'round';
+    ctx.lineJoin    = 'round';
+    ctx.beginPath();
+    ctx.moveTo(2, 0);                                  // top-left
+    ctx.quadraticCurveTo(midX, chainH * 2, totalW - 2, 0); // dip to (midX, chainH), up to top-right
+    ctx.stroke();
+    // Faint inner sheen line for a touch of metallic depth.
+    ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+    ctx.lineWidth   = 0.8;
+    ctx.beginPath();
+    ctx.moveTo(2, 0);
+    ctx.quadraticCurveTo(midX, chainH * 2 - 1.5, totalW - 2, 0);
+    ctx.stroke();
+  }
 
-  ctx.beginPath();
-  ctx.moveTo(0, 0);                  // top-left corner
-  ctx.lineTo(totalW / 2, chainH);    // pendant top center
-  ctx.stroke();
-
-  ctx.beginPath();
-  ctx.moveTo(totalW, 0);             // top-right corner
-  ctx.lineTo(totalW / 2, chainH);    // pendant top center
-  ctx.stroke();
-
-  // Pendant image: centered horizontally, directly below chain end
+  // Pendant image: centered horizontally, hanging at the bottom of the U.
   const pendantX = (totalW - pendantSize) / 2;
   ctx.drawImage(pendantImg, pendantX, chainH, pendantSize, pendantSize);
 
   updateHandlePosition();
+}
+
+// Called from the chain-choice prompt. Records the choice, reveals the pendant
+// canvas + resize handle, and draws (using whichever image is ready).
+function choosePendantChain(mode) {
+  window._pendantChainMode   = (mode === 'own') ? 'own' : 'generated';
+  window._pendantChainChosen = true;
+  const ov = document.getElementById('pendant-chain-choice');
+  if (ov) ov.style.display = 'none';
+  const canvas = document.getElementById('tryon-necklace');
+  const handle = document.getElementById('tryon-resize');
+  if (canvas) canvas.style.display = 'block';
+  if (handle) handle.style.display = 'block';
+  const hintEl = document.getElementById('tryon-hint-text');
+  if (hintEl) hintEl.textContent = (window._pendantChainMode === 'own')
+    ? 'DRAG THE PENDANT TO LINE UP WITH YOUR CHAIN · DRAG THE GREY DOT TO RESIZE'
+    : 'DRAG JEWELRY TO POSITION · DRAG THE GREY DOT TO RESIZE';
+  if (window._tryonPendantImg) drawNecklace(window._tryonPendantImg, window._tryonPendantSize);
+}
+
+// Draw only once the user has chosen a chain option (called after image loads).
+function _pendantRedrawIfReady() {
+  if (window._pendantChainChosen && window._tryonPendantImg) {
+    drawNecklace(window._tryonPendantImg, window._tryonPendantSize);
+  }
 }
 
 function updateHandlePosition() {
@@ -5804,6 +5881,10 @@ async function setupTryOn() {
   console.log('[JWLZIFY] try-on jewelry type:', LAB.type);
   console.log('[JWLZIFY] currentImageUrl:', LAB.imageUrl?.slice(0, 50));
 
+  // Chain-choice prompt is pendant-only — keep it hidden for every other type.
+  const _chainChoiceEl = document.getElementById('pendant-chain-choice');
+  if (_chainChoiceEl && LAB.type !== 'pendant') _chainChoiceEl.style.display = 'none';
+
   const hintEl = document.getElementById('tryon-hint-text');
 
   if (LAB.type === 'earrings') {
@@ -5845,25 +5926,35 @@ async function setupTryOn() {
     console.log('[Bracelet] try-on using head-on band view (index 0)');
     loadBraceletForTryOn(_headOnBand);
   } else {
-    // Pendant flow
-    if (hintEl) hintEl.textContent = 'DRAG JEWELRY TO POSITION · DRAG THE GREY DOT TO RESIZE';
-    window._tryonPendantSize = 160;
-    window._tryonPendantImg  = null;
+    // Pendant flow — first ask the chain question, then load/draw.
+    if (hintEl) hintEl.textContent = 'A pendant hangs from a chain — choose how to try it on';
+    window._tryonPendantImg    = null;
+    window._pendantChainChosen = false;
 
+    // Default on-screen size scales to the selected mm × mm spec, not a fixed value.
+    const _pw = (window.jwlSpecifications && window.jwlSpecifications.pendantWidthMm)  || parseFloat(userSelections.pendantWidthMm)  || 15;
+    const _ph = (window.jwlSpecifications && window.jwlSpecifications.pendantHeightMm) || parseFloat(userSelections.pendantHeightMm) || 20;
+    window._tryonPendantSize = Math.max(60, Math.min(400, Math.round(Math.max(_pw, _ph) * PENDANT_TRYON_PX_PER_MM)));
+    console.log('[Pendant] spec size:', _pw, 'x', _ph, '| try-on default scaled to spec');
+
+    // Keep the pendant canvas hidden behind the chain-choice prompt until a choice
+    // is made; the image loads/bg-removes in the background meanwhile.
     const canvas = document.getElementById('tryon-necklace');
     const handle = document.getElementById('tryon-resize');
-    if (canvas) canvas.style.display = 'block';
-    if (handle) handle.style.display = 'block';
+    if (canvas) canvas.style.display = 'none';
+    if (handle) handle.style.display = 'none';
+    const chainChoice = document.getElementById('pendant-chain-choice');
+    if (chainChoice) chainChoice.style.display = 'flex';
 
     if (typeof window._loadPendantForTryOn === 'function') {
       window._loadPendantForTryOn(LAB.imageUrl);
     } else {
-      // Module not loaded — draw original image directly without bg removal
+      // Module not loaded — load original image directly without bg removal
       const img = new Image();
       img.crossOrigin = 'anonymous';
       img.onload = () => {
         window._tryonPendantImg = img;
-        drawNecklace(img, window._tryonPendantSize);
+        _pendantRedrawIfReady();
       };
       img.onerror = () => console.warn('[JWLZIFY] failed to load pendant image directly');
       img.src = LAB.imageUrl;
@@ -5882,6 +5973,10 @@ function teardownTryOn() {
   const handle = document.getElementById('tryon-resize');
   if (canvas) canvas.style.display = 'none';
   if (handle) handle.style.display = 'none';
+  // Reset pendant chain-choice so re-entering try-on re-asks the question.
+  const _ccEl = document.getElementById('pendant-chain-choice');
+  if (_ccEl) _ccEl.style.display = 'none';
+  window._pendantChainChosen = false;
   ['tryon-earring-left', 'tryon-earring-right',
    'tryon-earring-left-handle', 'tryon-earring-right-handle',
    'tryon-necklace-img', 'tryon-necklace-resize',
@@ -6645,12 +6740,12 @@ async function loadPendantForTryOn(imageUrl) {
   const canvas = document.getElementById('tryon-necklace');
   if (!canvas) return;
 
-  // Step 1: draw original image immediately so chain + pendant show right away
+  // Step 1: load original immediately so it's ready as soon as a chain is chosen
   const tempImg = new Image();
   tempImg.crossOrigin = 'anonymous';
   tempImg.onload = () => {
     window._tryonPendantImg = tempImg;
-    if (typeof drawNecklace === 'function') drawNecklace(tempImg, window._tryonPendantSize || 144);
+    _pendantRedrawIfReady(); // only draws once the user picks a chain option
   };
   tempImg.src = imageUrl;
 
@@ -6660,13 +6755,72 @@ async function loadPendantForTryOn(imageUrl) {
   realImg.crossOrigin = 'anonymous';
   realImg.onload = () => {
     window._tryonPendantImg = realImg;
-    if (typeof drawNecklace === 'function') drawNecklace(realImg, window._tryonPendantSize || 144);
+    _pendantRedrawIfReady();
     console.log('[JWLZIFY] pendant loaded with bg removed');
   };
   realImg.src = cleanUrl;
 }
 
 window._loadPendantForTryOn = loadPendantForTryOn;
+
+// Measure the pendant's aspect ratio (bbox width/height) from the generated image
+// by ignoring transparent + near-white background pixels. Returns w/h or null.
+function _measurePendantAspect(img) {
+  const MAX = 256;
+  const scale = Math.min(1, MAX / Math.max(img.naturalWidth, img.naturalHeight));
+  const cw = Math.max(1, Math.round(img.naturalWidth  * scale));
+  const ch = Math.max(1, Math.round(img.naturalHeight * scale));
+  const c  = document.createElement('canvas'); c.width = cw; c.height = ch;
+  const cx = c.getContext('2d');
+  cx.drawImage(img, 0, 0, cw, ch);
+  const data = cx.getImageData(0, 0, cw, ch).data;
+  let minX = cw, minY = ch, maxX = -1, maxY = -1;
+  for (let y = 0; y < ch; y++) {
+    for (let x = 0; x < cw; x++) {
+      const i = (y * cw + x) * 4;
+      if (data[i + 3] < 40) continue;                         // transparent background
+      const lum = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+      if (lum > 244) continue;                                // near-white background
+      if (x < minX) minX = x; if (x > maxX) maxX = x;
+      if (y < minY) minY = y; if (y > maxY) maxY = y;
+    }
+  }
+  if (maxX < minX || maxY < minY) return null;
+  const bw = (maxX - minX + 1), bh = (maxY - minY + 1);
+  if (bw < 4 || bh < 4) return null;
+  return bw / bh;
+}
+
+// On the Refine step, warn ONLY if the rendered pendant's proportions don't
+// visually match the selected mm × mm size. No mismatch → no note.
+function _checkPendantSizeMismatch() {
+  const noteEl = document.getElementById('pendantSizeNote');
+  if (!noteEl) return;
+  if (LAB.type !== 'pendant') { noteEl.style.display = 'none'; return; }
+  const w = (window.jwlSpecifications && window.jwlSpecifications.pendantWidthMm)  || parseFloat(userSelections.pendantWidthMm);
+  const h = (window.jwlSpecifications && window.jwlSpecifications.pendantHeightMm) || parseFloat(userSelections.pendantHeightMm);
+  if (!(w > 0) || !(h > 0)) { noteEl.style.display = 'none'; return; } // no selected size → nothing to compare
+  const specAspect = w / h;
+  const img = new Image();
+  img.crossOrigin = 'anonymous';
+  img.onload = () => {
+    let imgAspect = null;
+    try { imgAspect = _measurePendantAspect(img); } catch (e) { imgAspect = null; }
+    if (!(imgAspect > 0)) imgAspect = img.naturalWidth / img.naturalHeight; // fallback to frame aspect
+    const rel = Math.abs(imgAspect - specAspect) / specAspect;
+    const mismatch = rel > 0.20; // >20% proportional difference reads as a real mismatch
+    console.log('[Pendant] size check — spec', w + 'x' + h, '(aspect ' + specAspect.toFixed(2) + ') | image aspect', imgAspect.toFixed(2), '| mismatch:', mismatch);
+    if (mismatch) {
+      noteEl.textContent = 'Note: the generated image may not exactly match your selected pendant size of '
+        + w + 'mm × ' + h + 'mm. Your final piece will be made to your selected size.';
+      noteEl.style.display = 'block';
+    } else {
+      noteEl.style.display = 'none';
+    }
+  };
+  img.onerror = () => { noteEl.style.display = 'none'; };
+  img.src = LAB.imageUrl;
+}
 
 /* ── Ring try-on (manual drag/resize + remove.bg) ───────────── */
 
