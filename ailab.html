@@ -6982,11 +6982,13 @@ let _ringIsDragging     = false;
 let _ringDragOffX       = 0;
 let _ringDragOffY       = 0;
 let ringFadeStart       = 0.45;   // bracelet "Fit on wrist" slider (range 0.20–0.50)
-const _RING_FADE_END    = 0.65;   // (legacy) — ring now uses the fixed back-cut below
-// Ring try-on: show ONLY the top portion of the ring (stone + upper setting) with
-// a clean HARD cut — the bottom is fully hidden so the finger appears to cover it.
-// Deterministic, proportional, normalized, automatic on every ring (no slider).
-const _RING_TOP_VISIBLE = 0.40;    // keep the top 40% of the ring; hard-cut the bottom 60%
+const _RING_FADE_END    = 0.65;   // (legacy) — ring now uses the fixed top-cut below
+// Ring try-on: show the ring from the TOP down to just BELOW the stone's center,
+// then a clean HARD cut so the lower band (which wraps behind a vertically-held
+// finger) is fully hidden. ~0.58 keeps the stone + the top of the band on both
+// sides visible. Deterministic, proportional, normalized to the drawn-ring bounds,
+// automatic on every ring (no slider). Single tunable constant.
+const _RING_TOP_VISIBLE = 0.58;    // keep the top ~58% (stone + upper band); hard-cut the rest
 const _BRACELET_FADE_W  = 0.20;   // bracelet fade-transition width (35%→55% by default)
 let _ringMaskDirection  = 'hide-bottom'; // 'hide-bottom' = ring (band back), 'hide-top' = bracelet (far arc)
 let _ringMaskedCanvas   = null;   // offscreen 400×400 normalized+masked canvas
@@ -7040,14 +7042,16 @@ function _buildRingMask(img, srcType) {
       oc2.fillRect(0, 0, SIZE, SIZE);
       region = 'top 0%–' + Math.round(fadeStart * 100) + '% (fade to ' + Math.round(fadeEnd * 100) + '%)';
     } else {
-      // Ring: show ONLY the top 40% of the ring (stone + upper setting); HARD-CUT
-      // everything below so the finger appears to hide the band. Cut is taken on
-      // the actual drawn-ring bounds (dy/dh), deterministic + normalized, no slider.
+      // Ring: show the top ~58% of the ring — from the top down to just BELOW the
+      // stone's vertical center (stone + the top of the band on both sides) — then
+      // HARD-CUT everything below so a vertically-held finger appears to hide the
+      // lower band. Cut is taken on the actual drawn-ring bounds (dy/dh):
+      // deterministic, proportional, normalized, no slider.
       const cutY = dy + dh * _RING_TOP_VISIBLE;
       oc2.fillStyle = 'rgba(0,0,0,1)';
-      oc2.fillRect(0, cutY, SIZE, SIZE - cutY); // erase bottom 60% — clean hard edge
-      region = 'top ' + Math.round(_RING_TOP_VISIBLE * 100) + '% shown, bottom hidden (hard cut)';
-      console.log('[Ring TryOn] top 40% shown, bottom 60% hidden');
+      oc2.fillRect(0, cutY, SIZE, SIZE - cutY); // erase the lower band — clean hard edge
+      region = 'top ' + Math.round(_RING_TOP_VISIBLE * 100) + '% shown, lower band hidden (hard cut)';
+      console.log('[Ring TryOn] cut at ~58% (just below stone center), top visible, lower band hidden');
     }
     oc2.globalCompositeOperation = 'source-over';
   }
@@ -7180,7 +7184,7 @@ function loadRingForTryOn(imageUrl) {
     getDefaultY:   (H) => H * 0.67, // centred on the hand
     hintText:      'Drag to position · Use +/− to resize · Rotate with the slider',
     fitLabel:      'Fit on finger',
-    maskDirection: 'hide-bottom',   // ring sits ON the finger → back of band permanently removed
+    maskDirection: 'hide-bottom',   // ring sits ON the finger → top ~58% shown, lower band hard-cut (_RING_TOP_VISIBLE)
   });
 }
 
@@ -7227,8 +7231,8 @@ function initTryOn(cfg) {
   _ringMaskDirection = cfg.maskDirection || 'hide-bottom';
   const fitLabelEl = document.getElementById('ringFitLabel');
   if (fitLabelEl) fitLabelEl.textContent = cfg.fitLabel || 'Fit';
-  // Fit slider: hidden for necklace (no occlusion) AND for ring (the back-of-band
-  // removal is now permanent/automatic — no user adjustment). Bracelet keeps it.
+  // Fit slider: hidden for necklace (no occlusion) AND for ring (the lower-band
+  // hard cut is now permanent/automatic — no user adjustment). Bracelet keeps it.
   const fitRowEl = document.getElementById('ringFitRow');
   if (fitRowEl) fitRowEl.style.display = (cfg.maskDirection === 'none' || cfg.typeLabel === 'ring') ? 'none' : 'flex';
 
