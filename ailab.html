@@ -810,6 +810,18 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
          bucket. Replaces the shared weight + stones grid for earrings only. -->
     <div id="earringFlow" style="display:none;">
 
+      <!-- STYLE — Minimal / Classic / Statement (earring-only; default Classic).
+           Hard style attribute fed into the generation prompt so the design isn't
+           silently skewed. -->
+      <div class="mb-8" id="earStepStyle">
+        <label class="label block mb-3" style="font-size:10px;letter-spacing:0.18em;color:#3c6474;">Style</label>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;">
+          <button class="spec-toggle ear-style-btn"        data-style="minimal"   onclick="setEarringStyle('minimal')">Minimal</button>
+          <button class="spec-toggle ear-style-btn active" data-style="classic"   onclick="setEarringStyle('classic')">Classic</button>
+          <button class="spec-toggle ear-style-btn"        data-style="statement" onclick="setEarringStyle('statement')">Statement</button>
+        </div>
+      </div>
+
       <!-- STEP A — Total carat weight per pair -->
       <div class="mb-8" id="earStepA">
         <label class="label block mb-3" style="font-size:10px;letter-spacing:0.18em;color:#3c6474;">Total Carat Weight (per pair)</label>
@@ -3396,10 +3408,28 @@ const EARRING_BUCKETS = {
 // Base stones-per-earring by mm length (mm controls physical length / density).
 const EARRING_MM_BASE = { 4: 1, 6: 1, 8: 2, 10: 3, 12: 4 };
 
+// Earring Style → hard design descriptor injected into the generation prompt.
+// Neutral, brand-luxury tone — NO gendered language.
+const EARRING_STYLE_DESCRIPTORS = {
+  minimal:   'minimal, understated, clean lines, small scale studs or fine hoops',
+  classic:   'classic, balanced, timeless silhouette',
+  statement: 'bold, larger scale, eye-catching design',
+};
+
 let _earTotalCtPair = 0;
 let _earBucket      = null;  // 'small' | 'medium' | 'large'
 let _earMm          = null;  // 4 | 6 | 8 | 10 | 12
+let _earStyle       = 'classic'; // 'minimal' | 'classic' | 'statement' (default Classic)
 let _earResolved    = null;  // { totalStoneCount, perEarringCount, perStoneCt } | null
+
+function setEarringStyle(style) {
+  if (!EARRING_STYLE_DESCRIPTORS[style]) return;
+  _earStyle = style;
+  document.querySelectorAll('.ear-style-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.style === style));
+  if (window.jwlSpecifications) window.jwlSpecifications.earringStyle = style;
+  console.log('[Earring] style:', style, '|', EARRING_STYLE_DESCRIPTORS[style]);
+}
 
 function setEarringTotalCt(val) {
   const v = parseFloat(val);
@@ -3496,6 +3526,7 @@ function _applyEarringSpecs() {
   s.totalCtPair     = +(_earTotalCtPair || 0).toFixed(2);
   s.sizeBucket      = _earBucket;
   s.earringMm       = _earMm;
+  s.earringStyle    = _earStyle;            // Minimal / Classic / Statement (default Classic)
   s.totalStoneCount = r.totalStoneCount;
   s.perEarringCount = r.perEarringCount;
   s.perStoneCt      = r.perStoneCt;
@@ -3530,11 +3561,14 @@ function _resetEarringFlow() {
   _earTotalCtPair = 0;
   _earBucket = null;
   _earMm = null;
+  _earStyle = 'classic'; // default Style back to Classic
   _earResolved = null;
+  if (window.jwlSpecifications) window.jwlSpecifications.earringStyle = 'classic';
   const ti = document.getElementById('earTotalCtInput'); if (ti) ti.value = '';
   const sb = document.getElementById('earStepB'); if (sb) sb.style.display = 'none';
   const sc = document.getElementById('earStepC'); if (sc) sc.style.display = 'none';
   document.querySelectorAll('.ear-bucket-btn, .ear-mm-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.ear-style-btn').forEach(b => b.classList.toggle('active', b.dataset.style === 'classic'));
   const sum = document.getElementById('earSummary'); if (sum) sum.textContent = '';
   const msg = document.getElementById('earMessage'); if (msg) msg.style.display = 'none';
   const btn = document.getElementById('generateBtn'); if (btn) btn.disabled = true; // gate until valid
@@ -3614,11 +3648,21 @@ async function _runEnhance(raw) {
     || (window.userSelections && userSelections.jewelryType) || '';
   console.log('[Enhance] original:', raw);
   console.log('[Enhance] sending jewelryType:', jewelryType);
+  // Earrings only: pass the selected Style descriptor so the enhancer respects it
+  // and never adds gendered/feminine styling. Other types are unaffected.
+  const _payload = { idea: raw, jewelryType };
+  if (jewelryType === 'earrings') {
+    const _esKey = (window.jwlSpecifications && window.jwlSpecifications.earringStyle)
+      || (typeof _earStyle !== 'undefined' ? _earStyle : 'classic');
+    _payload.earringStyle = _esKey;
+    _payload.earringStyleDescriptor =
+      (typeof EARRING_STYLE_DESCRIPTORS !== 'undefined' && EARRING_STYLE_DESCRIPTORS[_esKey]) || '';
+  }
   try {
     const res = await fetch(ENHANCE_WORKER_URL, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ idea: raw, jewelryType })   // worker holds the key; no auth header
+      body:    JSON.stringify(_payload)   // worker holds the key; no auth header
     });
     if (!res.ok) throw new Error('enhance worker HTTP ' + res.status);
     const data = await res.json();
@@ -3905,6 +3949,11 @@ function _buildPromptCore(type, material, gem, style, desc) {
     const userDesc = _stripShapeWords(desc.trim()); // shape/count from specs, not typed text
     const stoneStr = _earringDescriptor(gDisp);
     const lenStr   = earMm ? `each earring ${earMm}mm long` : '';
+    // Hard Style attribute from the specs selector (Minimal / Classic / Statement) —
+    // overrides any conflicting style language in the typed description.
+    const earStyleKey  = (specs.earringStyle || _earStyle || 'classic');
+    const earStyleDesc = EARRING_STYLE_DESCRIPTORS[earStyleKey] || EARRING_STYLE_DESCRIPTORS.classic;
+    console.log('[Earring] prompt style:', earStyleKey, '|', earStyleDesc);
     const earringAdditions = [
       'ONE single earring only',
       'single individual earring',
@@ -3915,13 +3964,14 @@ function _buildPromptCore(type, material, gem, style, desc) {
     ].join(', ');
     const core = [
       `luxury ${style} earring`,
+      `earring style: ${earStyleDesc}`,   // hard style attribute (specs win over typed)
       'one earring from a matching identical pair',
       userDesc,
       lenStr,
       `set with ${stoneStr}`,
       `crafted in ${mDisp}`
     ].filter(Boolean).join(', ');
-    return `${core}, ${earringAdditions}, professional jewelry product photography, pure white seamless background, no shadows, hyper realistic, 8K ultra high definition, macro lens, sharp focus, highly detailed, photorealistic, precious metal gleam, gemstone sparkle and brilliance. Both earrings in the pair are identical. No humans. No person. No body parts. No neck. No chest. No hands. No fingers. No ears. No skin. No model. Product-only photography. The jewelry piece is the sole subject of the image.`;
+    return `${core}, ${earringAdditions}, professional jewelry product photography, pure white seamless background, no shadows, hyper realistic, 8K ultra high definition, macro lens, sharp focus, highly detailed, photorealistic, precious metal gleam, gemstone sparkle and brilliance. Both earrings in the pair are identical. The earring style is strictly ${earStyleDesc}. No humans. No person. No body parts. No neck. No chest. No hands. No fingers. No ears. No skin. No model. Product-only photography. The jewelry piece is the sole subject of the image.`;
   }
 
   if (type === 'bracelet') {
