@@ -2263,6 +2263,21 @@ function updateProgress(n) {
     const line = document.getElementById('line' + i + (i+1));
     if (line) line.className = 'prog-line' + (i < n ? ' done' : '');
   }
+
+  // Once a design exists, step 3 (Refine) stays clickable so the user can return
+  // to their EXISTING generated design without regenerating — even when standing
+  // on step 2 (Specs). A new design is created only via "Generate Masterpiece".
+  if (typeof LAB !== 'undefined' && LAB.imageUrl && n !== 3) {
+    const dot3   = document.getElementById('dot3');
+    const label3 = document.getElementById('steplabel3');
+    if (dot3) { dot3.classList.add('done'); dot3.onclick = () => goStep(3); }
+    if (label3) {
+      label3.style.cursor = 'pointer'; label3.style.color = '#3c6474'; label3.style.opacity = '1';
+      label3.onclick = () => goStep(3);
+      label3.onmouseover = () => { label3.style.opacity = '0.65'; };
+      label3.onmouseout  = () => { label3.style.opacity = '1'; };
+    }
+  }
 }
 
 /* ── Step navigation ─────────────────────────── */
@@ -2282,6 +2297,10 @@ async function goStep(n) {
     isProcessing  = false;
     teardownTryOn();
   }
+  // Navigating between steps NEVER regenerates — the existing design/image is
+  // preserved and shown again on step 3. Only "Generate Masterpiece" makes a new one.
+  if (LAB.imageUrl && n !== 1) console.log('[Nav] step change preserved existing design');
+
   document.querySelectorAll('.sp').forEach(el => el.classList.remove('active'));
   const el = document.getElementById('s' + n) || document.getElementById('sSuccess');
   if (el) el.classList.add('active');
@@ -3052,9 +3071,13 @@ function _ringStoneDescriptor(gDisp) {
   const n      = carats.length || specs.stoneCount || 1;
   const total  = specs.totalCt != null ? specs.totalCt : (specs.totalCarats || carats.reduce((a, b) => a + b, 0));
   if (n <= 1) {
-    return `a single ${(carats[0] != null ? carats[0] : total)}ct ${cut} ${gDisp} center stone`;
+    // Carat-driven visual size so a bigger carat renders a clearly bigger stone.
+    const ct = (carats[0] != null ? carats[0] : total);
+    return `a ${_caratSizeDescriptor(ct)} ${ct} carat ${cut} ${gDisp} center stone${_caratDomSuffix(ct)}`;
   }
-  return `${n} ${cut} ${gDisp} stones of ${carats.join('ct, ')}ct (${total}ct total)`;
+  // Multi-stone: name the center (largest) carat with a visual-size descriptor.
+  const center = Math.max.apply(null, carats);
+  return `${n} ${cut} ${gDisp} stones of ${carats.join('ct, ')}ct (${total}ct total), the center stone a ${_caratSizeDescriptor(center)} ${center} carat stone${_caratDomSuffix(center)}`;
 }
 
 function _resetRingFlow() {
@@ -3394,9 +3417,11 @@ function _earringDescriptor(gDisp) {
   const perEar = specs.perEarringCount || 1;
   const perCt  = specs.perStoneCt != null ? specs.perStoneCt
     : (specs.totalCtPair ? +(specs.totalCtPair / (specs.totalStoneCount || 2)).toFixed(2) : 1);
+  // Carat-driven visual size per stone so the selected size shows in the render.
+  const d = _caratSizeDescriptor(perCt);
   return perEar <= 1
-    ? `a single ${perCt}ct ${cut} ${gDisp} stone`
-    : `${perEar} matching ${perCt}ct ${cut} ${gDisp} stones`;
+    ? `a ${d} ${perCt} carat ${cut} ${gDisp} stone`
+    : `${perEar} matching ${d} ${perCt} carat ${cut} ${gDisp} stones`;
 }
 
 function _resetEarringFlow() {
@@ -3606,6 +3631,52 @@ function _authoritativeStoneClause(type) {
   return ' This piece has EXACTLY ' + n + ' stones in total, no more and no fewer. Total stone count: ' + n + '.';
 }
 
+// Map a carat value → descriptive visual-size language so the carat actually
+// drives how big the stone looks in the render. Specs stay the source of truth.
+//   <1ct = small · 1–2ct = medium · 3–5ct = large prominent · 6ct+ = very large statement
+function _caratSizeDescriptor(ct) {
+  const c = parseFloat(ct) || 0;
+  if (c < 1)  return 'small';
+  if (c < 3)  return 'medium';
+  if (c < 6)  return 'large prominent';
+  return 'very large statement';
+}
+// Emphasis clause so a larger stone visibly dominates and a tiny one stays delicate.
+function _caratDomSuffix(ct) {
+  const c = parseFloat(ct) || 0;
+  if (c >= 3) return ' that visually dominates the piece';
+  if (c < 1)  return ', kept deliberately small and delicate';
+  return '';
+}
+// "a large 4 carat <gem> center stone that visually dominates the piece"
+function _caratSizePhrase(ct, gemDisp, roleNoun) {
+  const c = +(parseFloat(ct) || 0);
+  const g = gemDisp ? gemDisp + ' ' : '';
+  return `a ${_caratSizeDescriptor(c)} ${c} carat ${g}${roleNoun || 'center stone'}${_caratDomSuffix(c)}`;
+}
+// Primary/center stone carat + selected size tier for the current type (for logging
+// and to keep the carat + tier descriptors agreeing).
+function _primaryStoneInfo(type) {
+  const s = window.jwlSpecifications || {};
+  let carats = 0, sizeTier = null;
+  if (type === 'ring') {
+    const arr = (s.stones || []).map(_ctOf).filter(c => c != null && !isNaN(c));
+    carats = arr.length ? Math.max.apply(null, arr) : (s.totalCt || s.totalCarats || 0);
+    if (Array.isArray(s.stones) && s.stones[0] && typeof s.stones[0] === 'object') sizeTier = s.stones[0].sizeBucket || null;
+  } else if (type === 'pendant') {
+    carats = parseFloat(userSelections.stoneCarats) || s.totalCarats || 0;
+    sizeTier = userSelections.stoneSizeTier || null;
+  } else if (type === 'earrings') {
+    carats = s.perStoneCt || (s.stones || [])[0] || 0;
+    sizeTier = s.sizeBucket || null;
+  } else if (type === 'necklace') {
+    carats = (typeof selectedNecklaceCt !== 'undefined' ? selectedNecklaceCt : (s.stones || [])[0]) || 0;
+  } else {
+    carats = s.totalCarats || (s.stones || [])[0] || 0;
+  }
+  return { carats: +(parseFloat(carats) || 0).toFixed(2), sizeTier };
+}
+
 function buildPrompt(type, material, gem, style, desc) {
   // Typed text drives STYLE only; quantity comes solely from the spec selectors.
   // If the typed count differs from the spec count we silently prefer the spec
@@ -3617,6 +3688,9 @@ function buildPrompt(type, material, gem, style, desc) {
   const core        = _buildPromptCore(type, material, gem, style, cleanedUserText);
   const finalPrompt = core + _authoritativeStoneClause(type);
 
+  // Carat + stone-size → visual-size descriptor (so size actually shows in the image).
+  const _si = _primaryStoneInfo(type);
+  console.log('[Gen] carat:', _si.carats, '| stone size:', _si.sizeTier, '| size descriptor:', _caratSizeDescriptor(_si.carats));
   console.log('[Gen] user typed (raw):', rawUserText);
   console.log('[Gen] user typed (quantities stripped):', cleanedUserText);
   console.log('[Gen] authoritative stone count from specs:', stoneCount);
@@ -3638,9 +3712,10 @@ function _buildPromptCore(type, material, gem, style, desc) {
   const stoneCount  = stones.length;
   const weightLabel = specs.weightLabel || 'medium';
 
-  // Build gem part with actual count and carat sizes
+  // Build gem part with actual count + carat sizes. The single center stone now
+  // carries a carat-driven visual-size descriptor so the stone scales in the image.
   const gemPart = stoneCount === 1
-    ? `${totalCarats}ct ${gDisp} center stone`
+    ? `${_caratSizePhrase(totalCarats, gDisp, 'center stone')}`
     : `${stoneCount} ${gDisp} stones (${stones.map(s => s + 'ct').join(', ')}, ${totalCarats}ct total)`;
 
   // Weight adds a descriptor to the piece style
@@ -3688,10 +3763,11 @@ function _buildPromptCore(type, material, gem, style, desc) {
     if (selectedNecklacePlacement === 'none') {
       necklaceGemStr = 'plain polished chain, no stones';
     } else if (gDisp) {
+      const _neckSize = _caratSizeDescriptor(_ct);
       if (selectedNecklacePlacement === 'full') {
-        necklaceGemStr = `featuring ${_ct}ct ${gDisp} stones set continuously along the entire chain, tennis necklace style, every stone the same ${_ct}ct size`;
+        necklaceGemStr = `featuring ${_neckSize} ${_ct} carat ${gDisp} stones set continuously along the entire chain, tennis necklace style, every stone the same ${_ct}ct size`;
       } else {
-        necklaceGemStr = `featuring ${_autoStations} ${_ct}ct ${gDisp} stones spaced evenly as stations far apart along a plain chain with clearly visible bare chain links between each stone, NOT continuous, NOT a tennis necklace, distinct gaps between stones, every stone the same ${_ct}ct size`;
+        necklaceGemStr = `featuring ${_autoStations} ${_neckSize} ${_ct} carat ${gDisp} stones spaced evenly as stations far apart along a plain chain with clearly visible bare chain links between each stone, NOT continuous, NOT a tennis necklace, distinct gaps between stones, every stone the same ${_ct}ct size`;
       }
     }
     const necklaceFraming = [
@@ -6907,11 +6983,10 @@ let _ringDragOffX       = 0;
 let _ringDragOffY       = 0;
 let ringFadeStart       = 0.45;   // bracelet "Fit on wrist" slider (range 0.20–0.50)
 const _RING_FADE_END    = 0.65;   // (legacy) — ring now uses the fixed back-cut below
-// Ring try-on: permanent, deterministic back-of-band removal (NO slider). The lower
-// band arc that would sit behind the finger is always erased so only the front of
-// the ring shows. Proportional + normalized — same approach as the other masks.
-const _RING_BACK_CUT_START = 0.52; // begin feathering out here (normalized 400px height)
-const _RING_BACK_CUT_END   = 0.60; // fully removed at/below here
+// Ring try-on: show ONLY the top portion of the ring (stone + upper setting) with
+// a clean HARD cut — the bottom is fully hidden so the finger appears to cover it.
+// Deterministic, proportional, normalized, automatic on every ring (no slider).
+const _RING_TOP_VISIBLE = 0.40;    // keep the top 40% of the ring; hard-cut the bottom 60%
 const _BRACELET_FADE_W  = 0.20;   // bracelet fade-transition width (35%→55% by default)
 let _ringMaskDirection  = 'hide-bottom'; // 'hide-bottom' = ring (band back), 'hide-top' = bracelet (far arc)
 let _ringMaskedCanvas   = null;   // offscreen 400×400 normalized+masked canvas
@@ -6925,13 +7000,17 @@ function _ringImgH() {
 }
 
 function _buildRingMask(img, srcType) {
-  const SIZE = 400;
+  // Normalize into a SQUARE canvas sized to the source image's own resolution
+  // (capped) so the jewelry is never downsampled small then upscaled (fixes blur).
+  const SIZE = Math.min(1400, Math.max(600, img.naturalWidth || 0, img.naturalHeight || 0)) || 800;
   const oc  = document.createElement('canvas');
   oc.width  = SIZE;
   oc.height = SIZE;
   const oc2 = oc.getContext('2d');
+  oc2.imageSmoothingEnabled = true;
+  oc2.imageSmoothingQuality = 'high';
 
-  // Draw normalized: preserve aspect ratio, center within 400×400
+  // Draw normalized: preserve aspect ratio, center within SIZE×SIZE
   const ar = img.naturalWidth / img.naturalHeight;
   let dw, dh, dx, dy;
   if (ar >= 1) { dw = SIZE; dh = SIZE / ar; }
@@ -6939,12 +7018,12 @@ function _buildRingMask(img, srcType) {
   dx = (SIZE - dw) / 2;
   dy = (SIZE - dh) / 2;
   oc2.drawImage(img, dx, dy, dw, dh);
+  console.log('[TryOn] image drawn at full res:', Math.round(dw), 'x', Math.round(dh));
 
-  // Gradient mask — destination-out removes pixels where gradient is opaque.
-  // Orientation depends on how the piece sits:
-  //   ring     → hide the BOTTOM (band backside goes behind the finger)
-  //   bracelet → hide the TOP (far arc of the loop goes behind the wrist)
-  let fadeStart, fadeEnd, region;
+  // Mask via destination-out. Orientation depends on how the piece sits:
+  //   ring     → show ONLY the top 40% (hard cut); finger hides the rest
+  //   bracelet → hide the TOP arc (behind the wrist), feathered
+  let region;
   if (_ringMaskDirection === 'none') {
     // Necklace: drapes on the chest — nothing goes behind the body, so NO mask.
     region = 'none (full image, no occlusion)';
@@ -6952,8 +7031,8 @@ function _buildRingMask(img, srcType) {
     oc2.globalCompositeOperation = 'destination-out';
     if (_ringMaskDirection === 'hide-top') {
       // Bracelet: fully hidden from 0% down to fadeStart, fade fadeStart→fadeEnd, visible below.
-      fadeStart = ringFadeStart;                          // end of fully-hidden region (slider, default 0.35)
-      fadeEnd   = Math.min(0.95, fadeStart + _BRACELET_FADE_W); // fade width 0.20 → default 0.55
+      const fadeStart = ringFadeStart;                          // end of fully-hidden region (slider, default 0.35)
+      const fadeEnd   = Math.min(0.95, fadeStart + _BRACELET_FADE_W); // fade width 0.20 → default 0.55
       const grad = oc2.createLinearGradient(0, SIZE * fadeStart, 0, SIZE * fadeEnd);
       grad.addColorStop(0, 'rgba(0,0,0,1)');  // fully removed at/above top of fade zone (hide far arc)
       grad.addColorStop(1, 'rgba(0,0,0,0)');  // fully visible at/below bottom of fade zone (front curve)
@@ -6961,17 +7040,14 @@ function _buildRingMask(img, srcType) {
       oc2.fillRect(0, 0, SIZE, SIZE);
       region = 'top 0%–' + Math.round(fadeStart * 100) + '% (fade to ' + Math.round(fadeEnd * 100) + '%)';
     } else {
-      // Ring: permanently remove the BACK of the band — FIXED deterministic cut
-      // (no slider). Everything below the cut line is erased so only the front of
-      // the ring (sitting on top of / in front of the finger) is ever visible.
-      fadeStart = _RING_BACK_CUT_START;
-      fadeEnd   = _RING_BACK_CUT_END;
-      const grad = oc2.createLinearGradient(0, SIZE * fadeStart, 0, SIZE * fadeEnd);
-      grad.addColorStop(0, 'rgba(0,0,0,0)');  // nothing removed above the cut
-      grad.addColorStop(1, 'rgba(0,0,0,1)');  // fully removed at/below the cut (clamps below too)
-      oc2.fillStyle = grad;
-      oc2.fillRect(0, 0, SIZE, SIZE);
-      region = 'fixed back-of-band removal: below ' + Math.round(fadeEnd * 100) + '% (feather from ' + Math.round(fadeStart * 100) + '%)';
+      // Ring: show ONLY the top 40% of the ring (stone + upper setting); HARD-CUT
+      // everything below so the finger appears to hide the band. Cut is taken on
+      // the actual drawn-ring bounds (dy/dh), deterministic + normalized, no slider.
+      const cutY = dy + dh * _RING_TOP_VISIBLE;
+      oc2.fillStyle = 'rgba(0,0,0,1)';
+      oc2.fillRect(0, cutY, SIZE, SIZE - cutY); // erase bottom 60% — clean hard edge
+      region = 'top ' + Math.round(_RING_TOP_VISIBLE * 100) + '% shown, bottom hidden (hard cut)';
+      console.log('[Ring TryOn] top 40% shown, bottom 60% hidden');
     }
     oc2.globalCompositeOperation = 'source-over';
   }
@@ -7143,8 +7219,11 @@ function initTryOn(cfg) {
   console.time('[Ring] webcam ready');
   console.time('[Ring] ring drawn');
 
-  _tryOnMinSize      = cfg.minSize;
-  _tryOnMaxSize      = cfg.maxSize;
+  // Canvas works in device pixels (×dpr) for crisp rendering; sizes scale with it
+  // so the on-screen jewelry size is unchanged across displays.
+  const _dpr = Math.min(window.devicePixelRatio || 1, 3);
+  _tryOnMinSize      = cfg.minSize * _dpr;
+  _tryOnMaxSize      = cfg.maxSize * _dpr;
   _ringMaskDirection = cfg.maskDirection || 'hide-bottom';
   const fitLabelEl = document.getElementById('ringFitLabel');
   if (fitLabelEl) fitLabelEl.textContent = cfg.fitLabel || 'Fit';
@@ -7162,13 +7241,18 @@ function initTryOn(cfg) {
    'tryon-ring-img', 'tryon-ring-resize']
   .forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
 
-  // Size and show ring canvas
+  // Size and show ring canvas. Back the canvas at devicePixelRatio so the webcam
+  // + jewelry render crisp on high-DPI screens (was 1:1 → upscaled → blurry).
   const container  = document.getElementById('tryon-container');
   const ringCanvas = document.getElementById('ring-tryon-canvas');
-  const W = container.offsetWidth  || 600;
-  const H = container.offsetHeight || 520;
+  const Wcss = container.offsetWidth  || 600;
+  const Hcss = container.offsetHeight || 520;
+  const W = Math.round(Wcss * _dpr);   // device-pixel backing store (drawing coords)
+  const H = Math.round(Hcss * _dpr);
   ringCanvas.width  = W;
   ringCanvas.height = H;
+  ringCanvas.style.width  = Wcss + 'px';
+  ringCanvas.style.height = Hcss + 'px';
   ringCanvas.style.display = 'block';
 
   // Show ring controls
@@ -7231,10 +7315,10 @@ function initTryOn(cfg) {
               '| size:', cfg.defaultSize,
               '| image source:', _openSource);
 
-  // Reset all state
+  // Reset all state (coords + size in device pixels — canvas is dpr-scaled)
   ringX              = W / 2;
   ringY              = cfg.getDefaultY(H);
-  ringSize           = cfg.defaultSize;
+  ringSize           = cfg.defaultSize * _dpr;
   ringRotation       = 0;
   _ringIsDragging    = false;
   _ringFirstDraw     = false;
