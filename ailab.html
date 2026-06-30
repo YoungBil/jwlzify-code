@@ -2022,8 +2022,87 @@ const _GEMINI_BRACELET_SINGLE = 'Generate exactly ONE single bracelet band. Do n
 const FLUX_WORKER_URL = 'https://flux-image.sarkd333.workers.dev';
 const FAL_BG_REMOVE_URL = 'https://fal-bg-remove.sarkd333.workers.dev'; // fal birefnet matting worker (returns JSON with image.url)
 
+/* ── Universal spec-accuracy + natural-placement safeguards ──────────────────
+   Applied to EVERY jewelry type's final prompt at the single generation choke
+   point (_generateImage), so specs are reinforced redundantly (start + end) and
+   stones are instructed to sit naturally and tailored to the design. The spec
+   selectors remain the sole source of truth — this only reinforces them. */
+const _PLACEMENT_NEGATIVES = 'awkward stone placement, randomly scattered stones, floating stones, misaligned stones, stones not in settings, unbalanced, asymmetrical placement, stones clipping, poorly integrated stones, stones pasted on';
+const _QUALITY_SAFEGUARDS  = 'professional luxury jewelry product photography, photorealistic, sharp focus, high detail, well-crafted, realistic proportions, elegant.';
+const _SG_NUM_WORDS = ['zero','one','two','three','four','five','six','seven','eight','nine','ten',
+  'eleven','twelve','thirteen','fourteen','fifteen','sixteen','seventeen','eighteen','nineteen','twenty'];
+function _sgSpell(n) { return _SG_NUM_WORDS[n] || String(n); }
+
+// Build the spec-emphasis bookend (lead + tail), the natural-placement clause, and
+// the quality string from the CURRENT spec selections. Used by _generateImage.
+function _buildPromptSafeguards() {
+  const type      = (typeof LAB !== 'undefined' && LAB.type) ? LAB.type : 'ring';
+  const metal     = matLabel(LAB.material) || '';
+  const stoneType = gemLabel(LAB.gem) || '';
+  const style     = LAB.style || 'fine';
+  const specs     = window.jwlSpecifications || {};
+  const shape     = specs.stoneShape || (typeof userSelections !== 'undefined' && userSelections.gemShape) || (type === 'necklace' ? '' : 'Round');
+  const count     = _authoritativeStoneCount();
+  const size      = _caratSizeDescriptor(_primaryStoneInfo(type).carats);
+
+  // Plain chains (necklace 'none') have no stones — never induce phantom stones.
+  const hasStones = !(type === 'necklace' && selectedNecklacePlacement === 'none');
+  // Hard discrete count only where it is authoritative (ring/pendant/earrings).
+  // Necklace + bracelet counts are emergent by design, so state the size only.
+  const useHardCount = hasStones && (type === 'ring' || type === 'pendant' || type === 'earrings');
+
+  const countPhrase = useHardCount
+    ? `exactly ${_sgSpell(count)} (${count}) ${stoneType} stone${count === 1 ? '' : 's'}, ${size} in size`
+    : (hasStones ? `${size} ${stoneType} stones` : 'no stones, plain polished metal');
+  const shapePhrase = (hasStones && shape) ? `${shape}-cut ` : '';
+
+  // Most-important specs at the START (models weight the start heavily).
+  const lead = `A ${style} fine jewelry piece crafted in ${metal}, set with ${shapePhrase}${countPhrase}.`
+                 .replace(/\s{2,}/g, ' ');
+  // The same specs restated at the END (models weight the end heavily too).
+  const tail = `Specifications restated: ${metal}; ${shapePhrase}${countPhrase}; ${style} design${stoneType ? '; ' + stoneType : ''}.`
+                 .replace(/\s{2,}/g, ' ');
+
+  const placement = hasStones
+    ? `The stones are arranged naturally, elegantly, and symmetrically, integrated seamlessly into the design as a skilled jeweler would set them. The placement is balanced, intentional, and tailored to the style of the piece — not random, not awkward, not floating. Each stone sits properly within its setting, in harmony with the overall design and the ${style} aesthetic. The arrangement suits a ${type} in the ${style} style — a minimalist piece keeps the stones clean and balanced, while an ornate or vintage piece integrates them richly but still neatly.`
+    : '';
+
+  return { lead, tail, placement, quality: _QUALITY_SAFEGUARDS, metal, stoneType, count, size, shape, style, hasStones };
+}
+
+// Wrap an assembled positive prompt with the spec bookend + placement + quality.
+function _applyPromptSafeguards(p, sg) {
+  if (!p) return p;
+  return [sg.lead, p, sg.placement, sg.quality, sg.tail].filter(Boolean).join(' ');
+}
+// Append the natural-placement negatives to an assembled negative prompt.
+function _applyNegativeSafeguards(neg) {
+  return (neg ? neg + ', ' : '') + _PLACEMENT_NEGATIVES;
+}
+
 async function _generateImage(prompt, negativePrompt, initImage, hfOverrides) {
   hfOverrides = hfOverrides || {};
+
+  // ── Reinforce specs + natural stone placement on the FINAL prompt (all types) ──
+  // Strengthens both the Gemini prompt and the Flux/HF inputs identically; the spec
+  // selectors stay the source of truth (typed quantities are already stripped
+  // upstream in buildPrompt / _buildHfJewelryDesc).
+  const _sg = _buildPromptSafeguards();
+  prompt = _applyPromptSafeguards(prompt, _sg);
+  if (hfOverrides.inputs) hfOverrides.inputs = _applyPromptSafeguards(hfOverrides.inputs, _sg);
+  negativePrompt = _applyNegativeSafeguards(negativePrompt);
+  if (hfOverrides.negative_prompt !== undefined) {
+    hfOverrides.negative_prompt = _applyNegativeSafeguards(hfOverrides.negative_prompt);
+  }
+  hfOverrides.guidance_scale = 9.0; // strong adherence for spec accuracy
+
+  const finalPrompt    = hfOverrides.inputs || prompt;
+  const negForLog       = (hfOverrides.negative_prompt !== undefined) ? hfOverrides.negative_prompt : negativePrompt;
+  console.log('[Gen] final prompt:', finalPrompt);
+  console.log('[Gen] negative prompt:', negForLog);
+  console.log('[Gen] specs enforced — metal:', _sg.metal, '| stone:', _sg.stoneType, '| count:', _sg.count,
+              '| size:', _sg.size, '| shape:', _sg.shape, '| style:', _sg.style);
+
   // PRIMARY: Gemini via Cloudflare Worker
   try {
     console.log('[JWLZIFY] calling Gemini worker...');
