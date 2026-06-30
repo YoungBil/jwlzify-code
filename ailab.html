@@ -810,6 +810,17 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
          bucket. Replaces the shared weight + stones grid for earrings only. -->
     <div id="earringFlow" style="display:none;">
 
+      <!-- FORM — Stud / Hoop / Drop (earring-only; default Stud). The earring form
+           is a hard, leading spec in the generation prompt (with the right findings). -->
+      <div class="mb-8" id="earStepForm">
+        <label class="label block mb-3" style="font-size:10px;letter-spacing:0.18em;color:#3c6474;">Form</label>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;">
+          <button class="spec-toggle ear-form-btn active" data-form="stud" onclick="setEarringForm('stud')">Stud</button>
+          <button class="spec-toggle ear-form-btn"        data-form="hoop" onclick="setEarringForm('hoop')">Hoop</button>
+          <button class="spec-toggle ear-form-btn"        data-form="drop" onclick="setEarringForm('drop')">Drop</button>
+        </div>
+      </div>
+
       <!-- STYLE — Minimal / Classic / Statement (earring-only; default Classic).
            Hard style attribute fed into the generation prompt so the design isn't
            silently skewed. -->
@@ -3416,10 +3427,20 @@ const EARRING_STYLE_DESCRIPTORS = {
   statement: 'bold, larger scale, eye-catching design',
 };
 
+// Earring Form → hard form descriptor with the correct findings.
+const EARRING_FORM_DESCRIPTORS = {
+  stud: 'stud earrings (post and butterfly/friction back), sitting flush on the earlobe, no drop, no dangle',
+  hoop: 'hoop earrings (a continuous closed loop / click-top hoop), circular ring form',
+  drop: 'drop earrings (hook or lever-back ear wire) that hang and dangle below the ear',
+};
+// Short noun used in the leading clause: "[stud/hoop/drop] earrings".
+const EARRING_FORM_WORD = { stud: 'stud', hoop: 'hoop', drop: 'drop' };
+
 let _earTotalCtPair = 0;
 let _earBucket      = null;  // 'small' | 'medium' | 'large'
 let _earMm          = null;  // 4 | 6 | 8 | 10 | 12
 let _earStyle       = 'classic'; // 'minimal' | 'classic' | 'statement' (default Classic)
+let _earForm        = 'stud';    // 'stud' | 'hoop' | 'drop' (default Stud)
 let _earResolved    = null;  // { totalStoneCount, perEarringCount, perStoneCt } | null
 
 function setEarringStyle(style) {
@@ -3429,6 +3450,15 @@ function setEarringStyle(style) {
     b.classList.toggle('active', b.dataset.style === style));
   if (window.jwlSpecifications) window.jwlSpecifications.earringStyle = style;
   console.log('[Earring] style:', style, '|', EARRING_STYLE_DESCRIPTORS[style]);
+}
+
+function setEarringForm(form) {
+  if (!EARRING_FORM_DESCRIPTORS[form]) return;
+  _earForm = form;
+  document.querySelectorAll('.ear-form-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.form === form));
+  if (window.jwlSpecifications) window.jwlSpecifications.earringForm = form;
+  console.log('[Earring] form:', form, '|', EARRING_FORM_DESCRIPTORS[form]);
 }
 
 function setEarringTotalCt(val) {
@@ -3527,6 +3557,7 @@ function _applyEarringSpecs() {
   s.sizeBucket      = _earBucket;
   s.earringMm       = _earMm;
   s.earringStyle    = _earStyle;            // Minimal / Classic / Statement (default Classic)
+  s.earringForm     = _earForm;             // Stud / Hoop / Drop (default Stud)
   s.totalStoneCount = r.totalStoneCount;
   s.perEarringCount = r.perEarringCount;
   s.perStoneCt      = r.perStoneCt;
@@ -3562,13 +3593,15 @@ function _resetEarringFlow() {
   _earBucket = null;
   _earMm = null;
   _earStyle = 'classic'; // default Style back to Classic
+  _earForm  = 'stud';    // default Form back to Stud
   _earResolved = null;
-  if (window.jwlSpecifications) window.jwlSpecifications.earringStyle = 'classic';
+  if (window.jwlSpecifications) { window.jwlSpecifications.earringStyle = 'classic'; window.jwlSpecifications.earringForm = 'stud'; }
   const ti = document.getElementById('earTotalCtInput'); if (ti) ti.value = '';
   const sb = document.getElementById('earStepB'); if (sb) sb.style.display = 'none';
   const sc = document.getElementById('earStepC'); if (sc) sc.style.display = 'none';
   document.querySelectorAll('.ear-bucket-btn, .ear-mm-btn').forEach(b => b.classList.remove('active'));
   document.querySelectorAll('.ear-style-btn').forEach(b => b.classList.toggle('active', b.dataset.style === 'classic'));
+  document.querySelectorAll('.ear-form-btn').forEach(b => b.classList.toggle('active', b.dataset.form === 'stud'));
   const sum = document.getElementById('earSummary'); if (sum) sum.textContent = '';
   const msg = document.getElementById('earMessage'); if (msg) msg.style.display = 'none';
   const btn = document.getElementById('generateBtn'); if (btn) btn.disabled = true; // gate until valid
@@ -3759,6 +3792,23 @@ function _stripShapeWords(text) {
   return t;
 }
 
+// EARRING flow only: strip anything from the typed/Groq text that could FIGHT the
+// spec selectors — stone quantities, earring-TYPE/form words, and size words. The
+// specs (count, form, size bucket, mm) win silently; only neutral aesthetic flavor
+// from the user survives.
+function _stripEarringConflicts(text) {
+  if (!text) return '';
+  let t = stripStoneQuantities(String(text)); // stone counts (e.g. "6 diamonds")
+  // earring TYPE / form words (so typed text can't override the Form selector)
+  t = t.replace(/\b(studs?|hoops?|huggies?|drops?|danglers?|dangles?|dangling|dangly|chandeliers?|threaders?|jackets?|ear[\s-]?cuffs?|ear[\s-]?wires?|hooks?|lever[\s-]?backs?|butterfly\s?backs?|earrings?|earring)\b/gi, ' ');
+  // size words (so typed text can't override the Size bucket / mm)
+  t = t.replace(/\b(tiny|petite|mini|miniature|delicate-?small|smallish|small|medium|mid-?size|large|big|huge|oversized|oversize|chunky|massive|statement-?sized)\b/gi, ' ');
+  t = t.replace(/\b\d+(?:\.\d+)?\s?(?:mm|millimet(?:er|re)s?)\b/gi, ' '); // explicit mm sizes
+  t = t.replace(/\s*,\s*,\s*/g, ', ').replace(/\s{2,}/g, ' ')
+       .replace(/\s+([,.;])/g, '$1').replace(/^[\s,;.]+|[\s,;.]+$/g, '').trim();
+  return t;
+}
+
 // Authoritative stone count — ONLY from the spec selectors (synced into
 // window.jwlSpecifications from userSelections.stoneCount/stoneSizes at
 // generate time). Never derived from the typed text.
@@ -3941,37 +3991,54 @@ function _buildPromptCore(type, material, gem, style, desc) {
   }
 
   if (type === 'earrings') {
-    // One earring is rendered (we mirror it ourselves in try-on to make the pair),
-    // but it is designed as one of a matching IDENTICAL pair. Stone shape (cut),
-    // per-earring stone count + per-stone carat and mm length come from the specs.
-    const earShape = specs.stoneShape || userSelections.gemShape || 'Round';
-    const earMm    = specs.earringMm || null;
-    const userDesc = _stripShapeWords(desc.trim()); // shape/count from specs, not typed text
-    const stoneStr = _earringDescriptor(gDisp);
-    const lenStr   = earMm ? `each earring ${earMm}mm long` : '';
-    // Hard Style attribute from the specs selector (Minimal / Classic / Statement) —
-    // overrides any conflicting style language in the typed description.
+    // SPEC-FIRST DOMINANCE: the structured spec values lead the prompt as HARD
+    // requirements (early tokens dominate diffusion); the typed/Groq text follows
+    // only as secondary aesthetic flavor, with conflicts stripped out. One earring
+    // is rendered (mirrored to a pair in try-on), so the single-earring frame stays.
+    const earForm     = (specs.earringForm || _earForm || 'stud');
+    const earFormWord = EARRING_FORM_WORD[earForm] || 'stud';
+    const earFormDesc = EARRING_FORM_DESCRIPTORS[earForm] || EARRING_FORM_DESCRIPTORS.stud;
+    const earShape    = specs.stoneShape || userSelections.gemShape || 'Round';
+    const cut         = earShape + '-cut';
+    const perEar      = specs.perEarringCount || 1;
+    const totalCnt    = specs.totalStoneCount || (perEar * 2);
+    const perCt       = specs.perStoneCt != null ? specs.perStoneCt
+      : (specs.totalCtPair ? +(specs.totalCtPair / (totalCnt || 2)).toFixed(2) : 1);
+    const sizeKey     = specs.sizeBucket || _earBucket || 'medium';
+    const sizeWord    = ({ small: 'Small', medium: 'Medium', large: 'Large' })[sizeKey] || sizeKey;
+    const earMm       = specs.earringMm || _earMm || null;
     const earStyleKey  = (specs.earringStyle || _earStyle || 'classic');
     const earStyleDesc = EARRING_STYLE_DESCRIPTORS[earStyleKey] || EARRING_STYLE_DESCRIPTORS.classic;
-    console.log('[Earring] prompt style:', earStyleKey, '|', earStyleDesc);
-    const earringAdditions = [
-      'ONE single earring only',
-      'single individual earring',
-      'only one earring in frame',
-      'centered single earring',
-      'isolated single piece',
-      'white background'
-    ].join(', ');
-    const core = [
-      `luxury ${style} earring`,
-      `earring style: ${earStyleDesc}`,   // hard style attribute (specs win over typed)
-      'one earring from a matching identical pair',
-      userDesc,
-      lenStr,
-      `set with ${stoneStr}`,
-      `crafted in ${mDisp}`
-    ].filter(Boolean).join(', ');
-    return `${core}, ${earringAdditions}, professional jewelry product photography, pure white seamless background, no shadows, hyper realistic, 8K ultra high definition, macro lens, sharp focus, highly detailed, photorealistic, precious metal gleam, gemstone sparkle and brilliance. Both earrings in the pair are identical. The earring style is strictly ${earStyleDesc}. No humans. No person. No body parts. No neck. No chest. No hands. No fingers. No ears. No skin. No model. Product-only photography. The jewelry piece is the sole subject of the image.`;
+    const stoneWord   = perEar === 1 ? 'stone' : 'stones';
+    const cleanedText = _stripEarringConflicts(desc.trim()); // strip count/type/size — specs win
+
+    // ── HARD spec block FIRST ──
+    const specBlock =
+      `${earFormWord} earrings, a matching identical PAIR, ${earFormDesc}. ` +
+      `EXACTLY ${perEar} ${cut} ${gDisp} ${stoneWord} per earring (${totalCnt} stones total across the pair), ` +
+      `each stone ${perCt}ct, ${sizeWord} size. ` +
+      `Metal: ${mDisp}. ` +
+      (earMm ? `Each earring ${earMm}mm. ` : '') +
+      `Design aesthetic: ${style}. Style detail: ${earStyleDesc}` +
+      (cleanedText ? `, ${cleanedText}` : '') + '.';
+
+    // ── Render frame (single earring) + hard reinforcements ──
+    const renderFrame =
+      'Render ONE single individual earring only, one earring from this matching identical pair, ' +
+      'centered single earring, isolated single piece, white seamless background, ' +
+      'professional jewelry product photography, no shadows, hyper realistic, 8K ultra high definition, ' +
+      'macro lens, sharp focus, highly detailed, photorealistic, precious metal gleam, gemstone sparkle and brilliance. ' +
+      `The earring form is strictly a ${earFormWord} — ${earFormDesc}. ` +
+      `This earring has EXACTLY ${perEar} ${stoneWord}, no more and no fewer; the matching pair totals ${totalCnt} stones. ` +
+      'Both earrings in the pair are identical. ' +
+      'No humans. No person. No body parts. No neck. No chest. No hands. No fingers. No ears. No skin. No model. ' +
+      'Product-only photography. The jewelry piece is the sole subject of the image.';
+
+    const finalEar = specBlock + ' ' + renderFrame;
+    console.log('[Earring Gen] specs:', { earringForm: earForm, totalStoneCount: totalCnt, perEarringCount: perEar, perStoneCt: perCt, sizeBucket: sizeKey, earringMm: earMm, shape: earShape, metal: mDisp });
+    console.log('[Earring Gen] stripped user text:', cleanedText);
+    console.log('[Earring Gen] FINAL prompt:', finalEar);
+    return finalEar;
   }
 
   if (type === 'bracelet') {
@@ -4433,7 +4500,11 @@ async function startGeneration(isTweak) {
     ? ', flat lay, tabletop, top-down view, coiled chain, chain laid flat, jewelry box, angled perspective, asymmetrical drape, cropped chain, multiple necklaces, hands, neck skin, mannequin face, busy background, pendant, charm, hanging pendant, locket, dangling ornament, focal centerpiece, center stone hanging from chain, drop pendant, extra pendant, multiple chains, two necklaces, double chain, several chains, duplicate necklace, tangled chains, center stone, centre stone, focal stone, solitaire, central gemstone, large center gem, neck, bust, body, skin'
       + (selectedNecklacePlacement === 'stations' ? ', tennis necklace, continuous stones, fully set chain, pave chain, stones touching, no gaps between stones' : '')
     : '';
-  const negativePrompt = `${_ringNegPrefix}${negJewelryTerms}, brooch, anklet, person, human, model, body, face, hands, text, watermark, logo, blurry, low quality, distorted${_necklaceNegSuffix}`;
+  // Earring spec-adherence negatives (count / cross-type / matched-pair quality).
+  const _earringNegSuffix = resolvedType === 'earrings'
+    ? ', wrong number of stones, extra stones, additional stones, extra accent stones, unrequested pave, halo, stone cluster, ring, pendant, necklace, bracelet, brooch, mismatched pair, asymmetrical earrings, uneven stones, different stone sizes, two earrings in frame, multiple earrings, several earrings'
+    : '';
+  const negativePrompt = `${_ringNegPrefix}${negJewelryTerms}, brooch, anklet, person, human, model, body, face, hands, text, watermark, logo, blurry, low quality, distorted${_necklaceNegSuffix}${_earringNegSuffix}`;
 
   // Read all spec values fresh from the DOM at this exact click moment
   const _domSpecs = _readSpecsFromDOM();
@@ -4685,7 +4756,11 @@ async function confirmAndGenerate() {
     ? ', flat lay, tabletop, top-down view, coiled chain, chain laid flat, jewelry box, angled perspective, asymmetrical drape, cropped chain, multiple necklaces, hands, neck skin, mannequin face, busy background, pendant, charm, hanging pendant, locket, dangling ornament, focal centerpiece, center stone hanging from chain, drop pendant, extra pendant, multiple chains, two necklaces, double chain, several chains, duplicate necklace, tangled chains, center stone, centre stone, focal stone, solitaire, central gemstone, large center gem, neck, bust, body, skin'
       + (selectedNecklacePlacement === 'stations' ? ', tennis necklace, continuous stones, fully set chain, pave chain, stones touching, no gaps between stones' : '')
     : '';
-  const negativePrompt = _ringNegPrefixC + negJewelryTerms + ', brooch, anklet, person, human, model, body, face, hands, text, watermark, logo, blurry, low quality, distorted' + _necklaceNegSuffixC;
+  // Earring spec-adherence negatives (count / cross-type / matched-pair quality).
+  const _earringNegSuffixC = LAB.type === 'earrings'
+    ? ', wrong number of stones, extra stones, additional stones, extra accent stones, unrequested pave, halo, stone cluster, ring, pendant, necklace, bracelet, brooch, mismatched pair, asymmetrical earrings, uneven stones, different stone sizes, two earrings in frame, multiple earrings, several earrings'
+    : '';
+  const negativePrompt = _ringNegPrefixC + negJewelryTerms + ', brooch, anklet, person, human, model, body, face, hands, text, watermark, logo, blurry, low quality, distorted' + _necklaceNegSuffixC + _earringNegSuffixC;
 
   // HF-specific keyword-stacked overrides for ring / bracelet / necklace
   let _hfOverridesC = null;
