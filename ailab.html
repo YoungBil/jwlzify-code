@@ -776,7 +776,10 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
         <p style="font-family:Inter,sans-serif;font-size:11px;color:#9ca3af;margin:6px 0 0;">How many individual stones (1–20). You'll size each one next.</p>
       </div>
 
-      <!-- STEP C — per-stone size bucket + exact carat (appears after a count is set) -->
+      <!-- Single-stone shortcut (count = 1): no per-stone size/carat — the one stone's carat IS the total -->
+      <p id="ringSingleStoneNote" style="display:none;margin:0 0 24px;font-family:Inter,sans-serif;font-size:13px;font-weight:600;color:#1b1c1c;"></p>
+
+      <!-- STEP C — per-stone size bucket + exact carat (appears after a count is set; 2+ stones only) -->
       <div class="mb-8" id="ringStepC" style="display:none;">
         <label class="label block mb-3" style="font-size:10px;letter-spacing:0.18em;color:#3c6474;">Per-Stone Sizes</label>
         <div id="ringStoneRows" style="display:flex;flex-direction:column;gap:4px;"></div>
@@ -1325,6 +1328,17 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
         </div>
         <!-- Save -->
         <button onclick="saveRingTryOnPhoto()"
+                style="border:1px solid #C9A84C;color:#C9A84C;background:transparent;
+                       height:36px;border-radius:6px;font-size:14px;font-family:Inter,sans-serif;
+                       padding:0 20px;cursor:pointer;letter-spacing:0.04em;">
+          Save Photo
+        </button>
+      </div>
+
+      <!-- Save Photo for DOM-overlay try-on types (pendant / necklace / earrings) —
+           ring + bracelet save via the canvas controls above. -->
+      <div id="tryon-save-generic" style="display:none;justify-content:center;width:100%;max-width:780px;">
+        <button onclick="saveTryOnPhotoGeneric()"
                 style="border:1px solid #C9A84C;color:#C9A84C;background:transparent;
                        height:36px;border-radius:6px;font-size:14px;font-family:Inter,sans-serif;
                        padding:0 20px;cursor:pointer;letter-spacing:0.04em;">
@@ -2860,6 +2874,8 @@ function setRingTotalCt(val) {
   const stepC = document.getElementById('ringStepC');
   if (stepB) stepB.style.display = _ringTotalCt > 0 ? '' : 'none';
   if (_ringTotalCt <= 0 && stepC) stepC.style.display = 'none';
+  // Single stone: its carat tracks the total automatically (no separate input).
+  if (_ringStones.length === 1) _ringStones[0].carat = +(_ringTotalCt || 0).toFixed(2);
   _validateRingAllocation();
 }
 
@@ -2868,7 +2884,25 @@ function setRingStoneCount(val) {
   if (isNaN(n)) n = 0;
   n = Math.max(0, Math.min(20, n));
   const stepC = document.getElementById('ringStepC');
-  if (n < 1) { _ringStones = []; if (stepC) stepC.style.display = 'none'; _validateRingAllocation(); return; }
+  const note  = document.getElementById('ringSingleStoneNote');
+  console.log('[Ring] stones:', n, '| single-stone shortcut:', n === 1);
+  if (n < 1) {
+    _ringStones = [];
+    if (stepC) stepC.style.display = 'none';
+    if (note)  note.style.display  = 'none';
+    _validateRingAllocation();
+    return;
+  }
+  if (n === 1) {
+    // Single-stone shortcut: SKIP Per-Stone Sizes + the per-stone carat input.
+    // The one stone's carat = the Total Carat Weight; don't ask again.
+    _ringStones = [{ sizeBucket: null, carat: +(_ringTotalCt || 0).toFixed(2) }];
+    if (stepC) stepC.style.display = 'none';
+    _validateRingAllocation(); // renders the single-stone note + gates the button
+    return;
+  }
+  // 2+ stones: keep the existing per-stone size + carat allocation flow as is.
+  if (note) note.style.display = 'none';
   const prev = _ringStones;
   _ringStones = Array.from({ length: n }, (_, i) => prev[i] || { sizeBucket: null, carat: null });
   if (stepC) stepC.style.display = '';
@@ -2928,6 +2962,22 @@ function _validateRingAllocation() {
   const summary = document.getElementById('ringAllocSummary');
   const msgEl   = document.getElementById('ringAllocMessage');
   const btn     = document.getElementById('generateBtn');
+  const note    = document.getElementById('ringSingleStoneNote');
+
+  // Single-stone shortcut: no per-stone size/carat — the one stone's carat IS the
+  // total. Valid as soon as a positive total carat weight is entered.
+  if (_ringStones.length === 1) {
+    _ringStones[0] = { sizeBucket: null, carat: +(_ringTotalCt || 0).toFixed(2) };
+    const ok = _ringTotalCt > 0;
+    if (note) {
+      note.textContent = ok ? ('Your ring: 1 stone · ' + (+_ringTotalCt.toFixed(2)) + 'ct (the full total carat weight).') : '';
+      note.style.display = ok ? 'block' : 'none';
+    }
+    if (btn) btn.disabled = !ok;
+    if (ok) _applyRingSpecs();
+    return ok;
+  }
+  if (note) note.style.display = 'none';
 
   let sum = 0, allRowsValid = _ringStones.length > 0;
   _ringStones.forEach((st, i) => {
@@ -3017,6 +3067,7 @@ function _resetRingFlow() {
   const rows = document.getElementById('ringStoneRows');     if (rows) rows.innerHTML = '';
   const sum = document.getElementById('ringAllocSummary');   if (sum) sum.textContent = '';
   const msg = document.getElementById('ringAllocMessage');   if (msg) msg.style.display = 'none';
+  const note = document.getElementById('ringSingleStoneNote'); if (note) { note.textContent = ''; note.style.display = 'none'; }
   const btn = document.getElementById('generateBtn');        if (btn) btn.disabled = true; // gate until valid
 }
 
@@ -5960,6 +6011,14 @@ async function setupTryOn() {
       img.src = LAB.imageUrl;
     }
   }
+
+  // Save Photo availability (every try-on type): ring + bracelet save via the
+  // canvas controls (#ring-tryon-controls); pendant / necklace / earrings save
+  // via the generic compositor button.
+  const _genericSave = document.getElementById('tryon-save-generic');
+  const _usesGenericSave = (LAB.type === 'pendant' || LAB.type === 'necklace' || LAB.type === 'earrings');
+  if (_genericSave) _genericSave.style.display = _usesGenericSave ? 'flex' : 'none';
+  console.log('[TryOn] save photo present for type:', LAB.type);
 }
 
 function teardownTryOn() {
@@ -5977,6 +6036,8 @@ function teardownTryOn() {
   const _ccEl = document.getElementById('pendant-chain-choice');
   if (_ccEl) _ccEl.style.display = 'none';
   window._pendantChainChosen = false;
+  const _gsEl = document.getElementById('tryon-save-generic');
+  if (_gsEl) _gsEl.style.display = 'none';
   ['tryon-earring-left', 'tryon-earring-right',
    'tryon-earring-left-handle', 'tryon-earring-right-handle',
    'tryon-necklace-img', 'tryon-necklace-resize',
@@ -6838,8 +6899,13 @@ let ringX = 0, ringY = 0, ringSize = 120, ringRotation = 0;
 let _ringIsDragging     = false;
 let _ringDragOffX       = 0;
 let _ringDragOffY       = 0;
-let ringFadeStart       = 0.45;   // controlled by "Fit" slider (range 0.35–0.65)
-const _RING_FADE_END    = 0.65;   // fully hidden below this — hides band backside
+let ringFadeStart       = 0.45;   // bracelet "Fit on wrist" slider (range 0.20–0.50)
+const _RING_FADE_END    = 0.65;   // (legacy) — ring now uses the fixed back-cut below
+// Ring try-on: permanent, deterministic back-of-band removal (NO slider). The lower
+// band arc that would sit behind the finger is always erased so only the front of
+// the ring shows. Proportional + normalized — same approach as the other masks.
+const _RING_BACK_CUT_START = 0.52; // begin feathering out here (normalized 400px height)
+const _RING_BACK_CUT_END   = 0.60; // fully removed at/below here
 const _BRACELET_FADE_W  = 0.20;   // bracelet fade-transition width (35%→55% by default)
 let _ringMaskDirection  = 'hide-bottom'; // 'hide-bottom' = ring (band back), 'hide-top' = bracelet (far arc)
 let _ringMaskedCanvas   = null;   // offscreen 400×400 normalized+masked canvas
@@ -6889,15 +6955,17 @@ function _buildRingMask(img, srcType) {
       oc2.fillRect(0, 0, SIZE, SIZE);
       region = 'top 0%–' + Math.round(fadeStart * 100) + '% (fade to ' + Math.round(fadeEnd * 100) + '%)';
     } else {
-      // Ring (default, unchanged): visible top, hidden bottom.
-      fadeStart = ringFadeStart;
-      fadeEnd   = _RING_FADE_END;
+      // Ring: permanently remove the BACK of the band — FIXED deterministic cut
+      // (no slider). Everything below the cut line is erased so only the front of
+      // the ring (sitting on top of / in front of the finger) is ever visible.
+      fadeStart = _RING_BACK_CUT_START;
+      fadeEnd   = _RING_BACK_CUT_END;
       const grad = oc2.createLinearGradient(0, SIZE * fadeStart, 0, SIZE * fadeEnd);
-      grad.addColorStop(0, 'rgba(0,0,0,0)');  // nothing removed at top of fade zone
-      grad.addColorStop(1, 'rgba(0,0,0,1)');  // fully removed at bottom of fade zone
+      grad.addColorStop(0, 'rgba(0,0,0,0)');  // nothing removed above the cut
+      grad.addColorStop(1, 'rgba(0,0,0,1)');  // fully removed at/below the cut (clamps below too)
       oc2.fillStyle = grad;
       oc2.fillRect(0, 0, SIZE, SIZE);
-      region = 'bottom ' + Math.round(fadeEnd * 100) + '%–100% (fade from ' + Math.round(fadeStart * 100) + '%)';
+      region = 'fixed back-of-band removal: below ' + Math.round(fadeEnd * 100) + '% (feather from ' + Math.round(fadeStart * 100) + '%)';
     }
     oc2.globalCompositeOperation = 'source-over';
   }
@@ -7020,6 +7088,7 @@ function _hideWristGuide() {
 }
 
 function loadRingForTryOn(imageUrl) {
+  console.log('[Ring TryOn] back of band masked, fit-on-finger slider removed');
   initTryOn({
     imageUrl:      imageUrl,
     typeLabel:     'ring',
@@ -7027,12 +7096,9 @@ function loadRingForTryOn(imageUrl) {
     minSize:       60,
     maxSize:       300,
     getDefaultY:   (H) => H * 0.67, // centred on the hand
-    hintText:      'Drag to position · Use +/− to resize · Fit slider to adjust occlusion',
+    hintText:      'Drag to position · Use +/− to resize · Rotate with the slider',
     fitLabel:      'Fit on finger',
-    maskDirection: 'hide-bottom',   // ring sits ON the finger → hide band backside (bottom)
-    fitMin:        35,              // slider 0.35–0.65
-    fitMax:        65,
-    fitDefault:    55,             // clean optimal (~0.55): front of band visible, backside tucked behind finger
+    maskDirection: 'hide-bottom',   // ring sits ON the finger → back of band permanently removed
   });
 }
 
@@ -7076,9 +7142,10 @@ function initTryOn(cfg) {
   _ringMaskDirection = cfg.maskDirection || 'hide-bottom';
   const fitLabelEl = document.getElementById('ringFitLabel');
   if (fitLabelEl) fitLabelEl.textContent = cfg.fitLabel || 'Fit';
-  // No occlusion (necklace) → hide the Fit slider entirely; otherwise show it.
+  // Fit slider: hidden for necklace (no occlusion) AND for ring (the back-of-band
+  // removal is now permanent/automatic — no user adjustment). Bracelet keeps it.
   const fitRowEl = document.getElementById('ringFitRow');
-  if (fitRowEl) fitRowEl.style.display = (cfg.maskDirection === 'none') ? 'none' : 'flex';
+  if (fitRowEl) fitRowEl.style.display = (cfg.maskDirection === 'none' || cfg.typeLabel === 'ring') ? 'none' : 'flex';
 
   // Hide other try-on overlays
   ['tryon-necklace', 'tryon-pendant', 'tryon-resize',
@@ -7282,6 +7349,47 @@ function saveRingTryOnPhoto() {
   const link = document.createElement('a');
   link.download = 'jwlzify-ring-tryon.png';
   link.href = canvas.toDataURL('image/png');
+  link.click();
+}
+
+// Save Photo for the DOM-overlay try-on types (pendant / necklace / earrings),
+// which layer canvas/img overlays over the live <video> rather than compositing
+// into one canvas. Composite the mirrored webcam frame + each visible overlay at
+// its on-screen position into a temp canvas, then download as PNG.
+function saveTryOnPhotoGeneric() {
+  const container = document.getElementById('tryon-container');
+  const video     = document.getElementById('tryon-video');
+  if (!container) return;
+  const cRect = container.getBoundingClientRect();
+  const W = Math.round(cRect.width), H = Math.round(cRect.height);
+  if (!W || !H) return;
+  const out = document.createElement('canvas');
+  out.width = W; out.height = H;
+  const ctx = out.getContext('2d');
+
+  // Layer 1: mirrored webcam (matches the on-screen transform:scaleX(-1)).
+  if (video && video.readyState >= 2) {
+    ctx.save(); ctx.translate(W, 0); ctx.scale(-1, 1);
+    ctx.drawImage(video, 0, 0, W, H); ctx.restore();
+  } else {
+    ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+  }
+
+  // Layer 2: each visible jewelry overlay, drawn at its on-screen rect.
+  ['tryon-necklace', 'tryon-earring-left', 'tryon-earring-right'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el || el.style.display === 'none') return;
+    const r = el.getBoundingClientRect();
+    if (!r.width || !r.height) return;
+    try { ctx.drawImage(el, r.left - cRect.left, r.top - cRect.top, r.width, r.height); } catch (e) {}
+  });
+
+  let url;
+  try { url = out.toDataURL('image/png'); }
+  catch (e) { console.warn('[TryOn] save failed (tainted canvas):', e.message); return; }
+  const link = document.createElement('a');
+  link.download = 'jwlzify-' + (LAB.type || 'tryon') + '-tryon.png';
+  link.href = url;
   link.click();
 }
 
