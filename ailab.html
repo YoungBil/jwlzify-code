@@ -6866,6 +6866,34 @@ async function removePendantBackgroundCanvas(imageUrl) {
       }
 
       // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      // SPARKLE-STONE PROTECTION (safety net)
+      // A faceted clear stone (e.g. a diamond) reads as VERY BRIGHT + NEAR-WHITE +
+      // HIGH LOCAL CONTRAST (specular highlights beside darker facets). Such pixels
+      // are jewelry, never background — never make them transparent even if their
+      // colour resembles a light/white bg. A flat uniform bg has ~0 local contrast,
+      // so this never protects real background.
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      function isSparkleStone(x, y) {
+        const pi = (y * w + x) * 4;
+        const r = data[pi], g = data[pi+1], b = data[pi+2];
+        const bright = (r + g + b) / 3;
+        if (bright < 215) return false;                  // must be very bright
+        if ((Math.max(r,g,b) - Math.min(r,g,b)) > 18) return false; // must be near-white
+        let mn = 255, mx = 0;                            // local contrast over 3×3
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            const xx = x + dx, yy = y + dy;
+            if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue;
+            const j = (yy * w + xx) * 4;
+            const bb = (data[j] + data[j+1] + data[j+2]) / 3;
+            if (bb < mn) mn = bb;
+            if (bb > mx) mx = bb;
+          }
+        }
+        return (mx - mn) >= 35;  // specular sparkle profile → protect
+      }
+
+      // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
       // STEP 3 — FLOOD FILL FROM ALL EDGES
       // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
       const visited = new Uint8Array(w * h);
@@ -6875,7 +6903,7 @@ async function removePendantBackgroundCanvas(imageUrl) {
         const i = y * w + x;
         if (visited[i]) return;
         const pi = i * 4;
-        if (isSimilarToBg(data[pi], data[pi+1], data[pi+2])) {
+        if (isSimilarToBg(data[pi], data[pi+1], data[pi+2]) && !isSparkleStone(x, y)) {
           visited[i] = 1;
           queue.push(i);
         }
@@ -6906,7 +6934,7 @@ async function removePendantBackgroundCanvas(imageUrl) {
           const nx = n % w;
           if (Math.abs(nx - ix) > 1) continue;
           const pi = n * 4;
-          if (isSimilarToBg(data[pi], data[pi+1], data[pi+2])) {
+          if (isSimilarToBg(data[pi], data[pi+1], data[pi+2]) && !isSparkleStone(nx, Math.floor(n / w))) {
             visited[n] = 1;
             queue.push(n);
           }
@@ -6940,7 +6968,8 @@ async function removePendantBackgroundCanvas(imageUrl) {
             (bgR+bgG+bgB)/3);
           if (dist < TOLERANCE * 1.1 &&
               sat < 8 &&
-              brightnessDiff < 40) {
+              brightnessDiff < 40 &&
+              !isSparkleStone(nx, Math.floor(n / w))) {
             visited[n] = 1;
             queueExp.push(n);
           }
@@ -6973,42 +7002,22 @@ async function removePendantBackgroundCanvas(imageUrl) {
           const dist = colorDistance(r, g, b);
           // sat < 8: only truly-achromatic grey background remnants;
           // silver/metallic jewelry (sat 8-20) is not touched here.
-          if (dist < WIDE_TOLERANCE && sat < 8) {
+          if (dist < WIDE_TOLERANCE && sat < 8 && !isSparkleStone(nx, Math.floor(n / w))) {
             visited[n] = 1;
             queue2.push(n);
           }
         }
       }
 
-      // PASS 2C — Only remove TINY isolated specks
-      // (1-3 pixel clusters max, clearly leftover bg)
-      // Never remove anything larger — could be jewelry
-      for (let y = 1; y < h-1; y++) {
-        for (let x = 1; x < w-1; x++) {
-          const i = y * w + x;
-          if (visited[i]) continue;
-          const pi = i * 4;
-          const r = data[pi], g = data[pi+1], b = data[pi+2];
-          const dist = colorDistance(r, g, b);
-          const sat = Math.max(r,g,b) - Math.min(r,g,b);
-
-          // Only remove if ALL 8 neighbours are already
-          // removed (visited) — truly isolated single pixel
-          const allNeighboursRemoved = [
-            visited[(y-1)*w+x], visited[(y+1)*w+x],
-            visited[y*w+(x-1)], visited[y*w+(x+1)],
-            visited[(y-1)*w+(x-1)], visited[(y-1)*w+(x+1)],
-            visited[(y+1)*w+(x-1)], visited[(y+1)*w+(x+1)]
-          ].filter(v => v === 1).length >= 6;
-
-          if (allNeighboursRemoved && dist < 40 && sat < 20) {
-            visited[i] = 1;
-          }
-        }
-      }
+      // PASS 2C REMOVED — it deleted interior pixels NOT reached by the edge
+      // flood-fill (any non-visited pixel whose neighbours were mostly removed,
+      // dist<40 & sat<20). That is exactly what carved holes out of clear/low-sat
+      // centre stones (e.g. a pear diamond): an enclosed pocket is jewelry, not
+      // background. Removal now comes EXCLUSIVELY from the edge-connected flood-fill
+      // above — a pixel is only made transparent if the border fill VISITED it.
 
       // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-      // STEP 5 — APPLY TRANSPARENCY
+      // STEP 5 — APPLY TRANSPARENCY (edge-connected pixels only)
       // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
       for (let i = 0; i < w * h; i++) {
         if (visited[i]) data[i*4+3] = 0;
@@ -7025,6 +7034,7 @@ async function removePendantBackgroundCanvas(imageUrl) {
         for (let x = 1; x < w-1; x++) {
           const idx = y*w+x;
           if (snap[idx] === 0) continue;
+          if (isSparkleStone(x, y)) continue; // never feather a bright faceted stone
           const nb = [
             snap[(y-1)*w+x],   snap[(y+1)*w+x],
             snap[y*w+(x-1)],   snap[y*w+(x+1)],
@@ -7032,13 +7042,12 @@ async function removePendantBackgroundCanvas(imageUrl) {
             snap[(y+1)*w+(x-1)], snap[(y+1)*w+(x+1)]
           ];
           const t = nb.filter(a => a === 0).length;
-          // ONLY soften true outermost edge pixels
-          // Never touch anything with 3 or fewer
-          // transparent neighbours — that's jewelry interior
+          // Shallow: only the OUTERMOST ~1px ring (read from the snapshot, so this
+          // can never propagate inward). A pixel needs 6+ transparent neighbours to
+          // be touched — interior pixels (≤5) stay fully opaque.
           if (t >= 7) data[idx*4+3] = 0;
-          else if (t >= 6) data[idx*4+3] = 60;
-          else if (t >= 5) data[idx*4+3] = 140;
-          // t <= 4: fully opaque, DO NOT touch
+          else if (t >= 6) data[idx*4+3] = 110;
+          // t <= 5: fully opaque, DO NOT touch
         }
       }
 
