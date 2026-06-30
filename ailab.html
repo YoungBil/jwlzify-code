@@ -4619,10 +4619,20 @@ async function confirmAndGenerate() {
    - ringAngles[1] = three-quarter hero (default gallery view).
    - ringAngles[2] = profile/side.
    ══════════════════════════════════════════════════════════ */
+// Index-0 head-on: the try-on feature REQUIRES a true straight-on FRONT view (the
+// view of a ring on a finger pointing up at the camera). Stated explicitly and
+// redundantly — repeated at the START and END of the prompt — so the model cannot
+// drift to a tilted, three-quarter, or top-down framing. Ring only.
+const _RING_HEADON_PROMPT = 'Strict head-on front view of the ring, viewed straight on at eye level with zero tilt. The center stone faces directly toward the viewer and sits in the middle of the frame. The band curves downward symmetrically on the left and right sides. Perfectly symmetrical left to right. This is the view of a ring worn on a finger pointing straight up toward the camera. NOT angled, NOT tilted, NOT three-quarter, NOT a side view, NOT top-down.';
+const _RING_HEADON_NEG    = 'tilted, angled, three-quarter view, side view, profile, top-down, perspective, rotated, diagonal, asymmetrical, lying flat';
+const _RING_HEADON_HF     = 'strict head-on front view, viewed straight on at eye level, zero tilt, center stone facing directly toward the viewer, centered in the frame, band curving downward symmetrically on the left and right, perfectly symmetrical left to right, the view of a ring worn on a finger pointing straight up at the camera';
+
 const RING_ANGLES = [
-  { cap: 'Head-On',
-    clause: 'TOP-DOWN FACE-ON VIEW: photographed looking straight down at the top face of the ring. The center stone and setting face directly toward the viewer, filling the center of the frame. The band curves away below and behind the setting. This is the view of a ring on a finger pointed up toward you. The decorative top/face is the focus, centered and symmetrical.',
-    hf: 'top-down face-on view, looking straight down at the top face of the ring, center stone facing the viewer, head-on, centered, symmetrical' },
+  { cap: 'Head-On', headOn: true,
+    clause: _RING_HEADON_PROMPT,
+    hf:     _RING_HEADON_HF,
+    neg:    _RING_HEADON_NEG,
+    guidance: 9.0 },
   { cap: 'Hero Angle',
     clause: 'Three-quarter angle view, the classic flattering jewelry hero shot, showing the top, front, and side of the ring together, stone catching the light, sitting upright.',
     hf: 'three-quarter angle hero view, showing the top front and side together, stone catching the light, sitting upright' },
@@ -4682,16 +4692,24 @@ function _genRingAngle(core, shared, angle) {
   const stoneCount    = _authoritativeStoneCount();
   const exactClause   = _ringExactCountClause(stoneCount);   // strong count language, FIRST
   const exactReminder = _ringExactCountReminder(stoneCount); // restated count, LAST
+  // Head-on (index 0) is the try-on anchor: it gets its own angle-specific negative
+  // (prepended) and the head-on instruction restated at BOTH ends of the prompt.
+  const isHeadOn = !!angle.headOn;
   // Aggressive negative pushes the model off its add-decorative-stones default.
-  const negativePrompt = RING_GALLERY_HF_NEG + ', ' + _RING_EXTRA_STONES_NEG;
+  const negativePrompt = (isHeadOn ? angle.neg + ', ' : '') + RING_GALLERY_HF_NEG + ', ' + _RING_EXTRA_STONES_NEG;
 
   // Assembly order: exact-count clause → design description → exact-count reminder.
-  const positivePrompt = `${exactClause} ${angle.clause} ${shared}. ${exactReminder}`;
-  const hfInput        = `${exactClause} ${core}, ${angle.hf}, ${shared}. ${exactReminder}`;
+  // For head-on, _RING_HEADON_PROMPT brackets the whole prompt (start AND end).
+  const positivePrompt = isHeadOn
+    ? `${_RING_HEADON_PROMPT} ${exactClause} ${shared}. ${exactReminder} ${_RING_HEADON_PROMPT}`
+    : `${exactClause} ${angle.clause} ${shared}. ${exactReminder}`;
+  const hfInput = isHeadOn
+    ? `${_RING_HEADON_PROMPT} ${exactClause} ${core}, ${angle.hf}, ${shared}. ${exactReminder} ${_RING_HEADON_PROMPT}`
+    : `${exactClause} ${core}, ${angle.hf}, ${shared}. ${exactReminder}`;
   const hfOverride = {
     inputs: hfInput,
     negative_prompt: negativePrompt,
-    guidance_scale: 9.0,            // tighter adherence to the exact-count instruction
+    guidance_scale: angle.guidance || 9.0,   // head-on pins 9.0; tighter adherence overall
     num_inference_steps: 30,
   };
 
@@ -4714,14 +4732,21 @@ async function _generateRingMultiAngle(opts) {
   // Generate all 3 angles (queue caps concurrency). Any that fail resolve to null.
   let urls = await Promise.all(RING_ANGLES.map(a => _genRingAngle(core, shared, a)));
 
-  // Try-on REQUIRES head-on (index 0): retry it specifically before falling back.
-  if (!urls[0]) {
-    console.log('[Ring] head-on (index 0) failed — retrying specifically before fallback');
+  // Try-on REQUIRES a real head-on at index 0. It is the priority angle — retry it
+  // specifically up to 2 more times (3 attempts total) before giving up. The other
+  // two angles (three-quarter, profile) are secondary and may fail without blocking.
+  let retryCount = 0;
+  while (!urls[0] && retryCount < 2) {
+    retryCount++;
+    console.log('[Ring] head-on (index 0) missing — retry', retryCount, 'of 2');
     urls[0] = await _genRingAngle(core, shared, RING_ANGLES[0]);
   }
+  const success = !!urls[0];
+  console.log('[Ring] head-on angle generated at index 0:', success, '| retries:', retryCount);
+
   if (!urls[0]) {
     urls[0] = urls[1] || urls[2] || null; // last-resort fallback so try-on has something
-    if (urls[0]) console.log('[Ring] head-on unavailable — falling back to next available angle for index 0');
+    if (urls[0]) console.log('[Ring] head-on unavailable after retries — falling back to next available angle for index 0');
   }
 
   // A newer generation superseded this one — discard.
@@ -6043,8 +6068,16 @@ async function setupTryOn() {
     // Try-on ALWAYS uses the head-on / face-on angle (ringAngles[0]), regardless of
     // which angle is shown in the gallery. The hide-bottom occlusion mask then tucks
     // the lower band behind a vertical finger so it looks naturally worn.
-    const _headOn = (LAB.ringAngles && LAB.ringAngles[0]) ? LAB.ringAngles[0] : LAB.imageUrl;
-    console.log('[Ring] try-on using head-on angle (index 0)');
+    let _headOn = LAB.imageUrl;
+    if (LAB.ringAngles && LAB.ringAngles[0]) {
+      _headOn = LAB.ringAngles[0];
+    } else if (LAB.ringAngles && (LAB.ringAngles[1] || LAB.ringAngles[2])) {
+      // index 0 missing — use the MOST head-on available (three-quarter before
+      // profile), never a random angle.
+      _headOn = LAB.ringAngles[1] || LAB.ringAngles[2];
+      console.warn('[Ring TryOn] head-on index 0 missing — using most head-on available');
+    }
+    console.log('[Ring TryOn] using head-on index 0');
     loadRingForTryOn(_headOn);
   } else if (LAB.type === 'bracelet') {
     if (hintEl) hintEl.textContent = 'DRAG TO POSITION · DRAG CORNER TO RESIZE';
