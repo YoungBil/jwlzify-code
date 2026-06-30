@@ -5849,59 +5849,149 @@ window._pendantChainMode   = 'generated';
 window._pendantChainChosen = false;
 const PENDANT_TRYON_PX_PER_MM = 8; // maps the selected mm size to a default on-screen size
 
+// UNIVERSAL pendant connection: find the bounding box of the actual (non-transparent)
+// pendant pixels, normalized to the image's own dimensions, plus the image aspect
+// ratio. The chain attaches to the TOP-CENTER of this box, so the connection is
+// computed purely from each pendant's own shape — no per-pendant tuning. Cached on
+// the image (the normalized box never changes when the on-screen size changes).
+function _pendantContentBox(img) {
+  if (img._contentBox) return img._contentBox;
+  const nW = img.naturalWidth  || img.width;
+  const nH = img.naturalHeight || img.height;
+  const full = { x0: 0, y0: 0, x1: 1, y1: 1, ar: (nW && nH) ? nW / nH : 1 };
+  if (!nW || !nH) return full;
+  // Scan a downscaled copy for speed; the box is normalized so resolution is moot.
+  const S  = 200;
+  const sc = Math.min(1, S / Math.max(nW, nH));
+  const w  = Math.max(1, Math.round(nW * sc));
+  const h  = Math.max(1, Math.round(nH * sc));
+  let data;
+  try {
+    const oc = document.createElement('canvas');
+    oc.width = w; oc.height = h;
+    const octx = oc.getContext('2d', { willReadFrequently: true });
+    octx.drawImage(img, 0, 0, w, h);
+    data = octx.getImageData(0, 0, w, h).data;
+  } catch (e) {
+    img._contentBox = full;            // tainted/unreadable → fall back to full image
+    return full;
+  }
+  let minX = w, minY = h, maxX = -1, maxY = -1;
+  const A = 12;                        // alpha threshold — ignore near-transparent edges
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (data[(y * w + x) * 4 + 3] > A) {
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+    }
+  }
+  if (maxX < minX || maxY < minY) { img._contentBox = full; return full; } // fully transparent
+  const box = {
+    x0: minX / w, y0: minY / h,
+    x1: (maxX + 1) / w, y1: (maxY + 1) / h,
+    ar: (nW && nH) ? nW / nH : 1,
+  };
+  img._contentBox = box;
+  return box;
+}
+
 function drawNecklace(pendantImg, pendantSize) {
   const canvas = document.getElementById('tryon-necklace');
   if (!canvas) return;
 
   // 'own' chain → no chain drawn (user aligns pendant with their own chain).
-  // 'generated' → a soft U-curve neutral chain above the pendant.
+  // 'generated' → a soft U-curve neutral chain whose lowest point meets the bail.
   const drawChain = (window._pendantChainMode !== 'own');
-  const chainH = drawChain ? 80 : 0;
-  const totalW = drawChain ? (pendantSize + 80) : pendantSize;
-  const totalH = chainH + pendantSize;
 
-  const dpr = window.devicePixelRatio || 1;
-  canvas.width        = totalW * dpr;
-  canvas.height       = totalH * dpr;
-  canvas.style.width  = totalW + 'px';
-  canvas.style.height = totalH + 'px';
-  const ctx = canvas.getContext('2d');
-  ctx.scale(dpr, dpr);
-  ctx.clearRect(0, 0, totalW, totalH); // fully transparent — never fill
+  // Preserve the pendant's real aspect ratio so tall / wide pieces are never
+  // squished — the larger side maps to pendantSize. Everything below derives from
+  // the image's own dimensions: identical math for every pendant, every time.
+  const cb = _pendantContentBox(pendantImg);
+  const ar = cb.ar || 1;
+  let dispW, dispH;
+  if (ar >= 1) { dispW = pendantSize; dispH = pendantSize / ar; }
+  else         { dispH = pendantSize; dispW = pendantSize * ar; }
 
-  console.log('[JWLZIFY] canvas size:', canvas.width, canvas.height, '| chain mode:', window._pendantChainMode);
+  // Content (non-transparent) bounding box of the pendant, in display pixels, and
+  // the chain's attach target = TOP-CENTER of that box (the bail), within the image.
+  const contentL   = cb.x0 * dispW;
+  const contentR   = cb.x1 * dispW;
+  const contentW   = Math.max(1, contentR - contentL);
+  const attachImgX = (contentL + contentR) / 2;
+  const attachImgY = cb.y0 * dispH;
+  const pad        = 4;
+  const dpr        = window.devicePixelRatio || 1;
 
-  if (drawChain) {
-    // Soft U-shaped curve (gravity hang), NOT a sharp V. A symmetric parabola from
-    // the two top corners dipping to the pendant top-centre at the bottom of the U.
-    // Control point at 2×chainH makes the quadratic pass exactly through (mid, chainH).
-    const midX = totalW / 2;
-    // Subtle light-to-dark vertical gradient so it reads as real metal, not a flat line.
-    const grad = ctx.createLinearGradient(0, 0, 0, chainH);
-    grad.addColorStop(0,   'rgba(226,228,234,0.95)'); // bright highlight at the top
-    grad.addColorStop(0.5, 'rgba(176,180,190,0.95)');
-    grad.addColorStop(1,   'rgba(120,124,134,0.95)'); // darker toward the dip
-    ctx.strokeStyle = grad;
-    ctx.lineWidth   = 2.2;
-    ctx.lineCap     = 'round';
-    ctx.lineJoin    = 'round';
-    ctx.beginPath();
-    ctx.moveTo(2, 0);                                  // top-left
-    ctx.quadraticCurveTo(midX, chainH * 2, totalW - 2, 0); // dip to (midX, chainH), up to top-right
-    ctx.stroke();
-    // Faint inner sheen line for a touch of metallic depth.
-    ctx.strokeStyle = 'rgba(255,255,255,0.35)';
-    ctx.lineWidth   = 0.8;
-    ctx.beginPath();
-    ctx.moveTo(2, 0);
-    ctx.quadraticCurveTo(midX, chainH * 2 - 1.5, totalW - 2, 0);
-    ctx.stroke();
+  if (!drawChain) {
+    // 'I'm wearing a chain' → draw the pendant only (aspect-correct), no chain.
+    const tW = dispW + pad * 2, tH = dispH + pad * 2;
+    canvas.width = tW * dpr; canvas.height = tH * dpr;
+    canvas.style.width = tW + 'px'; canvas.style.height = tH + 'px';
+    const ctx = canvas.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, tW, tH);
+    ctx.drawImage(pendantImg, pad, pad, dispW, dispH);
+    console.log('[Pendant TryOn] own chain (pendant only) | size:', Math.round(dispW), Math.round(dispH));
+    updateHandlePosition();
+    return;
   }
 
-  // Pendant image: centered horizontally, hanging at the bottom of the U.
-  const pendantX = (totalW - pendantSize) / 2;
-  ctx.drawImage(pendantImg, pendantX, chainH, pendantSize, pendantSize);
+  // ── Connected chain + pendant as ONE unit ─────────────────────────────────
+  // The U's lowest point sits EXACTLY on the bail (no gap, no floating chain).
+  // CHAIN_HALF widens with the pendant so the neckline looks natural at any size.
+  const CHAIN_DROP = 80;                                  // depth of the U dip
+  const CHAIN_HALF = Math.max(contentW / 2 + 36, 60);     // half-span of the chain
 
+  // Lay the canvas out around the attach point so nothing ever clips, for any
+  // shape: shift right enough to clear the chain span / image left, and down
+  // enough if the bail sits high in the image.
+  const attachX = Math.max(CHAIN_HALF, attachImgX) + pad; // canvas X of attach point
+  const vOff    = Math.max(0, attachImgY - CHAIN_DROP);   // push down if bail is high
+  const attachY = CHAIN_DROP + vOff;                      // canvas Y of attach point (chain lowest)
+  const imageX  = attachX - attachImgX;                   // pendant top-left X (>= pad)
+  const imageY  = attachY - attachImgY;                   // pendant top-left Y (>= 0)
+
+  const totalW = Math.max(attachX + CHAIN_HALF, imageX + dispW) + pad;
+  const totalH = Math.max(imageY + dispH, attachY) + pad;
+
+  canvas.width = totalW * dpr; canvas.height = totalH * dpr;
+  canvas.style.width = totalW + 'px'; canvas.style.height = totalH + 'px';
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, totalW, totalH); // fully transparent — never fill
+
+  // Soft U-curve (gravity hang), one neutral metallic style for every pendant.
+  // Endpoints at the top corners (y = vOff); the quadratic control at
+  // (attachX, vOff + 2·CHAIN_DROP) forces the curve through (attachX, attachY) at
+  // its lowest sweep — i.e. exactly onto the bail.
+  const lx = attachX - CHAIN_HALF, rx = attachX + CHAIN_HALF;
+  const grad = ctx.createLinearGradient(0, vOff, 0, attachY);
+  grad.addColorStop(0,   'rgba(226,228,234,0.95)'); // bright highlight at the top
+  grad.addColorStop(0.5, 'rgba(176,180,190,0.95)');
+  grad.addColorStop(1,   'rgba(120,124,134,0.95)'); // darker toward the dip
+  ctx.strokeStyle = grad;
+  ctx.lineWidth   = 2.2;
+  ctx.lineCap     = 'round';
+  ctx.lineJoin    = 'round';
+  ctx.beginPath();
+  ctx.moveTo(lx, vOff);
+  ctx.quadraticCurveTo(attachX, vOff + CHAIN_DROP * 2, rx, vOff);
+  ctx.stroke();
+  // Faint inner sheen line for a touch of metallic depth.
+  ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+  ctx.lineWidth   = 0.8;
+  ctx.beginPath();
+  ctx.moveTo(lx, vOff);
+  ctx.quadraticCurveTo(attachX, vOff + CHAIN_DROP * 2 - 1.5, rx, vOff);
+  ctx.stroke();
+
+  // Pendant drawn so its content top-center lands precisely on the chain's dip.
+  ctx.drawImage(pendantImg, imageX, imageY, dispW, dispH);
+
+  console.log('[Pendant TryOn] universal connected chain+pendant | attach point:', Math.round(attachX), Math.round(attachY));
   updateHandlePosition();
 }
 
