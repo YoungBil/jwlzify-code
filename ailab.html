@@ -289,6 +289,19 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
   cursor:grab;
 }
 
+/* Shared try-on disclaimer — one element, identical across every jewelry type,
+   rendered directly below the try-on view. */
+.tryon-disclaimer {
+  font-family:'Inter',sans-serif;
+  font-size:12px;
+  line-height:1.5;
+  color:#8a9299;
+  text-align:center;
+  max-width:480px;
+  margin:14px auto 0;
+  letter-spacing:0.01em;
+}
+
 /* ── Ring 3D Try-On modal ── */
 @keyframes ring3dPulse {
   0%, 100% { opacity: 0.4; transform: scale(0.95); }
@@ -1299,6 +1312,10 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
         </div>
 
       </div>
+
+      <!-- Shared try-on disclaimer — identical text/placement/styling for EVERY
+           jewelry type (single element directly below the try-on view). -->
+      <p class="tryon-disclaimer">Preview is for visualization only. Final piece is crafted to your exact specified size, which may differ slightly from what's shown here.</p>
 
       <!-- Ring try-on controls -->
       <div id="ring-tryon-controls" style="display:none;flex-direction:column;align-items:center;gap:10px;width:100%;max-width:780px;">
