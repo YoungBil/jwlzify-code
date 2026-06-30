@@ -3663,9 +3663,15 @@ function _buildPromptCore(type, material, gem, style, desc) {
   }
 
   if (type === 'necklace') {
-    const chainSpecific = selectedChainPrompt || '';
     const userDesc = desc.trim();
-    const chainStyleStr = selectedChainLabel ? `Chain style: ${selectedChainLabel}.` : '';
+    // The 5 chain-style presets are quick defaults. If the user typed/enhanced a
+    // specific description (their own chain style, a layered necklace, a unique
+    // link pattern, etc.), THAT takes priority — don't force a preset on top of it.
+    const hasCustomDesc = userDesc.length > 0;
+    const chainSpecific = hasCustomDesc ? '' : (selectedChainPrompt || '');
+    const chainStyleStr = (!hasCustomDesc && selectedChainLabel) ? `Chain style: ${selectedChainLabel}.` : '';
+    const selectedOrCustom = hasCustomDesc ? ('custom: ' + userDesc) : (selectedChainLabel || selectedChainStyle || 'none');
+    console.log('[Necklace] chain style:', selectedOrCustom);
     // Necklace length applies to every necklace; longer reads as a longer chain / lower drop.
     const _neckLenIn = _necklaceLengthInches();
     const _neckLenDesc = _neckLenIn >= 20 ? ', a longer chain that hangs lower on the chest'
@@ -7823,60 +7829,98 @@ function loadNecklaceForTryOn(imageUrl) {
       Choose a chain style
     </h2>
 
+    <p style="font-size:12px;color:#888;margin:0 0 16px;line-height:1.5;">
+      Quick picks — or just describe the chain you want in your own words and we'll follow that instead.
+    </p>
+
     <div style="display:flex;flex-direction:column;gap:10px;">
 
-      <button class="chain-style-btn" data-style="cable"
-        data-prompt="cable chain necklace, classic oval links, simple elegant chain, no pendant"
-        data-label="Cable Chain"
-        style="padding:14px 18px;border:1.5px solid #e0e0e0;border-radius:10px;
+      <button class="chain-style-btn" data-style="cuban"
+        data-prompt="cuban link chain necklace, thick bold interlocking links, heavy miami cuban chain, no pendant"
+        data-label="Cuban"
+        style="display:flex;align-items:center;gap:14px;padding:12px 16px;border:1.5px solid #e0e0e0;border-radius:10px;
                background:#fff;cursor:pointer;text-align:left;transition:all 0.15s;">
-        <div style="font-size:14px;font-weight:500;color:#1a1a1a;">Cable Chain</div>
-        <div style="font-size:12px;color:#888;margin-top:2px;">Classic oval interlocking links</div>
-      </button>
-
-      <button class="chain-style-btn" data-style="box"
-        data-prompt="box chain necklace, square links chain, geometric chain, no pendant"
-        data-label="Box Chain"
-        style="padding:14px 18px;border:1.5px solid #e0e0e0;border-radius:10px;
-               background:#fff;cursor:pointer;text-align:left;transition:all 0.15s;">
-        <div style="font-size:14px;font-weight:500;color:#1a1a1a;">Box Chain</div>
-        <div style="font-size:12px;color:#888;margin-top:2px;">Square geometric links</div>
+        <span style="flex-shrink:0;line-height:0;">
+          <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect width="40" height="40" rx="9" fill="#0B0F1A"/>
+            <rect x="7.5" y="13" width="15" height="14" rx="5.5" stroke="#C9A84C" stroke-width="2.6"/>
+            <rect x="17.5" y="13" width="15" height="14" rx="5.5" stroke="#C9A84C" stroke-width="2.6"/>
+          </svg>
+        </span>
+        <span>
+          <span style="display:block;font-size:14px;font-weight:500;color:#1a1a1a;">Cuban</span>
+          <span style="display:block;font-size:12px;color:#888;margin-top:2px;">Thick, bold interlocking links</span>
+        </span>
       </button>
 
       <button class="chain-style-btn" data-style="rope"
-        data-prompt="rope chain necklace, twisted rope chain, spiral links, no pendant"
-        data-label="Rope Chain"
-        style="padding:14px 18px;border:1.5px solid #e0e0e0;border-radius:10px;
+        data-prompt="rope chain necklace, twisted spiral links, no pendant"
+        data-label="Rope"
+        style="display:flex;align-items:center;gap:14px;padding:12px 16px;border:1.5px solid #e0e0e0;border-radius:10px;
                background:#fff;cursor:pointer;text-align:left;transition:all 0.15s;">
-        <div style="font-size:14px;font-weight:500;color:#1a1a1a;">Rope Chain</div>
-        <div style="font-size:12px;color:#888;margin-top:2px;">Twisted spiral links</div>
+        <span style="flex-shrink:0;line-height:0;">
+          <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect width="40" height="40" rx="9" fill="#0B0F1A"/>
+            <path d="M13 10.5 L27 16 M13 16 L27 21.5 M13 21.5 L27 27 M13 27 L27 32.5" stroke="#C9A84C" stroke-width="2.4" stroke-linecap="round"/>
+          </svg>
+        </span>
+        <span>
+          <span style="display:block;font-size:14px;font-weight:500;color:#1a1a1a;">Rope</span>
+          <span style="display:block;font-size:12px;color:#888;margin-top:2px;">Twisted spiral links</span>
+        </span>
       </button>
 
-      <button class="chain-style-btn" data-style="figaro"
-        data-prompt="figaro chain necklace, alternating short and long links, classic Italian chain, no pendant"
-        data-label="Figaro Chain"
-        style="padding:14px 18px;border:1.5px solid #e0e0e0;border-radius:10px;
+      <button class="chain-style-btn" data-style="box"
+        data-prompt="box chain necklace, square geometric links, no pendant"
+        data-label="Box"
+        style="display:flex;align-items:center;gap:14px;padding:12px 16px;border:1.5px solid #e0e0e0;border-radius:10px;
                background:#fff;cursor:pointer;text-align:left;transition:all 0.15s;">
-        <div style="font-size:14px;font-weight:500;color:#1a1a1a;">Figaro Chain</div>
-        <div style="font-size:12px;color:#888;margin-top:2px;">Alternating short and long links</div>
+        <span style="flex-shrink:0;line-height:0;">
+          <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect width="40" height="40" rx="9" fill="#0B0F1A"/>
+            <rect x="14.5" y="8" width="11" height="11" rx="1.5" stroke="#C9A84C" stroke-width="2.4"/>
+            <rect x="14.5" y="21" width="11" height="11" rx="1.5" stroke="#C9A84C" stroke-width="2.4"/>
+          </svg>
+        </span>
+        <span>
+          <span style="display:block;font-size:14px;font-weight:500;color:#1a1a1a;">Box</span>
+          <span style="display:block;font-size:12px;color:#888;margin-top:2px;">Square geometric links</span>
+        </span>
       </button>
 
-      <button class="chain-style-btn" data-style="statement"
-        data-prompt="statement bib necklace, bold dramatic single chain, drapes across collarbone"
-        data-label="Statement / Bib"
-        style="padding:14px 18px;border:1.5px solid #e0e0e0;border-radius:10px;
+      <button class="chain-style-btn" data-style="cable"
+        data-prompt="cable chain necklace, classic simple oval links, no pendant"
+        data-label="Cable"
+        style="display:flex;align-items:center;gap:14px;padding:12px 16px;border:1.5px solid #e0e0e0;border-radius:10px;
                background:#fff;cursor:pointer;text-align:left;transition:all 0.15s;">
-        <div style="font-size:14px;font-weight:500;color:#1a1a1a;">Statement / Bib</div>
-        <div style="font-size:12px;color:#888;margin-top:2px;">Bold decorative centerpiece</div>
+        <span style="flex-shrink:0;line-height:0;">
+          <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect width="40" height="40" rx="9" fill="#0B0F1A"/>
+            <ellipse cx="20" cy="14" rx="4.6" ry="6.6" stroke="#C9A84C" stroke-width="2.2"/>
+            <ellipse cx="20" cy="26" rx="4.6" ry="6.6" stroke="#C9A84C" stroke-width="2.2"/>
+          </svg>
+        </span>
+        <span>
+          <span style="display:block;font-size:14px;font-weight:500;color:#1a1a1a;">Cable</span>
+          <span style="display:block;font-size:12px;color:#888;margin-top:2px;">Classic simple oval links</span>
+        </span>
       </button>
 
-      <button class="chain-style-btn" data-style="collar"
-        data-prompt="collar choker necklace, tight fitting neck collar, close fitting necklace, no pendant, sits at base of neck"
-        data-label="Collar / Choker"
-        style="padding:14px 18px;border:1.5px solid #e0e0e0;border-radius:10px;
+      <button class="chain-style-btn" data-style="choker"
+        data-prompt="choker necklace, close-fitting neck piece, sits high at the base of the neck, no pendant"
+        data-label="Choker"
+        style="display:flex;align-items:center;gap:14px;padding:12px 16px;border:1.5px solid #e0e0e0;border-radius:10px;
                background:#fff;cursor:pointer;text-align:left;transition:all 0.15s;">
-        <div style="font-size:14px;font-weight:500;color:#1a1a1a;">Collar / Choker</div>
-        <div style="font-size:12px;color:#888;margin-top:2px;">Close-fitting neck piece</div>
+        <span style="flex-shrink:0;line-height:0;">
+          <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect width="40" height="40" rx="9" fill="#0B0F1A"/>
+            <ellipse cx="20" cy="20" rx="11.5" ry="8.5" stroke="#C9A84C" stroke-width="2.6"/>
+          </svg>
+        </span>
+        <span>
+          <span style="display:block;font-size:14px;font-weight:500;color:#1a1a1a;">Choker</span>
+          <span style="display:block;font-size:12px;color:#888;margin-top:2px;">Close-fitting neck piece</span>
+        </span>
       </button>
 
     </div>
