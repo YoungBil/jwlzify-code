@@ -456,7 +456,7 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
                 <path d="M5 5 C 6 17, 18 17, 19 5"/>
                 <circle cx="5" cy="5" r="1.1" fill="currentColor" stroke="none"/>
                 <circle cx="19" cy="5" r="1.1" fill="currentColor" stroke="none"/>
-              </svg>Necklace
+              </svg>Chain
             </button>
             <button class="type-btn" data-type="pendant" onclick="setType(this,'pendant')">
               <!-- Pendant: chain with a hanging charm/stone at the bottom centre -->
@@ -879,7 +879,7 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
 
         <!-- Necklace Length — shown for ALL necklaces; drives auto weight + auto stone count -->
         <div id="specChainLengthWrap" style="display:none;margin-top:28px;">
-          <h3 style="font-family:'Playfair Display',serif;font-size:20px;font-weight:600;color:#1b1c1c;margin-bottom:20px;">Necklace Length</h3>
+          <h3 style="font-family:'Playfair Display',serif;font-size:20px;font-weight:600;color:#1b1c1c;margin-bottom:20px;">Chain Length</h3>
           <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;">
             <button class="spec-toggle spec-chainlen-btn" data-len="16" onclick="setChainLength(this)">16" <span style="font-size:10px;font-weight:400;color:#9ca3af;margin-left:2px;">Choker</span></button>
             <button class="spec-toggle spec-chainlen-btn active" data-len="18" onclick="setChainLength(this)">18" <span style="font-size:10px;font-weight:400;color:#9ca3af;margin-left:2px;">Standard</span></button>
@@ -945,7 +945,7 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
               style="width:100%;font-family:Inter,sans-serif;font-size:14px;padding:10px 14px;border:1.5px solid rgba(193,199,203,0.5);border-radius:10px;outline:none;color:#1b1c1c;box-sizing:border-box;transition:border-color 0.2s;"
               oninput="setNecklaceCt(this.value)"
               onfocus="this.style.borderColor='#3c6474'" onblur="this.style.borderColor='rgba(193,199,203,0.5)'">
-            <p style="font-family:Inter,sans-serif;font-size:11px;color:#9ca3af;margin:6px 0 0;">Enter a number from 0.25 to 5 ct — this size applies to EACH stone on the necklace.</p>
+            <p style="font-family:Inter,sans-serif;font-size:11px;color:#9ca3af;margin:6px 0 0;">Enter a number from 0.25 to 5 ct — this size applies to EACH stone on the chain.</p>
             <p id="necklaceCtError" style="display:none;font-family:Inter,sans-serif;font-size:12px;color:#dc2626;margin:8px 0 0;">Please enter a carat value between 0.25 and 5 ct.</p>
           </div>
         </div>
@@ -1769,12 +1769,12 @@ window.addEventListener('DOMContentLoaded', () => {
   // Badge and detail labels (same as showRefineStep builds them)
   const badge = document.getElementById('refineBadge');
   if (badge) badge.textContent =
-    `${LAB.type.toUpperCase()} · ${matLabel(LAB.material).toUpperCase()} · ${LAB.style.toUpperCase()}`;
+    `${typeLabel(LAB.type).toUpperCase()} · ${matLabel(LAB.material).toUpperCase()} · ${LAB.style.toUpperCase()}`;
   const dt = document.getElementById('detailType');
   const dm = document.getElementById('detailMaterial');
   const dg = document.getElementById('detailGem');
   const ds = document.getElementById('detailStyle');
-  if (dt) dt.textContent = LAB.type.charAt(0).toUpperCase() + LAB.type.slice(1);
+  if (dt) dt.textContent = typeLabel(LAB.type);
   if (dm) dm.textContent = matLabel(LAB.material);
   if (dg) dg.textContent = gemLabel(LAB.gem);
   if (ds) ds.textContent = LAB.style;
@@ -1866,6 +1866,12 @@ const GEM_LABEL = {
 };
 function matLabel(v) { return MATERIAL_LABEL[v] || v; }
 function gemLabel(v) { return GEM_LABEL[v] || v; }
+// DISPLAY-ONLY jewelry-type label. The internal key stays 'necklace' everywhere
+// (logic/IDs/specs/pricing/try-on); only the user-facing word shows as "Chain".
+function typeLabel(t) {
+  if (t === 'necklace') return 'Chain';
+  return (t || '').charAt(0).toUpperCase() + (t || '').slice(1);
+}
 
 /* ── Metal → gem options ── */
 const GEM_OPTIONS = {
@@ -2340,7 +2346,7 @@ async function goStep(n) {
 function updateWeightHeading() {
   const el = document.getElementById('specWeightHeading');
   if (!el) return;
-  const labels = {ring:'Ring',bracelet:'Bracelet',necklace:'Necklace',earrings:'Earring',pendant:'Pendant'};
+  const labels = {ring:'Ring',bracelet:'Bracelet',necklace:'Chain',earrings:'Earring',pendant:'Pendant'};
   el.textContent = (labels[LAB.type] || 'Jewelry') + ' Weight';
 }
 
@@ -5167,11 +5173,11 @@ function showRefineStep() {
   // Badge
   const chainPart = (LAB.type === 'necklace' && selectedChainLabel)
     ? ` · ${selectedChainLabel.toUpperCase()}` : '';
-  const badge = `${LAB.type.toUpperCase()}${chainPart} · ${matLabel(LAB.material).toUpperCase()} · ${LAB.style.toUpperCase()}`;
+  const badge = `${typeLabel(LAB.type).toUpperCase()}${chainPart} · ${matLabel(LAB.material).toUpperCase()} · ${LAB.style.toUpperCase()}`;
   document.getElementById('refineBadge').textContent = badge;
 
   // Detail fields (fallback card)
-  document.getElementById('detailType').textContent     = LAB.type.charAt(0).toUpperCase() + LAB.type.slice(1);
+  document.getElementById('detailType').textContent     = typeLabel(LAB.type);
   document.getElementById('detailMaterial').textContent = matLabel(LAB.material);
   document.getElementById('detailGem').textContent      = gemLabel(LAB.gem);
   document.getElementById('detailStyle').textContent    = LAB.style;
@@ -5682,7 +5688,7 @@ async function displayPricing(metalType, stoneType, jewelryType, overrideCarats)
   window.lastGeneratedStone = stoneType;
   window.lastGeneratedType  = jewelryType;
 
-  var typeName = jewelryType.charAt(0).toUpperCase() + jewelryType.slice(1);
+  var typeName = typeLabel(jewelryType);
   document.getElementById('quoteHeading').textContent = LAB.style + ' ' + typeName;
 
   function row(label, value, bold) {
@@ -5757,7 +5763,7 @@ document.addEventListener('visibilitychange', function() {
 /* ── Order summary population ────────────────── */
 function populateOrderSummary() {
   const q = LAB.quote || calcQuote();
-  const typeName = LAB.type.charAt(0).toUpperCase() + LAB.type.slice(1);
+  const typeName = typeLabel(LAB.type);
   document.getElementById('orderSummaryTitle').textContent = `${LAB.style} ${typeName} · ${matLabel(LAB.material)}`;
   document.getElementById('orderSummaryPrice').textContent = '$' + q.total.toLocaleString();
 }
@@ -8050,7 +8056,7 @@ function loadNecklaceForTryOn(imageUrl) {
     font-family:'Inter',sans-serif;">
 
     <p style="font-size:11px;letter-spacing:0.12em;text-transform:uppercase;
-              color:#888;margin:0 0 8px;">Necklace Type</p>
+              color:#888;margin:0 0 8px;">Chain Type</p>
 
     <h2 style="font-size:22px;font-weight:400;margin:0 0 24px;
                color:#1a1a1a;font-family:'Playfair Display',serif;">
