@@ -3809,6 +3809,33 @@ function _stripEarringConflicts(text) {
   return t;
 }
 
+// STUD earrings only: did the user's OWN typed/enhanced description explicitly ask
+// for a surrounding-metal setting (halo / bezel / frame / backing disk)? If so we
+// allow it; otherwise the default simple-solitaire stud forces surrounding metal off.
+// Reads the raw idea + enhanced text so it is independent of prompt-assembly order.
+function _earStudSurroundRequested() {
+  let t = '';
+  try { t = (typeof LAB !== 'undefined' && LAB.prompt) ? String(LAB.prompt) : ''; } catch (e) {}
+  const pa = document.getElementById('promptArea');       if (pa && pa.value) t += ' ' + pa.value;
+  const ea = document.getElementById('enhancedTextArea'); if (ea && ea.value) t += ' ' + ea.value;
+  return /\b(halo|bezel|framed?|surround(?:ing|ed)?|backing\s*dis[ck])\b/i.test(t);
+}
+
+// Earring negative-prompt suffix, form-aware. Base = count/cross-type/pair terms.
+// STUDS also get post/side-extension negatives and (unless the user asked for a
+// surround) surrounding-metal negatives. HOOP/DROP keep the original generic set
+// (base + unrequested pave + halo) — their behavior is unchanged.
+function _earringNegativeSuffix(form) {
+  const base = ', wrong number of stones, extra stones, additional stones, extra accent stones, stone cluster, ring, pendant, necklace, bracelet, brooch, mismatched pair, asymmetrical earrings, uneven stones, different stone sizes, two earrings in frame, multiple earrings, several earrings';
+  if (form === 'stud') {
+    return base
+      + ', protruding post, visible post, side extension, stem, nub, protrusion, side nub'
+      + (_earStudSurroundRequested() ? ''
+         : ', surrounding metal ring, bezel, halo, frame, backing disk, metal disk around stone, unrequested pave');
+  }
+  return base + ', unrequested pave, halo'; // hoop / drop — original generic set
+}
+
 // Authoritative stone count — ONLY from the spec selectors (synced into
 // window.jwlSpecifications from userSelections.stoneCount/stoneSizes at
 // generate time). Never derived from the typed text.
@@ -4012,6 +4039,18 @@ function _buildPromptCore(type, material, gem, style, desc) {
     const stoneWord   = perEar === 1 ? 'stone' : 'stones';
     const cleanedText = _stripEarringConflicts(desc.trim()); // strip count/type/size — specs win
 
+    // ── STUD-only: no surrounding metal by default + never a side post ──
+    // A halo/bezel/frame is allowed ONLY if the user explicitly asked for one.
+    let studPositive = '';
+    if (earForm === 'stud') {
+      const _allowSurround = _earStudSurroundRequested();
+      studPositive =
+        (_allowSurround ? ''
+          : ' Simple solitaire stud, stone held by minimal prongs only, no surrounding metal, no bezel, no halo, no frame, no backing disk.')
+        + ' Front-facing view, clean edges, no visible post, no side extension.';
+      console.log('[Earring Gen] stud settings — surrounding metal:', _allowSurround ? 'ALLOWED (user requested)' : 'OFF (default)');
+    }
+
     // ── HARD spec block FIRST ──
     const specBlock =
       `${earFormWord} earrings, a matching identical PAIR, ${earFormDesc}. ` +
@@ -4034,7 +4073,7 @@ function _buildPromptCore(type, material, gem, style, desc) {
       'No humans. No person. No body parts. No neck. No chest. No hands. No fingers. No ears. No skin. No model. ' +
       'Product-only photography. The jewelry piece is the sole subject of the image.';
 
-    const finalEar = specBlock + ' ' + renderFrame;
+    const finalEar = specBlock + studPositive + ' ' + renderFrame;
     console.log('[Earring Gen] specs:', { earringForm: earForm, totalStoneCount: totalCnt, perEarringCount: perEar, perStoneCt: perCt, sizeBucket: sizeKey, earringMm: earMm, shape: earShape, metal: mDisp });
     console.log('[Earring Gen] stripped user text:', cleanedText);
     console.log('[Earring Gen] FINAL prompt:', finalEar);
@@ -4500,9 +4539,10 @@ async function startGeneration(isTweak) {
     ? ', flat lay, tabletop, top-down view, coiled chain, chain laid flat, jewelry box, angled perspective, asymmetrical drape, cropped chain, multiple necklaces, hands, neck skin, mannequin face, busy background, pendant, charm, hanging pendant, locket, dangling ornament, focal centerpiece, center stone hanging from chain, drop pendant, extra pendant, multiple chains, two necklaces, double chain, several chains, duplicate necklace, tangled chains, center stone, centre stone, focal stone, solitaire, central gemstone, large center gem, neck, bust, body, skin'
       + (selectedNecklacePlacement === 'stations' ? ', tennis necklace, continuous stones, fully set chain, pave chain, stones touching, no gaps between stones' : '')
     : '';
-  // Earring spec-adherence negatives (count / cross-type / matched-pair quality).
+  // Earring spec-adherence negatives (count / cross-type / matched-pair) + stud-only
+  // no-surround / no-post negatives (form-aware; hoop & drop unchanged).
   const _earringNegSuffix = resolvedType === 'earrings'
-    ? ', wrong number of stones, extra stones, additional stones, extra accent stones, unrequested pave, halo, stone cluster, ring, pendant, necklace, bracelet, brooch, mismatched pair, asymmetrical earrings, uneven stones, different stone sizes, two earrings in frame, multiple earrings, several earrings'
+    ? _earringNegativeSuffix((window.jwlSpecifications && window.jwlSpecifications.earringForm) || 'stud')
     : '';
   const negativePrompt = `${_ringNegPrefix}${negJewelryTerms}, brooch, anklet, person, human, model, body, face, hands, text, watermark, logo, blurry, low quality, distorted${_necklaceNegSuffix}${_earringNegSuffix}`;
 
@@ -4756,9 +4796,10 @@ async function confirmAndGenerate() {
     ? ', flat lay, tabletop, top-down view, coiled chain, chain laid flat, jewelry box, angled perspective, asymmetrical drape, cropped chain, multiple necklaces, hands, neck skin, mannequin face, busy background, pendant, charm, hanging pendant, locket, dangling ornament, focal centerpiece, center stone hanging from chain, drop pendant, extra pendant, multiple chains, two necklaces, double chain, several chains, duplicate necklace, tangled chains, center stone, centre stone, focal stone, solitaire, central gemstone, large center gem, neck, bust, body, skin'
       + (selectedNecklacePlacement === 'stations' ? ', tennis necklace, continuous stones, fully set chain, pave chain, stones touching, no gaps between stones' : '')
     : '';
-  // Earring spec-adherence negatives (count / cross-type / matched-pair quality).
+  // Earring spec-adherence negatives (count / cross-type / matched-pair) + stud-only
+  // no-surround / no-post negatives (form-aware; hoop & drop unchanged).
   const _earringNegSuffixC = LAB.type === 'earrings'
-    ? ', wrong number of stones, extra stones, additional stones, extra accent stones, unrequested pave, halo, stone cluster, ring, pendant, necklace, bracelet, brooch, mismatched pair, asymmetrical earrings, uneven stones, different stone sizes, two earrings in frame, multiple earrings, several earrings'
+    ? _earringNegativeSuffix((window.jwlSpecifications && window.jwlSpecifications.earringForm) || 'stud')
     : '';
   const negativePrompt = _ringNegPrefixC + negJewelryTerms + ', brooch, anklet, person, human, model, body, face, hands, text, watermark, logo, blurry, low quality, distorted' + _necklaceNegSuffixC + _earringNegSuffixC;
 
@@ -8308,7 +8349,9 @@ function loadNecklaceForTryOn(imageUrl) {
         <span style="flex-shrink:0;line-height:0;">
           <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
             <rect width="40" height="40" rx="9" fill="#0B0F1A"/>
-            <path d="M13 10.5 L27 16 M13 16 L27 21.5 M13 21.5 L27 27 M13 27 L27 32.5" stroke="#C9A84C" stroke-width="2.4" stroke-linecap="round"/>
+            <!-- Two intertwined helical strands = twisted rope chain (braided spiral) -->
+            <path d="M20 8.5 C 26 11, 26 15, 20 17 C 14 19, 14 23, 20 25 C 26 27, 26 31, 20 33.5" stroke="#C9A84C" stroke-width="2.2" stroke-linecap="round" fill="none"/>
+            <path d="M20 8.5 C 14 11, 14 15, 20 17 C 26 19, 26 23, 20 25 C 14 27, 14 31, 20 33.5" stroke="#C9A84C" stroke-width="2.2" stroke-linecap="round" fill="none"/>
           </svg>
         </span>
         <span>
