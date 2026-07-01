@@ -1364,7 +1364,7 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
           <span id="ringFitLabel" style="font-family:Inter,sans-serif;font-size:12px;color:rgba(201,168,76,0.6);user-select:none;width:36px;flex-shrink:0;">Fit</span>
           <label for="ringFitSlider" style="display:none;"></label>
           <input type="range" id="ringFitSlider" class="ring-rotate-slider" min="35" max="65" value="45"
-                 oninput="ringFadeStart=this.value/100;if(_ringTryonImg&&_ringMaskedCanvas)_buildRingMask(_ringTryonImg,_ringMaskSrcType)" style="flex:1;">
+                 oninput="_onFitSlider(this.value)" style="flex:1;">
         </div>
         <!-- Save -->
         <button onclick="saveRingTryOnPhoto()"
@@ -6404,7 +6404,7 @@ async function setupTryOn() {
   const hintEl = document.getElementById('tryon-hint-text');
 
   if (LAB.type === 'earrings') {
-    if (hintEl) hintEl.textContent = 'DRAG JEWELRY TO POSITION · DRAG THE GREY DOT TO RESIZE';
+    if (hintEl) hintEl.textContent = 'DRAG TO POSITION · USE THE SIZE SLIDER TO RESIZE';
     const canvas = document.getElementById('tryon-necklace');
     const handle = document.getElementById('tryon-resize');
     if (canvas) canvas.style.display = 'none';
@@ -6485,11 +6485,11 @@ async function setupTryOn() {
     }
   }
 
-  // Save Photo availability (every try-on type): ring + bracelet save via the
-  // canvas controls (#ring-tryon-controls); pendant / necklace / earrings save
-  // via the generic compositor button.
+  // Save Photo availability (every try-on type): ring + bracelet + earrings save
+  // via the canvas controls (#ring-tryon-controls); pendant / necklace save via
+  // the generic compositor button. (Hoops now run on the canvas engine.)
   const _genericSave = document.getElementById('tryon-save-generic');
-  const _usesGenericSave = (LAB.type === 'pendant' || LAB.type === 'necklace' || LAB.type === 'earrings');
+  const _usesGenericSave = (LAB.type === 'pendant' || LAB.type === 'necklace');
   if (_genericSave) _genericSave.style.display = _usesGenericSave ? 'flex' : 'none';
   console.log('[TryOn] save photo present for type:', LAB.type);
 }
@@ -7496,6 +7496,19 @@ function _buildRingMask(img, srcType) {
       oc2.fillStyle = grad;
       oc2.fillRect(0, 0, SIZE, SIZE);
       region = 'top 0%–' + Math.round(fadeStart * 100) + '% (fade to ' + Math.round(fadeEnd * 100) + '%)';
+    } else if (_ringMaskDirection === 'earlobe') {
+      // Hoop earring: the earlobe threads through the TOP of the hoop, so the small
+      // top arc must sit BEHIND the lobe. Same destination-out technique the ring
+      // uses — only the erased region differs: a feathered strip across the drawn
+      // piece's top (dy/dh bounds), fading in so the transition under the lobe is soft.
+      const fadeStart = dy + dh * 0.06;   // fully hidden above this (behind lobe)
+      const fadeEnd   = dy + dh * 0.26;   // fully visible below this (front of lobe)
+      const grad = oc2.createLinearGradient(0, fadeStart, 0, fadeEnd);
+      grad.addColorStop(0, 'rgba(0,0,0,1)');  // erased — tucked behind the earlobe
+      grad.addColorStop(1, 'rgba(0,0,0,0)');  // kept   — hoop hangs in front
+      oc2.fillStyle = grad;
+      oc2.fillRect(0, 0, SIZE, SIZE);
+      region = 'earlobe: top ~6% hidden (fade to ~26%) — lobe threaded through hoop';
     } else {
       // Ring: show the top ~58% of the ring — from the top down to just BELOW the
       // stone's vertical center (stone + the top of the band on both sides) — then
@@ -7551,15 +7564,37 @@ function _ringRenderLoop() {
       console.timeEnd('[Ring] ring drawn');
       _ringFirstDraw = true;
     }
-    ctx.save();
-    ctx.globalAlpha   = _ringImgIsOriginal ? 0.85 : 1.0;
-    ctx.shadowColor   = 'rgba(0,0,0,0.4)';
-    ctx.shadowBlur    = 10;
-    ctx.shadowOffsetY = 3;
-    ctx.translate(ringX, ringY);
-    ctx.rotate(ringRotation * Math.PI / 180);
-    ctx.drawImage(_ringMaskedCanvas, -ringSize / 2, -ringSize / 2, ringSize, ringSize);
-    ctx.restore();
+    const _alpha = _ringImgIsOriginal ? 0.85 : 1.0;
+    if (typeof LAB !== 'undefined' && LAB.type === 'earrings') {
+      // EARRINGS: the single masked piece is drawn TWICE — left lobe and right lobe
+      // (mirrored) — so one hoop renders as a matched pair. ringX is the centre
+      // between the lobes; _spacing (a face-width proxy) offsets each ear. Both ears
+      // use identical size/mask → consistent. No rotate (hoops hang naturally).
+      const _spacing = W * 0.20;
+      // left lobe
+      ctx.save();
+      ctx.globalAlpha = _alpha; ctx.shadowColor = 'rgba(0,0,0,0.35)'; ctx.shadowBlur = 8; ctx.shadowOffsetY = 2;
+      ctx.translate(ringX - _spacing, ringY);
+      ctx.drawImage(_ringMaskedCanvas, -ringSize / 2, -ringSize / 2, ringSize, ringSize);
+      ctx.restore();
+      // right lobe (mirrored)
+      ctx.save();
+      ctx.globalAlpha = _alpha; ctx.shadowColor = 'rgba(0,0,0,0.35)'; ctx.shadowBlur = 8; ctx.shadowOffsetY = 2;
+      ctx.translate(ringX + _spacing, ringY);
+      ctx.scale(-1, 1);
+      ctx.drawImage(_ringMaskedCanvas, -ringSize / 2, -ringSize / 2, ringSize, ringSize);
+      ctx.restore();
+    } else {
+      ctx.save();
+      ctx.globalAlpha   = _alpha;
+      ctx.shadowColor   = 'rgba(0,0,0,0.4)';
+      ctx.shadowBlur    = 10;
+      ctx.shadowOffsetY = 3;
+      ctx.translate(ringX, ringY);
+      ctx.rotate(ringRotation * Math.PI / 180);
+      ctx.drawImage(_ringMaskedCanvas, -ringSize / 2, -ringSize / 2, ringSize, ringSize);
+      ctx.restore();
+    }
   }
 
   // Layer 3: hand cutout — floats in front of ring
@@ -7567,8 +7602,10 @@ function _ringRenderLoop() {
     ctx.drawImage(latestCutoutImage, 0, 0, W, H);
   }
 
-  // Layer 4: drag handle dot at top-right corner of ring
-  if (_ringMaskedCanvas) {
+  // Layer 4: drag handle dot at top-right corner of ring. SUPPRESSED for earrings —
+  // hoops resize via the shared Size slider (no dot handle), and a single dot makes
+  // no sense for a rendered pair.
+  if (_ringMaskedCanvas && !(typeof LAB !== 'undefined' && LAB.type === 'earrings')) {
     ctx.save();
     ctx.beginPath();
     ctx.arc(ringX + ringSize / 2 + 4, ringY - ringSize / 2 - 4, 5, 0, Math.PI * 2);
@@ -7598,8 +7635,19 @@ function _ringDragStart(e) {
   const { x, y } = _ringPtrPos(e);
   const rH  = _ringImgH();
   const pad = 24;
-  if (x >= ringX - ringSize / 2 - pad && x <= ringX + ringSize / 2 + pad &&
-      y >= ringY - rH / 2 - pad       && y <= ringY + rH / 2 + pad) {
+  let hit;
+  if (typeof LAB !== 'undefined' && LAB.type === 'earrings') {
+    // Earrings render as a pair at ringX ± spacing — accept a grab anywhere across
+    // the span between (and around) both hoops so either ear drags the pair.
+    const ringCanvas = document.getElementById('ring-tryon-canvas');
+    const _spacing = (ringCanvas ? ringCanvas.width : 0) * 0.20;
+    hit = (x >= ringX - _spacing - ringSize / 2 - pad && x <= ringX + _spacing + ringSize / 2 + pad &&
+           y >= ringY - ringSize / 2 - pad           && y <= ringY + ringSize / 2 + pad);
+  } else {
+    hit = (x >= ringX - ringSize / 2 - pad && x <= ringX + ringSize / 2 + pad &&
+           y >= ringY - rH / 2 - pad       && y <= ringY + rH / 2 + pad);
+  }
+  if (hit) {
     _ringIsDragging = true;
     _ringDragOffX   = x - ringX;
     _ringDragOffY   = y - ringY;
@@ -7668,6 +7716,19 @@ function loadBraceletForTryOn(imageUrl) {
   console.log('[Bracelet] cutout using identical method as ring');
 }
 
+// Row-3 slider handler. For most types this is the "Fit" (occlusion) slider; for
+// EARRINGS the same physical slider is repurposed as the hoop SIZE control (the
+// standard bottom slider bar the app uses), so hoops resize via the bar like the
+// rest of the app rather than an old dot handle.
+function _onFitSlider(v) {
+  if (typeof LAB !== 'undefined' && LAB.type === 'earrings') {
+    ringSize = parseInt(v, 10) * (window._tryonDpr || 1);   // css px → device px
+    return;
+  }
+  ringFadeStart = v / 100;
+  if (_ringTryonImg && _ringMaskedCanvas) _buildRingMask(_ringTryonImg, _ringMaskSrcType);
+}
+
 // Shared, parameterized try-on used by BOTH ring and bracelet (and any future
 // "wraps around a body part" type). Config differs only by type / size /
 // position / maskDirection / fitLabel / hintText / fit defaults — the body below
@@ -7681,6 +7742,7 @@ function initTryOn(cfg) {
   // Canvas works in device pixels (×dpr) for crisp rendering; sizes scale with it
   // so the on-screen jewelry size is unchanged across displays.
   const _dpr = Math.min(window.devicePixelRatio || 1, 3);
+  window._tryonDpr   = _dpr;              // used by _onFitSlider (earring size slider → device px)
   _tryOnMinSize      = cfg.minSize * _dpr;
   _tryOnMaxSize      = cfg.maxSize * _dpr;
   _ringMaskDirection = cfg.maskDirection || 'hide-bottom';
@@ -8130,74 +8192,31 @@ async function cropToSingleEarring(imageUrl) {
   });
 }
 
-async function loadEarringsForTryOn(imageUrl) {
-  // Hide all pendant/necklace elements — earrings only
-  ['tryon-necklace', 'tryon-pendant', 'tryon-resize'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.style.display = 'none';
+function loadEarringsForTryOn(imageUrl) {
+  // Hoops now run on the SAME canvas try-on engine as ring / bracelet / necklace
+  // (initTryOn → _ringRenderLoop → _buildRingMask), instead of the old DOM-<img>
+  // overlays with dot-handle resizing. That buys hoops, for free:
+  //   • the shared bottom slider bar (#ring-tryon-controls) for sizing, and
+  //   • the ring's occlusion mask (destination-out in _buildRingMask), adapted to
+  //     the earlobe so the hoop's TOP arc tucks BEHIND the lobe (threaded illusion).
+  // _ringRenderLoop's earring branch draws the one masked canvas TWICE — left lobe
+  // and right lobe (mirrored) — so a single piece renders as a matched pair.
+  console.log('[Earring TryOn] canvas engine + earlobe occlusion mask + shared size slider');
+  initTryOn({
+    imageUrl:      imageUrl,
+    typeLabel:     'earrings',
+    defaultSize:   52,              // small hoop / huggie (css px, ×dpr internally)
+    minSize:       30,
+    maxSize:       90,
+    getDefaultY:   (H) => H * 0.50, // earlobe height (mouth/jaw level) — no face tracking exists
+    hintText:      'Drag to position · Use the Size slider to resize',
+    fitLabel:      'Size',          // Row-3 slider repurposed as the hoop SIZE slider
+    maskDirection: 'earlobe',       // lobe threads through the hoop top → hide-top occlusion
+    fitMin:        30,              // Size slider range mirrors min/max (css px)
+    fitMax:        90,
+    fitDefault:    52,
   });
-
-  const container  = document.getElementById('tryon-container');
-  const containerW = container.offsetWidth;
-  const containerH = container.offsetHeight;
-  const leftEl     = document.getElementById('tryon-earring-left');
-  const rightEl    = document.getElementById('tryon-earring-right');
-  const leftHandle = document.getElementById('tryon-earring-left-handle');
-  const rightHandle= document.getElementById('tryon-earring-right-handle');
-
-  // Remove background from the full earring image
-  const cleanUrl = await removePendantBackgroundCached(imageUrl);
-
-  // Left: normal, Right: mirrored — looks like a natural pair
-  leftEl.src = cleanUrl;
-  leftEl.style.transform = 'none';
-
-  rightEl.src = cleanUrl;
-  rightEl.style.transform = 'scaleX(-1)';
-
-  // ── EARLOBE ANCHORING (no face tracking exists in this app) ──
-  // Anchor each earring to a plausible earlobe position for a centred selfie:
-  //   • horizontally just INSIDE the face's left/right edges (~30% / 70% of frame)
-  //   • vertically at mouth/jaw level (~50% down)
-  // The earring is TOP-anchored so it HANGS DOWNWARD from the lobe (clean 2D
-  // front-facing hang, no wrap simulation). The user can still drag to fine-tune.
-  //
-  // PROPER SCALE: cap the overlay to a small fraction of the frame width (a proxy
-  // for face width) so hoops render like small huggies, never oversized (was 70px).
-  const earringSize = Math.round(Math.max(32, Math.min(56, containerW * 0.08)));
-  const earSpacing  = containerW * 0.20;   // centre → each lobe (lobes at ~30% / 70%)
-  const centerX     = containerW * 0.5;
-  const lobeY       = containerH * 0.50;   // earlobe height (mouth/jaw level)
-
-  // LEFT ear (both ears placed + scaled identically)
-  leftEl.style.left  = (centerX - earSpacing - earringSize / 2) + 'px';
-  leftEl.style.top   = lobeY + 'px';       // top of piece = lobe → hangs down
-  leftEl.style.width = earringSize + 'px';
-  leftEl.style.display = 'block';
-
-  // RIGHT ear
-  rightEl.style.left  = (centerX + earSpacing - earringSize / 2) + 'px';
-  rightEl.style.top   = lobeY + 'px';
-  rightEl.style.width = earringSize + 'px';
-  rightEl.style.display = 'block';
-
-  // Remove the stray silver/white dot: the resize-handle circles that sat at each
-  // earring's corner. Keep them hidden — position is by drag, size is auto-capped.
-  leftHandle.style.display  = 'none';
-  rightHandle.style.display = 'none';
-
-  console.log('[JWLZIFY] earrings anchored to earlobes | size:', earringSize, 'px | lobes at ~30%/70% x,', Math.round(lobeY), 'y');
 }
-
-// Wire up independent drag + resize for each earring
-makeEarringDraggable(
-  document.getElementById('tryon-earring-left'),
-  document.getElementById('tryon-earring-left-handle')
-);
-makeEarringDraggable(
-  document.getElementById('tryon-earring-right'),
-  document.getElementById('tryon-earring-right-handle')
-);
 
 /* ── Necklace try-on ─────────────────────────── */
 
