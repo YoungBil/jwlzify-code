@@ -8155,28 +8155,38 @@ async function loadEarringsForTryOn(imageUrl) {
   rightEl.src = cleanUrl;
   rightEl.style.transform = 'scaleX(-1)';
 
-  // Position: ears at ~22% and ~78% horizontal, ~42% down
-  const earringSize = 70;
-  const earSpacing  = containerW * 0.28;
+  // ── EARLOBE ANCHORING (no face tracking exists in this app) ──
+  // Anchor each earring to a plausible earlobe position for a centred selfie:
+  //   • horizontally just INSIDE the face's left/right edges (~30% / 70% of frame)
+  //   • vertically at mouth/jaw level (~50% down)
+  // The earring is TOP-anchored so it HANGS DOWNWARD from the lobe (clean 2D
+  // front-facing hang, no wrap simulation). The user can still drag to fine-tune.
+  //
+  // PROPER SCALE: cap the overlay to a small fraction of the frame width (a proxy
+  // for face width) so hoops render like small huggies, never oversized (was 70px).
+  const earringSize = Math.round(Math.max(32, Math.min(56, containerW * 0.08)));
+  const earSpacing  = containerW * 0.20;   // centre → each lobe (lobes at ~30% / 70%)
   const centerX     = containerW * 0.5;
-  const earY        = containerH * 0.42;
+  const lobeY       = containerH * 0.50;   // earlobe height (mouth/jaw level)
 
+  // LEFT ear (both ears placed + scaled identically)
   leftEl.style.left  = (centerX - earSpacing - earringSize / 2) + 'px';
-  leftEl.style.top   = earY + 'px';
+  leftEl.style.top   = lobeY + 'px';       // top of piece = lobe → hangs down
   leftEl.style.width = earringSize + 'px';
   leftEl.style.display = 'block';
 
+  // RIGHT ear
   rightEl.style.left  = (centerX + earSpacing - earringSize / 2) + 'px';
-  rightEl.style.top   = earY + 'px';
+  rightEl.style.top   = lobeY + 'px';
   rightEl.style.width = earringSize + 'px';
   rightEl.style.display = 'block';
 
-  leftHandle.style.display  = 'block';
-  rightHandle.style.display = 'block';
+  // Remove the stray silver/white dot: the resize-handle circles that sat at each
+  // earring's corner. Keep them hidden — position is by drag, size is auto-capped.
+  leftHandle.style.display  = 'none';
+  rightHandle.style.display = 'none';
 
-  // Wait one frame for layout before placing handles
-  requestAnimationFrame(updateEarringHandles);
-  console.log('[JWLZIFY] earrings loaded and positioned');
+  console.log('[JWLZIFY] earrings anchored to earlobes | size:', earringSize, 'px | lobes at ~30%/70% x,', Math.round(lobeY), 'y');
 }
 
 // Wire up independent drag + resize for each earring
