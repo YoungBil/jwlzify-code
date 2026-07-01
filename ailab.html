@@ -6883,15 +6883,17 @@ async function removeBgWithApi(imageUrl) {
 }
 
 async function removePendantBackground(imageUrl) {
-  if (USE_REMOVEBG_FALLBACK) {
-    try {
-      const result = await removeBgWithApi(imageUrl);
-      if (result) return result;
-    } catch (e) {
-      console.warn('[JWLZIFY] remove.bg failed, using canvas fallback:', e.message);
-    }
+  // UNIFIED PATH — pendant + earrings now use the exact same cutout chain as ring,
+  // bracelet and chain (fal birefnet → remove.bg → the shared improved canvas
+  // remover, which is jewelryCutout's final fallback). No per-type divergence.
+  const type = (typeof LAB !== 'undefined' && LAB.type) ? LAB.type : 'jewelry';
+  try {
+    const result = await jewelryCutout(imageUrl, type);
+    if (result && result.url) return result.url;
+  } catch (e) {
+    console.warn('[JWLZIFY] unified cutout failed, using canvas remover:', e.message);
   }
-  return removePendantBackgroundCanvas(imageUrl);
+  return removePendantBackgroundCanvas(imageUrl); // guaranteed local fallback
 }
 
 async function removePendantBackgroundCanvas(imageUrl) {
@@ -6922,43 +6924,52 @@ async function removePendantBackgroundCanvas(imageUrl) {
         return [data[i], data[i+1], data[i+2]];
       }
 
-      // Sample 32 points around all edges
+      // #1 — Sample MANY points densely around all four edges (52) so a blurred
+      // multi-colour gradient background (blues/tans/white) is fully represented.
       const samples = [];
-      const steps = 8;
+      const steps = 12;
       for (let i = 0; i <= steps; i++) {
         const t = i / steps;
-        // Top edge
-        samples.push(getPixel(t * (w-1), 0));
-        // Bottom edge
-        samples.push(getPixel(t * (w-1), h-1));
-        // Left edge
-        samples.push(getPixel(0, t * (h-1)));
-        // Right edge
-        samples.push(getPixel(w-1, t * (h-1)));
+        samples.push(getPixel(t * (w-1), 0));      // top
+        samples.push(getPixel(t * (w-1), h-1));    // bottom
+        samples.push(getPixel(0, t * (h-1)));      // left
+        samples.push(getPixel(w-1, t * (h-1)));    // right
       }
 
-      // Find the most common background color
-      // by clustering similar samples together
-      let bgR = Math.round(
-        samples.reduce((s,c) => s+c[0], 0) / samples.length);
-      let bgG = Math.round(
-        samples.reduce((s,c) => s+c[1], 0) / samples.length);
-      let bgB = Math.round(
-        samples.reduce((s,c) => s+c[2], 0) / samples.length);
+      // Mean — used only for the brightness classification below.
+      let bgR = Math.round(samples.reduce((s,c) => s+c[0], 0) / samples.length);
+      let bgG = Math.round(samples.reduce((s,c) => s+c[1], 0) / samples.length);
+      let bgB = Math.round(samples.reduce((s,c) => s+c[2], 0) / samples.length);
 
       const avgBrightness = (bgR + bgG + bgB) / 3;
       const isDark = avgBrightness < 80;
       const isLight = avgBrightness > 200;
-      const isMidtone = !isDark && !isLight;
 
-      // Midtone tolerance is tight (28) to protect silver/platinum jewelry whose
-      // perceptual distance from Flux's uniform grey bg is ~35-50 — above 28,
-      // below the old 55 which ate into metallic pieces.
-      const TOLERANCE = isDark ? 45 : isLight ? 40 : 28;
+      // Moderately higher tolerance so connected gradient-bg pixels are reached —
+      // but removal stays edge-connected AND stops at sharp jewelry boundaries
+      // (isSharpEdge) + faceted stones (isSparkleStone), so it never leaks inward.
+      const TOLERANCE = isDark ? 50 : isLight ? 48 : 34;
 
-      console.log('[JWLZIFY] bg color:', bgR, bgG, bgB,
+      // #1 — RANGE of background colours. Cluster the edge samples into a small set
+      // of representative colours; a pixel is "background" if it is near ANY of them
+      // (not one flat mean) — this is what catches blurred multi-colour gradients.
+      const bgClusters = []; // [r, g, b, count]
+      for (const s of samples) {
+        let merged = false;
+        for (const c of bgClusters) {
+          const dr = s[0]-c[0], dg = s[1]-c[1], db = s[2]-c[2];
+          if (Math.sqrt(0.299*dr*dr + 0.587*dg*dg + 0.114*db*db) < 22) {
+            const n = c[3] + 1;
+            c[0] = (c[0]*c[3] + s[0]) / n; c[1] = (c[1]*c[3] + s[1]) / n; c[2] = (c[2]*c[3] + s[2]) / n; c[3] = n;
+            merged = true; break;
+          }
+        }
+        if (!merged && bgClusters.length < 14) bgClusters.push([s[0], s[1], s[2], 1]);
+      }
+
+      console.log('[JWLZIFY] bg mean:', bgR, bgG, bgB,
         '| type:', isDark?'dark':isLight?'light':'midtone',
-        '| tolerance:', TOLERANCE);
+        '| tolerance:', TOLERANCE, '| bg clusters:', bgClusters.length);
 
       // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
       // STEP 2 — COLOR SIMILARITY FUNCTION
@@ -6977,8 +6988,39 @@ async function removePendantBackgroundCanvas(imageUrl) {
         );
       }
 
+      // Distance to the NEAREST sampled background colour (range-aware) — this is
+      // what lets a blurred multi-colour gradient be matched pixel-by-pixel.
+      function nearestBgDistance(r, g, b) {
+        let best = Infinity;
+        for (let k = 0; k < bgClusters.length; k++) {
+          const c = bgClusters[k];
+          const dr = r-c[0], dg = g-c[1], db = b-c[2];
+          const d = Math.sqrt(0.299*dr*dr + 0.587*dg*dg + 0.114*db*db);
+          if (d < best) best = d;
+        }
+        return best;
+      }
       function isSimilarToBg(r, g, b) {
-        return colorDistance(r, g, b) < TOLERANCE;
+        return nearestBgDistance(r, g, b) < TOLERANCE;
+      }
+
+      // #2 — Stop the flood-fill at SHARP boundaries (facet / metal / prong edges).
+      // A smooth gradient background has low local contrast; a jewelry edge has a
+      // hard brightness step. This keeps the higher tolerance from leaking INTO the
+      // piece while still flowing through smooth connected background.
+      function isSharpEdge(x, y) {
+        let mn = 255, mx = 0;
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            const xx = x + dx, yy = y + dy;
+            if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue;
+            const j = (yy * w + xx) * 4;
+            const bb = (data[j] + data[j+1] + data[j+2]) / 3;
+            if (bb < mn) mn = bb;
+            if (bb > mx) mx = bb;
+          }
+        }
+        return (mx - mn) > 62;
       }
 
       // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -7019,7 +7061,7 @@ async function removePendantBackgroundCanvas(imageUrl) {
         const i = y * w + x;
         if (visited[i]) return;
         const pi = i * 4;
-        if (isSimilarToBg(data[pi], data[pi+1], data[pi+2]) && !isSparkleStone(x, y)) {
+        if (isSimilarToBg(data[pi], data[pi+1], data[pi+2]) && !isSparkleStone(x, y) && !isSharpEdge(x, y)) {
           visited[i] = 1;
           queue.push(i);
         }
@@ -7050,7 +7092,8 @@ async function removePendantBackgroundCanvas(imageUrl) {
           const nx = n % w;
           if (Math.abs(nx - ix) > 1) continue;
           const pi = n * 4;
-          if (isSimilarToBg(data[pi], data[pi+1], data[pi+2]) && !isSparkleStone(nx, Math.floor(n / w))) {
+          const ny = Math.floor(n / w);
+          if (isSimilarToBg(data[pi], data[pi+1], data[pi+2]) && !isSparkleStone(nx, ny) && !isSharpEdge(nx, ny)) {
             visited[n] = 1;
             queue.push(n);
           }
@@ -7085,7 +7128,8 @@ async function removePendantBackgroundCanvas(imageUrl) {
           if (dist < TOLERANCE * 1.1 &&
               sat < 8 &&
               brightnessDiff < 40 &&
-              !isSparkleStone(nx, Math.floor(n / w))) {
+              !isSparkleStone(nx, Math.floor(n / w)) &&
+              !isSharpEdge(nx, Math.floor(n / w))) {
             visited[n] = 1;
             queueExp.push(n);
           }
@@ -7118,7 +7162,7 @@ async function removePendantBackgroundCanvas(imageUrl) {
           const dist = colorDistance(r, g, b);
           // sat < 8: only truly-achromatic grey background remnants;
           // silver/metallic jewelry (sat 8-20) is not touched here.
-          if (dist < WIDE_TOLERANCE && sat < 8 && !isSparkleStone(nx, Math.floor(n / w))) {
+          if (dist < WIDE_TOLERANCE && sat < 8 && !isSparkleStone(nx, Math.floor(n / w)) && !isSharpEdge(nx, Math.floor(n / w))) {
             visited[n] = 1;
             queue2.push(n);
           }
@@ -7273,7 +7317,18 @@ async function jewelryCutout(imageUrl, typeLabel) {
     }
   } catch (e) { console.warn('[Cutout] remove.bg failed:', e.message); }
 
-  // c) original at 0.85 (last resort)
+  // c) SHARED canvas BFS remover (edge-connected, gradient-aware, stone-protected).
+  //    This is the universal fallback for EVERY jewelry type — same code, same params.
+  try {
+    const url = await removePendantBackgroundCanvas(imageUrl);
+    if (url && url !== imageUrl) {
+      const innerT = await _isCenterTransparent(url).catch(() => false);
+      console.log('[Cutout] type:', typeLabel, '| method:', 'canvas-bfs', '| inner transparent:', innerT);
+      return { url: url, method: 'canvas-bfs', innerTransparent: innerT };
+    }
+  } catch (e) { console.warn('[Cutout] canvas remover failed:', e.message); }
+
+  // d) original at 0.85 (last resort)
   console.log('[Cutout] type:', typeLabel, '| method:', 'original-0.85', '| inner transparent:', false);
   return { url: null, method: 'original-0.85', innerTransparent: false };
 }
