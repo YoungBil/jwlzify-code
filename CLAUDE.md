@@ -192,7 +192,23 @@ Two entry points that largely duplicate each other (Issues #6):
 4. **Refine (img2img)** — post-gen UI sets `window._postGenMode`; "Refine This" passes
    `lastGeneratedImage` (base64 of the last render) as `initImage` → Flux edit
    endpoint (or SDXL img2img at the HF fallback). "Start Fresh" is a new txt2img.
-5. Generation results set `LAB.imageUrl`, clear `bgRemovalCache`, update refine/quote/
+5. **Vision verification** (2026-07-05, search `VISION-VERIFIED GENERATION` ~after
+   `_generateImage`): `_generateVerified()` wraps generation for exact-count types —
+   ring (head-on angle only; hero/profile skip count checks since stones occlude at
+   angle), earrings (per-earring count — one earring is rendered), pendant (1 stone).
+   Each attempt is downscaled to a 512px JPEG and POSTed to the **vision-verify
+   worker** (`https://vision-verify.sarkd333.workers.dev`, source
+   `vision-verify-worker.js`, Groq Llama-4-Scout vision, `GROQ_API_KEY` secret) which
+   returns `{jewelryType, form, stoneCount}` — the expectation is never shown to the
+   model. Mismatch → regenerate (≤3 attempts total) → serve the lowest-score closest
+   match, no user-facing error. **Fails open**: any worker failure accepts the image
+   unverified, so verification can never block generation. Kill switch:
+   `VERIFY_GEN_ENABLED`. Necklace/bracelet are never count-verified (coverage-priced).
+6. **Exact counts are only promised for 1–7 stones** (ring flow max is 7; earrings max
+   4/ear by mm). Bracelet and necklace-full layouts are SOLD by total carat coverage —
+   UI copy and the quote present coverage ct, not counts (internal count math still
+   feeds pricing, unchanged); necklace stations display as approximate (`≈N`).
+7. Generation results set `LAB.imageUrl`, clear `bgRemovalCache`, update refine/quote/
    order images, then `showRefineStep()` + `showPostGenUI()`. `generationId` is a
    token that discards superseded results.
 
@@ -294,6 +310,15 @@ hardcoded USD/g fallbacks (silver 0.97, 10k 44.24, 14k 61.86); refreshed hourly 
 tab-refocus after 15 min. Metal grams and carats come from `jwlSpecifications`
 (derived per type — see spec flows). `MATERIAL_WEIGHTS` provides per-type default
 grams/carats only when specs are absent.
+
+The quote step renders an **itemized spec sheet** (`displayPricing` → `#priceRows` +
+`_quoteStoneLine`): Metal (type · grams, $metalCost), Stones (count × ct × type for
+exact types; coverage ct for bracelet/necklace-full; ≈stations for necklace stations,
+$stoneCost), and "Labour & craftsmanship" (= labourCost + profitCost, so the three
+lines sum exactly to the total — the margin is folded into that line by design, a
+deliberate judgment call). A contract line states the piece is crafted to these
+specifications and the image is an artist's visualization — the spec sheet, not the
+image, defines the order.
 
 ## Known gotchas & model limits (not bugs)
 

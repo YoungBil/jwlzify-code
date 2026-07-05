@@ -733,7 +733,7 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
           <button class="spec-toggle bracelet-pill bracelet-layout-btn" data-layout="everyOther" onclick="setBraceletStoneLayout(this,'everyOther')">Every Other <span style="font-size:10px;font-weight:400;color:#9ca3af;margin-left:3px;">every 2nd position</span></button>
           <button class="spec-toggle bracelet-pill bracelet-layout-btn" data-layout="everyFourth" onclick="setBraceletStoneLayout(this,'everyFourth')">Every Fourth <span style="font-size:10px;font-weight:400;color:#9ca3af;margin-left:3px;">every 4th position</span></button>
         </div>
-        <p style="font-family:Inter,sans-serif;font-size:11px;color:#9ca3af;margin:10px 0 0;">Stone count is calculated from your length, stone size, and layout — shown on the quote step.</p>
+        <p style="font-family:Inter,sans-serif;font-size:11px;color:#9ca3af;margin:10px 0 0;">Bracelets are priced by total carat coverage — calculated from your length, stone size, and layout, and shown on the quote step.</p>
       </div>
     </div>
 
@@ -782,11 +782,11 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
       <!-- STEP B — Number of stones (appears after a total is entered) -->
       <div class="mb-8" id="ringStepB" style="display:none;">
         <label class="label block mb-3" style="font-size:10px;letter-spacing:0.18em;color:#3c6474;">Number of Stones</label>
-        <input id="ringStoneCountInput" type="number" min="1" max="20" step="1" placeholder="e.g. 3"
+        <input id="ringStoneCountInput" type="number" min="1" max="7" step="1" placeholder="e.g. 3"
           style="width:100%;max-width:320px;font-family:Inter,sans-serif;font-size:14px;padding:10px 14px;border:1.5px solid rgba(193,199,203,0.5);border-radius:10px;outline:none;color:#1b1c1c;box-sizing:border-box;transition:border-color 0.2s;"
           oninput="setRingStoneCount(this.value)"
           onfocus="this.style.borderColor='#3c6474'" onblur="this.style.borderColor='rgba(193,199,203,0.5)'">
-        <p style="font-family:Inter,sans-serif;font-size:11px;color:#9ca3af;margin:6px 0 0;">How many individual stones (1–20). You'll size each one next.</p>
+        <p style="font-family:Inter,sans-serif;font-size:11px;color:#9ca3af;margin:6px 0 0;">How many individual stones (1–7). You'll size each one next. Each stone is an exact, individually-priced part of your order.</p>
       </div>
 
       <!-- Single-stone shortcut (count = 1): no per-stone size/carat — the one stone's carat IS the total -->
@@ -1446,10 +1446,10 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
           <!-- Price rows -->
           <div id="priceRows"></div>
 
-          <!-- Bracelet: deterministic math stone count (display-only) -->
+          <!-- Bracelet: total carat coverage (display-only; count stays internal math) -->
           <div id="braceletStoneCountPanel" style="display:none;margin:14px 0;padding:14px 16px;background:rgba(201,168,76,0.08);border:1px solid rgba(201,168,76,0.35);border-radius:12px;">
-            <p style="font-family:Inter,sans-serif;font-size:14px;font-weight:600;color:#1b1c1c;margin:0;">Stones in your design: <span id="braceletCountValue" style="color:#3c6474;">—</span></p>
-            <p id="braceletCountSubtext" style="font-family:Inter,sans-serif;font-size:12px;color:#71787c;line-height:1.4;margin:6px 0 0;">Calculated from your length, stone size, and layout.</p>
+            <p style="font-family:Inter,sans-serif;font-size:14px;font-weight:600;color:#1b1c1c;margin:0;">Total stone coverage: <span id="braceletCountValue" style="color:#3c6474;">—</span></p>
+            <p id="braceletCountSubtext" style="font-family:Inter,sans-serif;font-size:12px;color:#71787c;line-height:1.4;margin:6px 0 0;">Priced by total carat coverage — calculated from your length, stone size, and layout.</p>
           </div>
 
           <!-- Total -->
@@ -2254,6 +2254,137 @@ async function _generateImage(prompt, negativePrompt, initImage, hfOverrides) {
   }
 }
 
+/* ══════════════════════════════════════════════════════════════════════
+   VISION-VERIFIED GENERATION
+   After a generation lands, the image is checked against the paid spec by
+   the vision-verify worker (Groq vision): stone count (exact-count types
+   only) + gross form/type check. On a miss we regenerate up to 2 more
+   times and serve the closest match — never an error to the user. The
+   verifier FAILS OPEN: if the worker is down/undeployed, images are
+   accepted unverified so generation can never be blocked by verification.
+   Exact counts are only promised (and verified) for 1–7 stones; coverage-
+   priced layouts (bracelet, necklace full/pavé) are never count-verified.
+═══════════════════════════════════════════════════════════════════════ */
+const VERIFY_WORKER_URL = 'https://vision-verify.sarkd333.workers.dev';
+const VERIFY_GEN_ENABLED = true;   // kill switch — false restores pre-verify behaviour
+
+// Downscale a generated image to a small JPEG data URL for the vision check
+// (fast upload, well within the worker's size cap).
+async function _verifyDownscale(url, maxDim) {
+  return await new Promise((resolve, reject) => {
+    const img = new Image();
+    if (!url.startsWith('blob:') && !url.startsWith('data:')) img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      try {
+        const sc = Math.min(1, (maxDim || 512) / Math.max(img.naturalWidth, img.naturalHeight));
+        const c  = document.createElement('canvas');
+        c.width  = Math.max(1, Math.round(img.naturalWidth  * sc));
+        c.height = Math.max(1, Math.round(img.naturalHeight * sc));
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        resolve(c.toDataURL('image/jpeg', 0.85));
+      } catch (e) { reject(e); }
+    };
+    img.onerror = () => reject(new Error('verify: image load failed'));
+    img.src = url;
+  });
+}
+
+// What the current spec promises, for types where it is verifiable. Returns null
+// for types whose counts are emergent/coverage-priced (necklace, bracelet) — those
+// pass through unverified by design.
+function _buildVerifyExpectation() {
+  if (!VERIFY_GEN_ENABLED) return null;
+  const t = (typeof LAB !== 'undefined' && LAB.type) || '';
+  const s = window.jwlSpecifications || {};
+  if (t === 'ring') {
+    const n = _authoritativeStoneCount();
+    return { type: 'ring', stones: (n >= 1 && n <= 7) ? n : null };
+  }
+  if (t === 'earrings') {
+    // The image renders ONE earring — verify the per-earring count.
+    const n = s.perEarringCount || 1;
+    return { type: 'earrings', stones: (n >= 1 && n <= 7) ? n : null, form: s.earringForm || 'stud' };
+  }
+  if (t === 'pendant') return { type: 'pendant', stones: 1 };
+  return null;
+}
+
+// Loose type matching — a gross-form check, not a taxonomy exam.
+function _verifyTypeOk(expectedType, seenType) {
+  const s = String(seenType || '').toLowerCase();
+  if (!s || s === 'other') return true;   // model unsure — don't fail on it
+  if (expectedType === 'earrings') return s.includes('earring') || s.includes('stud') || s.includes('hoop');
+  if (expectedType === 'pendant')  return s.includes('pendant') || s.includes('charm') || s.includes('necklace');
+  return s.includes(expectedType.replace(/s$/, ''));
+}
+
+// One verification round-trip. Returns { pass, score, seen, unverified } — lower
+// score = closer match. Any failure (network, worker down, timeout) fails OPEN.
+async function _verifyImage(blobUrl, expected) {
+  try {
+    const dataUrl = await _verifyDownscale(blobUrl, 512);
+    const ctrl  = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 20000);
+    let res;
+    try {
+      res = await fetch(VERIFY_WORKER_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: dataUrl, expected: expected }),
+        signal: ctrl.signal,
+      });
+    } finally { clearTimeout(timer); }
+    if (!res.ok) throw new Error('verify HTTP ' + res.status);
+    const seen = await res.json();
+    const typeOk = _verifyTypeOk(expected.type, seen.jewelryType);
+    const formOk = !expected.form || !seen.form || seen.form === expected.form;
+    const countKnown = expected.stones != null && typeof seen.stoneCount === 'number';
+    const countOk = !countKnown || seen.stoneCount === expected.stones;
+    const score = (typeOk ? 0 : 100) + (formOk ? 0 : 25)
+                + (countKnown ? Math.abs(seen.stoneCount - expected.stones) * 10 : 0);
+    return { pass: typeOk && formOk && countOk, score: score, seen: seen, unverified: false };
+  } catch (e) {
+    console.warn('[Verify] unavailable — accepting image unverified:', e && e.message);
+    return { pass: true, score: 0, seen: null, unverified: true };
+  }
+}
+
+// Drop-in replacement for _generateImage at the flow level: generate → verify →
+// (regenerate up to maxAttempts−1 more times) → serve the best match. No error
+// spam: a full miss just serves the closest attempt with a console note.
+async function _generateVerified(prompt, negativePrompt, initImage, hfOverrides, expected, maxAttempts) {
+  if (!expected) return _generateImage(prompt, negativePrompt, initImage, hfOverrides);
+  const tries = Math.max(1, maxAttempts || 3);
+  const genText = document.getElementById('genText');
+  let best = null;
+  for (let i = 0; i < tries; i++) {
+    const url = await _generateImage(prompt, negativePrompt, initImage, hfOverrides);
+    if (!url) continue;
+    if (genText) genText.textContent = 'Verifying your design…';
+    const v = await _verifyImage(url, expected);
+    console.log('[Verify] attempt', (i + 1) + '/' + tries,
+                '| expected:', JSON.stringify(expected),
+                '| seen:', JSON.stringify(v.seen || {}),
+                '| pass:', v.pass, v.unverified ? '(unverified — worker unavailable)' : '');
+    if (v.pass) {
+      if (best && best.url !== url) URL.revokeObjectURL(best.url);
+      return url;
+    }
+    if (!best || v.score < best.score) {
+      if (best) URL.revokeObjectURL(best.url);
+      best = { url: url, score: v.score };
+    } else {
+      URL.revokeObjectURL(url);
+    }
+    if (i < tries - 1 && genText) genText.textContent = 'Refining accuracy…';
+  }
+  if (best) {
+    console.log('[Verify] no attempt fully matched — serving the closest (score ' + best.score + ')');
+    return best.url;
+  }
+  return null;
+}
+
 /* ── Rate-limit / queue state ── */
 let isGenerating  = false;
 window._lastIsTweak = false;   // exposed for the Retry button onclick
@@ -3026,7 +3157,8 @@ function setRingTotalCt(val) {
 function setRingStoneCount(val) {
   let n = parseInt(val);
   if (isNaN(n)) n = 0;
-  n = Math.max(0, Math.min(20, n));
+  // Exact stone counts are only promised (and vision-verified) up to 7.
+  n = Math.max(0, Math.min(7, n));
   const stepC = document.getElementById('ringStepC');
   const note  = document.getElementById('ringSingleStoneNote');
   console.log('[Ring] stones:', n, '| single-stone shortcut:', n === 1);
@@ -3396,10 +3528,16 @@ function _renderBraceletCountPanel() {
   if (!panel) return;
   if (LAB.type !== 'bracelet') { panel.style.display = 'none'; return; }
   panel.style.display = 'block';
-  if (valueEl) valueEl.textContent = _braceletStoneCount();
+  // Bracelets are SOLD by total carat coverage; the deterministic setting count is
+  // internal math that feeds pricing, shown only as context.
+  const count = _braceletStoneCount();
+  const per   = parseFloat(userSelections.perStoneCarat) || 0.10;
+  if (valueEl) valueEl.textContent = (count * per).toFixed(2) + ' ct';
   if (subtextEl) {
     const layoutLabel = _braceletLayoutLabel(userSelections.stoneLayout || 'full');
-    subtextEl.textContent = 'Calculated from your length, stone size, and ' + layoutLabel + ' layout.';
+    subtextEl.textContent = 'Priced by total carat coverage — ' + per + 'ct stones in a '
+      + layoutLabel + ' layout across your ' + (parseFloat(userSelections.braceletLengthIn) || 7)
+      + '" bracelet.';
   }
 }
 
@@ -4647,7 +4785,7 @@ async function startGeneration(isTweak) {
     return;
   }
 
-  _enqueueGen(() => _generateImage(fullPrompt, negativePrompt, initImage, _hfOverrides)).then((blobUrl) => {
+  _enqueueGen(() => _generateVerified(fullPrompt, negativePrompt, initImage, _hfOverrides, _buildVerifyExpectation())).then((blobUrl) => {
     console.log('[JWLZIFY] setting image src to:', blobUrl?.slice(0, 50));
     if (!blobUrl) {
       if (thisGen !== generationId) return;
@@ -4849,7 +4987,7 @@ async function confirmAndGenerate() {
     return;
   }
 
-  _enqueueGen(() => _generateImage(fullPrompt, negativePrompt, null, _hfOverridesC)).then(blobUrl => {
+  _enqueueGen(() => _generateVerified(fullPrompt, negativePrompt, null, _hfOverridesC, _buildVerifyExpectation())).then(blobUrl => {
     if (!blobUrl) {
       if (thisGen !== generationId) return;
       setGenLoading(false);
@@ -4985,6 +5123,14 @@ function _genRingAngle(core, shared, angle) {
   console.log('[Ring] positive prompt:', positivePrompt);
   console.log('[Ring] negative prompt:', negativePrompt);
 
+  // Head-on (index 0) is the anchor the try-on + quote use — it gets the full
+  // vision-verify loop (count + form, up to 3 attempts, best-match fallback).
+  // Hero/profile angles skip count verification: stones legitimately occlude
+  // each other at those camera angles, so a count check would false-fail.
+  if (isHeadOn) {
+    const _vx = _buildVerifyExpectation();
+    return _enqueueGen(() => _generateVerified(positivePrompt, negativePrompt, null, hfOverride, _vx, 3)).catch(() => null);
+  }
   return _enqueueGen(() => _generateImage(positivePrompt, negativePrompt, null, hfOverride)).catch(() => null);
 }
 
@@ -5722,8 +5868,10 @@ function updateSpecCostEstimate() {
     const elB     = document.getElementById('specCostEstimate');
     const detailB = document.getElementById('specCostDetail');
     if (elB) elB.textContent = totalB > 0 ? '$' + totalB.toFixed(2) + ' USD' : '—';
-    if (detailB) detailB.textContent = (s.metalGrams || 0).toFixed(1) + 'g metal · ~' + count
-      + ' stones × ' + per + 'ct (' + (count * per).toFixed(2) + 'ct total, est.)';
+    // Coverage framing: bracelets are sold by total carat coverage, not stone count.
+    if (detailB) detailB.textContent = (s.metalGrams || 0).toFixed(1) + 'g metal · '
+      + (count * per).toFixed(2) + 'ct total coverage (' + per + 'ct stones, '
+      + _braceletLayoutLabel(userSelections.stoneLayout || 'full') + ' layout)';
     return;
   }
 
@@ -5740,6 +5888,18 @@ function updateSpecCostEstimate() {
   const detail = document.getElementById('specCostDetail');
   if (el) el.textContent = total > 0 ? '$' + total.toFixed(2) + ' USD' : '—';
   if (detail) {
+    // Necklace coverage framing: full/tennis layouts are SOLD by total carat
+    // coverage (never a stone count); stations show an approximate station count.
+    if (LAB.type === 'necklace' && selectedNecklacePlacement === 'full') {
+      detail.textContent = effGrams + 'g metal · ' + s.totalCarats + 'ct total coverage (continuous, '
+        + selectedNecklaceCt + 'ct stones)';
+      return;
+    }
+    if (LAB.type === 'necklace' && selectedNecklacePlacement === 'stations') {
+      detail.textContent = effGrams + 'g metal · ≈' + s.stoneCount + ' stations × '
+        + selectedNecklaceCt + 'ct = ' + s.totalCarats + 'ct total';
+      return;
+    }
     const cts = (s.stones || []).map(_ctOf); // tolerate numeric or { carat } stones
     const n = cts.length;
     // Collapse uniform stones (every stone the same ct) to "N × Xct" so a
@@ -5888,6 +6048,42 @@ function calcQuote() {
   return LAB.quote || { total: calculatePrice(LAB.material, LAB.gem, LAB.type).finalPrice };
 }
 
+// One-line stone description for the itemized quote sheet. Exact-count types
+// (ring / earrings / pendant, counts 1–7) state count × ct × type — the contract.
+// Coverage-priced layouts (bracelet, necklace full) state total carat coverage;
+// necklace stations are approximate by design (≈).
+function _quoteStoneLine(jewelryType, stoneType) {
+  const s     = window.jwlSpecifications || {};
+  const gem   = gemLabel(stoneType);
+  const shape = (s.stoneShape || userSelections.gemShape) ? ((s.stoneShape || userSelections.gemShape) + ' ') : '';
+  if (jewelryType === 'ring') {
+    const cts = (s.stones || []).map(_ctOf).filter(c => c != null && !isNaN(c));
+    const n   = cts.length || s.stoneCount || 1;
+    return n + ' × ' + shape + gem + ' (' + (cts.length ? cts.join('ct + ') + 'ct = ' : '')
+      + (s.totalCarats || 0) + 'ct total)';
+  }
+  if (jewelryType === 'earrings') {
+    return (s.totalStoneCount || 2) + ' × ' + shape + gem + ' ('
+      + (s.perStoneCt != null ? s.perStoneCt : '—') + 'ct each · pair total ' + (s.totalCarats || 0) + 'ct)';
+  }
+  if (jewelryType === 'pendant') {
+    return '1 × ' + (s.totalCarats || 0) + 'ct ' + gem;  // pendants have no shape selector
+  }
+  if (jewelryType === 'bracelet') {
+    return (s.totalCarats || 0) + 'ct total coverage · ' + gem + ' ('
+      + _braceletLayoutLabel(userSelections.stoneLayout || 'full') + ' layout)';
+  }
+  if (jewelryType === 'necklace') {
+    if (selectedNecklacePlacement === 'none') return 'None — polished chain';
+    if (selectedNecklacePlacement === 'full') {
+      return (s.totalCarats || 0) + 'ct total coverage · ' + gem + ' (continuous)';
+    }
+    return '≈' + (s.stoneCount || 0) + ' stations × ' + selectedNecklaceCt + 'ct ' + gem
+      + ' (' + (s.totalCarats || 0) + 'ct total)';
+  }
+  return (s.totalCarats || 0) + 'ct ' + gem;
+}
+
 async function displayPricing(metalType, stoneType, jewelryType, overrideCarats) {
   if (!spotPrices.fetchedAt) await fetchSpotPrices();
 
@@ -5944,13 +6140,23 @@ async function displayPricing(metalType, stoneType, jewelryType, overrideCarats)
       + '</div>';
   }
 
+  // ── ITEMIZED SPEC SHEET — the order contract. Each line carries its dollar
+  // amount; Labour & craftsmanship = labour + design margin, so the three lines
+  // sum exactly to the total. The spec sheet, not the image, defines the order.
   document.getElementById('priceRows').innerHTML =
     '<div style="margin-bottom:14px;">'
-    + row('Metal',           matLabel(metalType))
-    + row('Metal Weight',    r.metalGrams.toFixed(1) + 'g')
-    + row('Gemstone',        gemLabel(stoneType))
-    + row('Gemstone Weight', r.stoneCarats.toFixed(2) + 'ct')
+    + '<p style="font-family:Inter,sans-serif;font-size:10px;letter-spacing:0.16em;color:#3c6474;margin:0 0 8px;">ITEMIZED SPECIFICATION</p>'
+    + row('Metal — ' + matLabel(metalType) + ' · ' + r.metalGrams.toFixed(1) + 'g',
+          '$' + r.metalCost.toFixed(2))
+    + row('Stones — ' + _quoteStoneLine(jewelryType, stoneType),
+          '$' + r.stoneCost.toFixed(2))
+    + row('Labour &amp; craftsmanship',
+          '$' + (r.labourCost + r.profitCost).toFixed(2))
     + '</div>'
+    + '<p style="font-family:Inter,sans-serif;font-size:11px;line-height:1.55;color:#8a9299;margin:6px 0 0;">'
+    + 'This specification sheet defines your order. Your piece is crafted to these exact '
+    + 'specifications; the image is an artist\'s visualization.'
+    + '</p>'
     + '<div id="priceTimestamp" style="font-family:Inter,sans-serif;font-size:10px;color:rgba(65,72,75,0.45);text-align:right;margin-top:10px;letter-spacing:0.06em;"></div>';
 
   document.getElementById('quoteTotal').textContent = '$' + r.finalPrice.toFixed(2) + ' USD';
