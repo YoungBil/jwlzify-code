@@ -1,5 +1,6 @@
 // flux-image Cloudflare Worker — text-to-image + image-to-image via fal.ai.
-// SECONDARY generator (Gemini-first, Flux fallback) + the img2img refine path.
+// SOLE image generator for the live app (ailab.html): txt2img + the img2img refine
+// path. (Gemini and HuggingFace/SDXL were removed from generation — Flux only.)
 //
 // Deploy (Cloudflare dashboard ONLY — never Wrangler CLI):
 //   Worker name: flux-image  →  https://flux-image.sarkd333.workers.dev

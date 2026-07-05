@@ -1847,7 +1847,7 @@ const RING_3D_CONFIG = {
   ROUGHNESS: 0.12,
 };
 
-/* ── Gemini image generation ── */
+/* ── Image generation (Flux 2 Pro — sole generator, no fallback) ── */
 
 /* ── Chain style selection for necklace type ── */
 let selectedChainStyle      = null;
@@ -2031,15 +2031,39 @@ function _buildHfJewelryDesc(type, material, gem, style, desc) {
 const _HF_RING_NEGATIVE      = 'tilted, angled, three-quarter view, 3/4 view, perspective, side view, side angle, top-down, birds eye, isometric, diagonal, rotated, lying flat, flat lay, on its side, leaning, oblique, dutch angle, foreshortening, multiple rings, collage, grid, two rings, group of rings, blurry, deformed, asymmetrical';
 const _HF_BRACELET_NEGATIVE  = 'flat lay, laid flat, spread out, scattered, disconnected pieces, broken chain, straight strip, unclasped, open ends, multiple bracelets, two bracelets, collage, grid, tangled, deformed, asymmetrical, lying on surface, top-down, birds eye, side view, coiled, stacked, two bracelets, double band, two bands, stacked bracelets, pair of bracelets, multiple loops, double loop, two rings, twin bands, layered bracelets, second bracelet, duplicate';
 const _HF_NECKLACE_NEGATIVE  = 'flat lay, tabletop, top-down view, coiled chain, chain laid flat, jewelry box, angled perspective, asymmetrical drape, cropped chain, multiple necklaces, hands, neck skin, mannequin face, busy background, blurry, deformed, pendant, charm, hanging pendant, locket, dangling ornament, focal centerpiece, center stone hanging from chain, drop pendant, extra pendant, multiple chains, two necklaces, double chain, several chains, duplicate necklace, tangled chains, center stone, centre stone, focal stone, solitaire, central gemstone, large center gem, neck, bust, body, person, skin';
-// Single-band enforcement — bracelet only. Appended to BOTH Gemini and HF positive prompts.
+// Single-band enforcement — bracelet only. Appended to the bracelet positive prompt.
 const _BRACELET_SINGLE_BAND   = 'ONE single bracelet band only. A single continuous loop. One unbroken band. Exactly one bracelet, not two, not a pair, not stacked, not double-banded. A single solitary bracelet shown as one closed oval loop facing the camera.';
 // Head-on band negative for bracelet (front-facing horizontal loop; no body parts, no side/tilt).
 const _HF_BRACELET_WRAP_NEG   = 'laid flat, flat lay, straight strip, side view, angled, tilted, angled down, slanted, diagonal, leaning, rotated, dutch angle, two bracelets, double band, multiple bracelets, person, hand, wrist, skin, collage, grid, deformed';
-// Gemini-only extra instruction folded into the bracelet prompt.
-const _GEMINI_BRACELET_SINGLE = 'Generate exactly ONE single bracelet band. Do not show two bands, a double band, stacked bracelets, or a pair. One single continuous loop only.';
-// Flux 2 Pro worker — primary txt2img generator (swap model by updating flux-image-worker.js FAL_MODEL)
+// Extra single-band instruction folded into the bracelet prompt.
+const _BRACELET_SINGLE_INSTRUCTION = 'Generate exactly ONE single bracelet band. Do not show two bands, a double band, stacked bracelets, or a pair. One single continuous loop only.';
+// Flux 2 Pro worker — the SOLE txt2img + img2img generator (swap model by updating flux-image-worker.js FAL_MODEL)
 const FLUX_WORKER_URL = 'https://flux-image.sarkd333.workers.dev';
 const FAL_BG_REMOVE_URL = 'https://fal-bg-remove.sarkd333.workers.dev'; // fal birefnet matting worker (returns JSON with image.url)
+
+/* ── Gemini → Flux switch audit (Steps 1 & 3) ───────────────────────────────
+   Audit of every Gemini use found in the codebase and its purpose, plus the
+   switch summary. Gemini was used ONLY for image generation, so it was removed
+   entirely from the image path; no non-image feature relied on it. */
+(function _logGeminiSwitchAudit() {
+  const locationsAndPurposes = [
+    { location: 'ailab.html → _generateImage()', purpose: 'IMAGE GEN — Gemini was the PRIMARY generator (gemini-image worker) with Flux secondary + HuggingFace/SDXL tertiary fallback', action: 'removed — Flux is now the sole generator, no fallback' },
+    { location: 'ailab.html → _GEMINI_BRACELET_SINGLE constant + prompt log labels + section/angle comments', purpose: 'naming & log strings only (no Gemini call)', action: 'renamed to _BRACELET_SINGLE_INSTRUCTION / relabelled to Flux' },
+    { location: 'gemini-image-worker.js', purpose: 'IMAGE GEN — Cloudflare Worker source for the (now unused) gemini-image endpoint', action: 'deleted — nothing calls it anymore' },
+    { location: 'flux-image-worker.js + generate-collection-images.js (header comments)', purpose: 'comments only — neither calls Gemini', action: 'comments corrected to reflect Flux-only live path' },
+  ];
+  // Non-image AI features audited and confirmed NOT Gemini-powered (left untouched):
+  const nonImageAiFeatures = [
+    { feature: 'AI Prompt Enhancement (step 1)', poweredBy: 'groq-enhance Cloudflare worker (Groq) — NOT Gemini' },
+    { feature: 'AI Design Analyst suggestions (step 3)', poweredBy: 'static canned SDATA strings — not AI at all, NOT Gemini' },
+    { feature: 'Generation vision-verify', poweredBy: 'vision-verify worker (Groq Llama-4-Scout) — NOT Gemini' },
+    { feature: 'AI spec card (fetchSpecCard)', poweredBy: 'Anthropic Claude, currently disabled (empty key) — NOT Gemini' },
+  ];
+  const flaggedUses = []; // no non-image feature uses Gemini → nothing to flag for separate decision
+  console.log('[Audit] Gemini used in:', locationsAndPurposes);
+  console.log('[Audit] Non-image AI features (NOT Gemini, untouched):', nonImageAiFeatures);
+  console.log('[Switch] Flux sole generator; Gemini removed from image gen; other Gemini uses flagged:', flaggedUses);
+})();
 
 /* ── Universal spec-accuracy + natural-placement safeguards ──────────────────
    Applied to EVERY jewelry type's final prompt at the single generation choke
@@ -2103,9 +2127,8 @@ async function _generateImage(prompt, negativePrompt, initImage, hfOverrides) {
   hfOverrides = hfOverrides || {};
 
   // ── Reinforce specs + natural stone placement on the FINAL prompt (all types) ──
-  // Strengthens both the Gemini prompt and the Flux/HF inputs identically; the spec
-  // selectors stay the source of truth (typed quantities are already stripped
-  // upstream in buildPrompt / _buildHfJewelryDesc).
+  // Strengthens the Flux input; the spec selectors stay the source of truth (typed
+  // quantities are already stripped upstream in buildPrompt / _buildHfJewelryDesc).
   const _sg = _buildPromptSafeguards();
   prompt = _applyPromptSafeguards(prompt, _sg);
   if (hfOverrides.inputs) hfOverrides.inputs = _applyPromptSafeguards(hfOverrides.inputs, _sg);
@@ -2122,61 +2145,16 @@ async function _generateImage(prompt, negativePrompt, initImage, hfOverrides) {
   console.log('[Gen] specs enforced — metal:', _sg.metal, '| stone:', _sg.stoneType, '| count:', _sg.count,
               '| size:', _sg.size, '| shape:', _sg.shape, '| style:', _sg.style);
 
-  // PRIMARY: Gemini via Cloudflare Worker
-  try {
-    console.log('[JWLZIFY] calling Gemini worker...');
-    const res = await fetch(
-      'https://gemini-image.sarkd333.workers.dev/',
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: prompt + (negativePrompt ? ' Avoid: ' + negativePrompt : ''), negativePrompt: negativePrompt || '' })
-      }
-    );
-
-    if (res.status === 429) {
-      const errBody = await res.text().catch(() => '(unreadable)');
-      console.error('[JWLZIFY] Gemini rate limited (HTTP 429) | body:', errBody);
-      throw new Error('rate_limited');
-    }
-    if (!res.ok) {
-      const errBody = await res.text().catch(() => '(unreadable)');
-      console.error('[JWLZIFY] Gemini worker HTTP error | status=' + res.status + ' | body:', errBody);
-      throw new Error('Gemini worker ' + res.status);
-    }
-
-    const data = await res.json();
-
-    if (data.error === 'rate_limited') {
-      console.error('[JWLZIFY] Gemini rate_limited in JSON | full response:', JSON.stringify(data));
-      throw new Error('rate_limited');
-    }
-    if (data.error) {
-      console.error('[JWLZIFY] Gemini error in JSON | full response:', JSON.stringify(data));
-      throw new Error(data.error);
-    }
-
-    if (!data.imageData) {
-      console.error('[JWLZIFY] Gemini no imageData in response | keys:', Object.keys(data).join(', '));
-      throw new Error('No image data');
-    }
-
-    const bytes = atob(data.imageData);
-    const arr = new Uint8Array(bytes.length);
-    for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
-    const blob = new Blob([arr], { type: data.mimeType || 'image/png' });
-    console.log('[JWLZIFY] Gemini SUCCESS | method=gemini | blob size=' + blob.size + ' bytes | mimeType=' + (data.mimeType || 'image/png'));
-    return URL.createObjectURL(blob);
-
-  } catch(e) {
-    console.warn('[JWLZIFY] Gemini failed, trying Flux fallback:', e.message);
-  }
-
-  // SECONDARY: Flux 2 Pro — txt2img (no initImage) or img2img edit (initImage present)
+  // SOLE GENERATOR: Flux 2 Pro (fal-ai/flux-2-pro) via the flux-image worker.
+  // txt2img (no initImage) or img2img edit (initImage present). NO fallback — if
+  // Flux fails we return null and the caller shows a clean, user-facing
+  // "Generation temporarily unavailable — please try again" error for the user to
+  // retry. (Gemini + HuggingFace/SDXL were removed: Flux is now the only image
+  // generator — no Gemini-first attempt, so generation is faster too.)
   try {
     const _fluxMode = initImage ? 'refine' : 'generate';
-    console.log('[JWLZIFY] calling Flux worker | mode=' + _fluxMode + '...');
-    const _fluxBody = { prompt: hfOverrides.inputs || prompt, image_size: 'portrait_4_3' };
+    console.log('[JWLZIFY] calling Flux worker (sole generator) | mode=' + _fluxMode + '...');
+    const _fluxBody = { prompt: finalPrompt, image_size: 'portrait_4_3' };
     if (initImage) _fluxBody.initImage = initImage;
     const _fluxRes = await fetch(FLUX_WORKER_URL, {
       method: 'POST',
@@ -2187,65 +2165,11 @@ async function _generateImage(prompt, negativePrompt, initImage, hfOverrides) {
     if (!_fluxRes.ok) throw new Error('Flux HTTP ' + _fluxRes.status);
     const _fluxBlob = await _fluxRes.blob();
     if (_fluxBlob.size < 5000) throw new Error('Flux blob too small (' + _fluxBlob.size + ' bytes)');
-    console.log('[JWLZIFY] ' + (initImage ? 'refined via Flux' : 'generated via Flux') + ' | blob size=' + _fluxBlob.size + ' bytes');
+    console.log('[JWLZIFY] ' + (initImage ? 'refined via Flux' : 'generated via Flux') + ' | method=flux | blob size=' + _fluxBlob.size + ' bytes');
     return URL.createObjectURL(_fluxBlob);
   } catch(e) {
-    console.warn('[JWLZIFY] ' + (initImage ? 'Flux refine failed, fell back to SDXL: ' : 'Flux failed, fell back to SDXL: ') + e.message);
-  }
-
-  // TERTIARY (or img2img): HuggingFace SDXL via Cloudflare Worker
-  try {
-    console.log('[JWLZIFY] calling HF worker...');
-    const hfRes = await fetch(
-      'https://hf-image.sarkd333.workers.dev/',
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(Object.assign(
-          {
-            inputs:              hfOverrides.inputs              || prompt,
-            negative_prompt:     hfOverrides.negative_prompt !== undefined ? hfOverrides.negative_prompt : (negativePrompt || ''),
-            guidance_scale:      hfOverrides.guidance_scale      || 7.5,
-            num_inference_steps: hfOverrides.num_inference_steps || 30,
-          },
-          initImage ? { initImage } : {}
-        ))
-      }
-    );
-    console.log('[JWLZIFY] HF worker response | method=huggingface | status=' + hfRes.status);
-    if (!hfRes.ok) throw new Error('HF HTTP ' + hfRes.status);
-    const blob = await hfRes.blob();
-    console.log('[JWLZIFY] HF blob received | size=' + blob.size + ' bytes | type=' + blob.type);
-    if (blob.size === 0) throw new Error('HF returned 0 bytes');
-    if (blob.size < 5000) {
-      console.error('[JWLZIFY] HF blob too small (corrupt/blank) | size=' + blob.size + ' bytes — treating as failed');
-      return null;
-    }
-    console.log('[JWLZIFY] HuggingFace SUCCESS | method=huggingface | blob size=' + blob.size + ' bytes');
-    const _hfRawUrl = URL.createObjectURL(blob);
-    const _hfCropped = await new Promise(resolve => {
-      const _hfImg = new Image();
-      _hfImg.onload = () => {
-        const _hfC = document.createElement('canvas');
-        _hfC.width  = _hfImg.naturalWidth;
-        _hfC.height = Math.max(1, _hfImg.naturalHeight - 40);
-        _hfC.getContext('2d').drawImage(_hfImg, 0, 0);
-        URL.revokeObjectURL(_hfRawUrl);
-        _hfC.toBlob(b => {
-          console.log('[JWLZIFY] HF cropped blob | size=' + b.size + ' bytes');
-          resolve(URL.createObjectURL(b));
-        }, 'image/png');
-      };
-      _hfImg.onerror = () => {
-        console.error('[JWLZIFY] HF image failed to decode | blob was ' + blob.size + ' bytes');
-        URL.revokeObjectURL(_hfRawUrl);
-        resolve(null);
-      };
-      _hfImg.src = _hfRawUrl;
-    });
-    return _hfCropped;
-  } catch(e) {
-    console.error('[JWLZIFY] HF fallback failed | method=huggingface |', e.message);
+    // No fallback by design — surface the failure so the caller shows the retry UI.
+    console.error('[JWLZIFY] Flux generation failed (no fallback) |', e.message);
     return null;
   }
 }
@@ -4224,7 +4148,7 @@ function _buildPromptCore(type, material, gem, style, desc) {
     const _bStoneDesc = gDisp
       ? `a continuous line of evenly spaced ${_bTierWord} ${gDisp} stones running along the entire band, tennis bracelet style, each stone prong-set`
       : 'a plain polished band';
-    return `luxury ${style} bracelet${descPart}, ${mDisp}, ${_bLinkW}, ${_bStoneDesc}, isolated fine jewelry product photograph, pure white seamless studio background, no shadows, professional diffuse studio lighting, hyper realistic, 8K ultra high definition, sharp focus, precious metal gleam, gemstone sparkle and brilliance. ${_braceletShape} ${_BRACELET_SINGLE_BAND} ${_GEMINI_BRACELET_SINGLE} No humans. No person. No body parts. No hands. No wrist. No skin. No model. Product-only photography. The jewelry piece is the sole subject of the image.`;
+    return `luxury ${style} bracelet${descPart}, ${mDisp}, ${_bLinkW}, ${_bStoneDesc}, isolated fine jewelry product photograph, pure white seamless studio background, no shadows, professional diffuse studio lighting, hyper realistic, 8K ultra high definition, sharp focus, precious metal gleam, gemstone sparkle and brilliance. ${_braceletShape} ${_BRACELET_SINGLE_BAND} ${_BRACELET_SINGLE_INSTRUCTION} No humans. No person. No body parts. No hands. No wrist. No skin. No model. Product-only photography. The jewelry piece is the sole subject of the image.`;
   }
 
   if (type === 'ring') {
@@ -4729,10 +4653,10 @@ async function startGeneration(isTweak) {
     ri.style.filter = 'blur(14px) brightness(0.8)';
   }
 
-  // Queue the fetch — Gemini primary, HuggingFace fallback, queue respects GEN_MAX_CONCURRENT
+  // Queue the fetch — Flux is the sole generator (no fallback), queue respects GEN_MAX_CONCURRENT
   const initImage = (isTweak && window._postGenMode === 'refine') ? lastGeneratedImage : null;
 
-  // HF-specific keyword-stacked overrides (SDXL weights early tokens more heavily)
+  // Keyword-stacked prompt overrides fed to Flux as the final prompt (front-loaded keywords)
   let _hfOverrides = null;
   if (resolvedType === 'ring') {
     const _hfDesc  = _buildHfJewelryDesc('ring', LAB.material, LAB.gem, LAB.style, desc);
@@ -4740,14 +4664,14 @@ async function startGeneration(isTweak) {
     _hfOverrides = { inputs: _hfInput, negative_prompt: _HF_RING_NEGATIVE, guidance_scale: 9.0, num_inference_steps: 30 };
     console.log('[JWLZIFY] HF ring prompt:', _hfInput);
     console.log('[JWLZIFY] HF negative prompt:', _HF_RING_NEGATIVE);
-    console.log('[JWLZIFY] Gemini ring prompt:', fullPrompt);
+    console.log('[JWLZIFY] Flux ring prompt:', fullPrompt);
   } else if (resolvedType === 'bracelet') {
     const _hfDesc  = _buildHfJewelryDesc('bracelet', LAB.material, LAB.gem, LAB.style, desc);
     const _hfInput = `${_hfDesc}, single closed-loop bracelet viewed perfectly head-on, horizontal oval band facing the camera, front face pointing directly at the viewer, clear symmetrical loop, one single continuous band, isolated, plain white studio background, no person, no body parts, product photography, studio lighting, sharp focus, photorealistic, 8k. ${_BRACELET_SINGLE_BAND}`;
     _hfOverrides = { inputs: _hfInput, negative_prompt: _HF_BRACELET_WRAP_NEG, guidance_scale: 9.0, num_inference_steps: 30 };
     console.log('[JWLZIFY] bracelet single-band prompt (HF):', _hfInput);
     console.log('[JWLZIFY] bracelet negative:', _HF_BRACELET_NEGATIVE);
-    console.log('[JWLZIFY] Gemini bracelet prompt:', fullPrompt);
+    console.log('[JWLZIFY] Flux bracelet prompt:', fullPrompt);
   } else if (resolvedType === 'necklace') {
     const _hfDesc  = _buildHfJewelryDesc('necklace', LAB.material, LAB.gem, LAB.style, desc);
     const _hfPlacement = selectedNecklacePlacement === 'none'
@@ -4760,7 +4684,7 @@ async function startGeneration(isTweak) {
     _hfOverrides = { inputs: _hfInput, negative_prompt: _hfNegNecklace, guidance_scale: 9.0, num_inference_steps: 30 };
     console.log('[JWLZIFY] necklace prompt (HF):', _hfInput);
     console.log('[JWLZIFY] necklace negative:', _hfNegNecklace);
-    console.log('[JWLZIFY] Gemini necklace prompt:', fullPrompt);
+    console.log('[JWLZIFY] Flux necklace prompt:', fullPrompt);
   }
 
   console.log('[JWLZIFY] generation prompt:', fullPrompt);
@@ -4942,14 +4866,14 @@ async function confirmAndGenerate() {
     _hfOverridesC = { inputs: _hfInput, negative_prompt: _HF_RING_NEGATIVE, guidance_scale: 9.0, num_inference_steps: 30 };
     console.log('[JWLZIFY] HF ring prompt:', _hfInput);
     console.log('[JWLZIFY] HF negative prompt:', _HF_RING_NEGATIVE);
-    console.log('[JWLZIFY] Gemini ring prompt:', fullPrompt);
+    console.log('[JWLZIFY] Flux ring prompt:', fullPrompt);
   } else if (LAB.type === 'bracelet') {
     const _hfDesc  = _buildHfJewelryDesc('bracelet', LAB.material, LAB.gem, LAB.style || 'Modern', userIdea);
     const _hfInput = `${_hfDesc}, single closed-loop bracelet viewed perfectly head-on, horizontal oval band facing the camera, front face pointing directly at the viewer, clear symmetrical loop, one single continuous band, isolated, plain white studio background, no person, no body parts, product photography, studio lighting, sharp focus, photorealistic, 8k. ${_BRACELET_SINGLE_BAND}`;
     _hfOverridesC = { inputs: _hfInput, negative_prompt: _HF_BRACELET_WRAP_NEG, guidance_scale: 9.0, num_inference_steps: 30 };
     console.log('[JWLZIFY] bracelet single-band prompt (HF):', _hfInput);
     console.log('[JWLZIFY] bracelet negative:', _HF_BRACELET_NEGATIVE);
-    console.log('[JWLZIFY] Gemini bracelet prompt:', fullPrompt);
+    console.log('[JWLZIFY] Flux bracelet prompt:', fullPrompt);
   } else if (LAB.type === 'necklace') {
     const _hfDesc  = _buildHfJewelryDesc('necklace', LAB.material, LAB.gem, LAB.style || 'Modern', userIdea);
     const _hfPlacement = selectedNecklacePlacement === 'none'
@@ -4962,7 +4886,7 @@ async function confirmAndGenerate() {
     _hfOverridesC = { inputs: _hfInput, negative_prompt: _hfNegNecklaceC, guidance_scale: 9.0, num_inference_steps: 30 };
     console.log('[JWLZIFY] necklace prompt (HF):', _hfInput);
     console.log('[JWLZIFY] necklace negative:', _hfNegNecklaceC);
-    console.log('[JWLZIFY] Gemini necklace prompt:', fullPrompt);
+    console.log('[JWLZIFY] Flux necklace prompt:', fullPrompt);
   }
 
   console.log('[JWLZIFY] generation prompt:', fullPrompt);
@@ -5043,7 +4967,7 @@ const RING_GALLERY_HF_NEG = 'person, human, hand, fingers, body part, worn, mult
 
 /* ── RING exact-stone-count enforcement ──────────────────────────────
    The user's selected stone count (specs → _authoritativeStoneCount) is the
-   absolute, exact number. Flux/Gemini default to adding decorative extras
+   absolute, exact number. Flux tends to add decorative extras
    (pavé, halo, accents, side stones); these helpers push hard against that with
    explicit positive count language + an aggressive negative list. RING ONLY. */
 const _RING_NUM_WORDS = ['ZERO','ONE','TWO','THREE','FOUR','FIVE','SIX','SEVEN','EIGHT','NINE','TEN',
@@ -5085,7 +5009,7 @@ function _setRingLoadingMsg() {
   }
 }
 
-// Generate one angle (Gemini-first → Flux → HF fallback, via _generateImage). Returns blob URL or null.
+// Generate one angle via _generateImage (Flux only, no fallback). Returns blob URL or null.
 function _genRingAngle(core, shared, angle) {
   // Exact stone count is absolute — from the spec selectors (never typed text).
   const stoneCount    = _authoritativeStoneCount();
@@ -5330,7 +5254,7 @@ function _braceletLayoutNegative(layout) {
   return 'spaced diamonds, gaps between stones, station bracelet, plain metal sections, scattered stones, widely spaced, intermittent stones, bare metal between diamonds';
 }
 
-// Generate one bracelet angle (Gemini-first → Flux → HF). Layout positive FIRST,
+// Generate one bracelet angle via _generateImage (Flux only, no fallback). Layout positive FIRST,
 // design + view + constraints in the middle, restated layout reminder LAST.
 function _genBraceletAngle(designCore, layout, stoneCount, angle) {
   const layoutPos = _braceletLayoutPositive(layout, stoneCount);

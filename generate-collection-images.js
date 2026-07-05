@@ -8,9 +8,10 @@
  * (e.g. ring-01.jpg ... necklace-18.jpg)
  *
  * PIPELINE: HuggingFace / SDXL Cloudflare Worker ONLY (direct).
- *   We intentionally do NOT call Gemini here — Gemini's worker rate-limits
- *   the 90-image batch. The LIVE AI Lab (ailab.html) still uses Gemini-first;
- *   this batch script is the only place that goes HF-direct.
+ *   This one-time batch script generates the static collection gallery via the
+ *   SDXL worker directly (it is not part of the live app, and never called Gemini).
+ *   The LIVE AI Lab (ailab.html) now uses Flux as its SOLE generator; this batch
+ *   script is independent of that path and still goes HF-direct for the 90-image batch.
  *     SDXL worker -> https://hf-image.sarkd333.workers.dev/
  *   (API keys stay inside the Cloudflare worker — never embedded here.)
  *

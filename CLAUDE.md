@@ -27,9 +27,11 @@ Google Fonts, Firebase from gstatic CDN, Three.js via CDN importmap.
    a source file for EVERY worker, all with origin allowlisting + per-IP rate
    limiting, written to match the contracts the front end actually consumes. Until
    they are paste-deployed, the LIVE workers remain the old, unsecured versions —
-   and for `gemini-image` / `groq-enhance` (whose deployed code was never in the
-   repo) diff against the dashboard version before pasting (model names / prompts
-   may differ).
+   and for `groq-enhance` (whose deployed code was never in the repo) diff against
+   the dashboard version before pasting (model names / prompts may differ).
+   (`gemini-image` was removed from the app entirely — Flux is now the sole image
+   generator, no fallback — so its worker source is gone from the repo; the deployed
+   endpoint, if still live, is simply unused.)
 3. **Git flow:** `git add ...` → `git commit -m "update"` → `git push origin master`.
    Commit message is always `update`. No branches, no PRs.
 4. **Metal options are locked to exactly three:** internal codes `925silver`,
@@ -59,7 +61,7 @@ Google Fonts, Firebase from gstatic CDN, Three.js via CDN importmap.
 | `firestore-service.js` | `window.JWL.saveDesign/saveOrder/getDesigns/getOrders` → `users/{uid}/designs` and `users/{uid}/orders`. |
 | `mobile-nav.js` | Self-contained hamburger nav injected on every page. |
 | `about/support/shipping/returns/warranty/legal/orders/account/authenticity.html` | Static content pages sharing header/footer markup (copy-pasted per page, no shared component). |
-| `*-worker.js` + `*-wrangler.toml` | Cloudflare Worker sources (all 8, refreshed 2026-07-05 with origin+rate-limit security; see constraint #2). Deploy = dashboard paste only. |
+| `*-worker.js` + `*-wrangler.toml` | Cloudflare Worker sources (refreshed 2026-07-05 with origin+rate-limit security; see constraint #2). Deploy = dashboard paste only. (`gemini-image-worker.js` was deleted 2026-07-05 when Gemini was removed from image generation.) |
 | `specs/` | Implementation specs for post-window work (2026-07-05): `stone-compositing.md` (guaranteed exact counts via sprite overlay), `flux-kontext-refine.md` (instruction img2img refine), `stripe-checkout.md` (30% deposit checkout + order status pipeline). Written to be executable by a weaker model without re-discovering the codebase. |
 | `generate-collection-images.js` | One-time Node batch script that generated the 90 gallery images via the hf-image worker (skips existing; not part of the site). |
 | `test-img2img.js` | Ad-hoc Node smoke test for the hf-image worker (txt2img → img2img). Not part of the site. |
@@ -157,9 +159,9 @@ https://jwlzify.com` header if ever re-run. Endpoints as they appear in the code
 
 | Endpoint | Role | Contract (front-end view) |
 |---|---|---|
-| `https://gemini-image.sarkd333.workers.dev/` | **Primary** image generation (Gemini) | POST `{prompt, negativePrompt}` → JSON `{imageData: base64, mimeType}` or `{error}` / `rate_limited`. Source: `gemini-image-worker.js` (written 2026-07-05 from the observed contract — **diff against dashboard before pasting**; `GEMINI_API_KEY` secret, `GEMINI_MODEL` var). |
-| `https://flux-image.sarkd333.workers.dev` (`FLUX_WORKER_URL`) | **Secondary** txt2img + img2img refine via fal.ai `flux-2-pro` / `flux-2-pro/edit` | POST `{prompt, image_size, initImage?}` → raw image bytes. Source: `flux-image-worker.js` (`FAL_KEY` secret). |
-| `https://hf-image.sarkd333.workers.dev/` | **Tertiary** fallback. Despite the "hf" name it runs **Cloudflare Workers AI** SDXL (`@cf/stabilityai/stable-diffusion-xl-lightning`; img2img variant at strength 0.45) | POST `{inputs, negative_prompt, guidance_scale, num_inference_steps, initImage?}` → raw PNG. Front end crops the bottom 40px off HF results (watermark strip). Needs an `AI` Workers-AI binding. |
+| `https://flux-image.sarkd333.workers.dev` (`FLUX_WORKER_URL`) | **SOLE** image generator — txt2img + img2img refine via fal.ai `flux-2-pro` / `flux-2-pro/edit`. NO fallback: if it fails, `_generateImage` returns null and the caller shows "Generation temporarily unavailable — please try again". | POST `{prompt, image_size, initImage?}` → raw image bytes. Source: `flux-image-worker.js` (`FAL_KEY` secret). |
+| ~~`https://gemini-image.sarkd333.workers.dev/`~~ | **REMOVED** from image generation (2026-07-05). Gemini is no longer called anywhere in the app; `gemini-image-worker.js` was deleted. The deployed endpoint, if still live, is unused. | — |
+| `https://hf-image.sarkd333.workers.dev/` | **No longer in the live generation chain** (was the tertiary SDXL fallback; removed 2026-07-05). Still used by the offline `generate-collection-images.js` batch script only. Despite the "hf" name it runs **Cloudflare Workers AI** SDXL (`@cf/stabilityai/stable-diffusion-xl-lightning`). | POST `{inputs, negative_prompt, guidance_scale, num_inference_steps, initImage?}` → raw PNG (batch script crops the bottom 40px watermark strip). Needs an `AI` Workers-AI binding. |
 | `https://fal-bg-remove.sarkd333.workers.dev` (`FAL_BG_REMOVE_URL`) | Background removal via fal `birefnet` (fallback `rembg`) | POST `{image_url: dataURL}` → **JSON `{image:{url}, model}`** (front end fetches that PNG from the fal CDN). Source: `bg-remove-worker.js` (aligned to this contract 2026-07-05; `FAL_KEY` secret). |
 | `https://vision-verify.sarkd333.workers.dev` (`VERIFY_WORKER_URL`) | Generation verification (Groq Llama-4-Scout vision) | POST `{image: dataURL, expected?}` → `{jewelryType, form, stoneCount}`. Source: `vision-verify-worker.js` (`GROQ_API_KEY` secret). Front end fails open if undeployed/down. |
 | `https://groq-enhance.sarkd333.workers.dev` (`ENHANCE_WORKER_URL`) | Prompt enhancement (Groq) | POST `{idea, jewelryType, earringStyle?, earringStyleDescriptor?}` → `{enhanced}`. Source: `groq-enhance-worker.js` (written 2026-07-05 — **diff against dashboard before pasting**; `GROQ_API_KEY` secret). Failure falls back silently to the raw idea. |
@@ -187,8 +189,10 @@ Two entry points that largely duplicate each other (Issues #6):
 2. **Single choke point** — `_generateImage(prompt, negativePrompt, initImage,
    hfOverrides)` (~2106) wraps every prompt with `_buildPromptSafeguards()` (spec
    bookends restated at start AND end, natural-placement clause, quality string,
-   placement negatives; `guidance_scale` pinned 9.0), then tries **Gemini → Flux →
-   HF/SDXL** in order, returning a blob URL or null.
+   placement negatives; `guidance_scale` pinned 9.0), then calls **Flux only** (the
+   sole generator — no fallback; Gemini and HF/SDXL were removed 2026-07-05),
+   returning a blob URL or null. A null propagates up to a clean "Generation
+   temporarily unavailable — please try again" error the user can retry.
 3. **Multi-angle for ring and bracelet** — `_generateRingMultiAngle` /
    `_generateBraceletMultiAngle` generate 3 angles concurrently (queue caps at
    `GEN_MAX_CONCURRENT = 2`). **Index 0 is always the head-on view and is what try-on
@@ -199,7 +203,7 @@ Two entry points that largely duplicate each other (Issues #6):
    with layout language (`_braceletLayoutPositive/Reminder/Negative`).
 4. **Refine (img2img)** — post-gen UI sets `window._postGenMode`; "Refine This" passes
    `lastGeneratedImage` (base64 of the last render) as `initImage` → Flux edit
-   endpoint (or SDXL img2img at the HF fallback). "Start Fresh" is a new txt2img.
+   endpoint (`flux-2-pro/edit`). "Start Fresh" is a new txt2img. No SDXL fallback.
 5. **Vision verification** (2026-07-05, search `VISION-VERIFIED GENERATION` ~after
    `_generateImage`): `_generateVerified()` wraps generation for exact-count types —
    ring (head-on angle only; hero/profile skip count checks since stones occlude at
@@ -340,9 +344,12 @@ image, defines the order.
   understanding. Earlobe/finger anchor constants (`MP_EAR_SIZE`, `MP_EAR_DROP`,
   `MP_RING_SIZE_FACTOR`, `MP_BRACELET_SIZE_FACTOR`) are heuristics — tune, don't
   derive.
-- Gemini worker rate-limits (HTTP 429 / `rate_limited` JSON) are expected under load —
-  that's what the Flux → SDXL chain is for. The 90-image collections batch script
-  deliberately skips Gemini entirely.
+- Image generation is **Flux only, no fallback** (2026-07-05). Gemini (formerly the
+  primary) and the HF/SDXL tertiary were removed from the live path, which also drops
+  the Gemini-first attempt and its rate-limit stalls (faster generation). If Flux
+  fails, the user sees a clean "Generation temporarily unavailable — please try
+  again" and retries — no silent fallback. The 90-image collections batch script
+  still uses the SDXL worker directly (offline, unrelated to the live path).
 - The step-1 "Next: Specifications" flow means generation actually starts from step 2;
   `resolveJewelryType()` lets an unambiguous typed description override the selected
   type chip at generation time.
@@ -404,13 +411,14 @@ Nothing below has been fixed; locations are approximate (post-2026-07-04 snapsho
    exist nowhere in the HTML — several step-1 failure messages can never display.
 
 **Worker repo copies vs. deployed reality — repo side fixed 2026-07-05**
-7. All 8 workers now have repo sources matching the front-end contracts, with origin
+7. The remaining workers have repo sources matching the front-end contracts, with origin
    allowlisting + per-IP rate limiting. REMAINING GAP: the **deployed** workers stay
    the old, unsecured versions until each is paste-deployed from the repo copy;
-   `gemini-image`/`groq-enhance` sources were reconstructed from the observed
-   contract — diff against the dashboard code (model name, prompt) before replacing.
-   Price workers need the `METALS_API_KEY` secret set on deploy; `vision-verify` is a
-   NEW worker that must be created (front end fails open until it exists).
+   `groq-enhance`'s source was reconstructed from the observed contract — diff against
+   the dashboard code (model name, prompt) before replacing. Price workers need the
+   `METALS_API_KEY` secret set on deploy; `vision-verify` is a NEW worker that must be
+   created (front end fails open until it exists). (`gemini-image` was removed from the
+   app on 2026-07-05 — Flux is the sole generator — and its worker source was deleted.)
 
 **Duplication / drift risks**
 8. `confirmAndGenerate()` and `startGeneration()` duplicate ~80 lines of negative-
