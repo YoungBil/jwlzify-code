@@ -7540,7 +7540,8 @@ const _RING_FADE_END    = 0.65;   // (legacy) — ring now uses the fixed top-cu
 // sides visible. Deterministic, proportional, normalized to the drawn-ring bounds,
 // automatic on every ring (no slider). Single tunable constant.
 const _RING_TOP_VISIBLE = 0.58;    // keep the top ~58% (stone + upper band); hard-cut the rest
-const _BRACELET_FADE_W  = 0.20;   // bracelet fade-transition width (35%→55% by default)
+const _BRACELET_FADE_W  = 0.06;   // THIN feather — a soft wrap edge only, so the visible band stays
+                                  // fully opaque/bright (a wide feather dimmed the visible material).
 let _ringMaskDirection  = 'hide-bottom'; // 'hide-bottom' = ring (band back), 'hide-top' = bracelet (far arc)
 let _ringMaskedCanvas   = null;   // offscreen 400×400 normalized+masked canvas
 let _ringMaskSrcType    = '';     // 'original' | 'cached' | 'transparent'
@@ -7570,7 +7571,12 @@ function _buildRingMask(img, srcType) {
   else         { dh = SIZE; dw = SIZE * ar; }
   dx = (SIZE - dw) / 2;
   dy = (SIZE - dh) / 2;
+  // BRACELET only: bake a modest brightness/saturation lift so the wrapped band reads
+  // as vivid real jewelry (not a dim overlay). One-time here, never per-frame; scoped
+  // to hide-top so ring/earrings/necklace are untouched. Reset before any mask fills.
+  if (_ringMaskDirection === 'hide-top') oc2.filter = 'brightness(1.08) saturate(1.15)';
   oc2.drawImage(img, dx, dy, dw, dh);
+  oc2.filter = 'none';
   console.log('[TryOn] image drawn at full res:', Math.round(dw), 'x', Math.round(dh));
 
   // Mask via destination-out. Orientation depends on how the piece sits:
@@ -7583,9 +7589,10 @@ function _buildRingMask(img, srcType) {
   } else {
     oc2.globalCompositeOperation = 'destination-out';
     if (_ringMaskDirection === 'hide-top') {
-      // Bracelet: fully hidden from 0% down to fadeStart, fade fadeStart→fadeEnd, visible below.
-      const fadeStart = ringFadeStart;                          // end of fully-hidden region (slider, default 0.35)
-      const fadeEnd   = Math.min(0.95, fadeStart + _BRACELET_FADE_W); // fade width 0.20 → default 0.55
+      // Bracelet: fully hidden 0→fadeStart (behind the wrist), a THIN soft edge
+      // fadeStart→fadeEnd, then fully opaque/bright below (no dimming of the visible band).
+      const fadeStart = ringFadeStart;                          // end of fully-hidden region (slider)
+      const fadeEnd   = Math.min(0.95, fadeStart + _BRACELET_FADE_W); // + thin feather
       const grad = oc2.createLinearGradient(0, SIZE * fadeStart, 0, SIZE * fadeEnd);
       grad.addColorStop(0, 'rgba(0,0,0,1)');  // fully removed at/above top of fade zone (hide far arc)
       grad.addColorStop(1, 'rgba(0,0,0,0)');  // fully visible at/below bottom of fade zone (front curve)
@@ -7941,7 +7948,9 @@ function loadBraceletForTryOn(imageUrl) {
     mpMode:        'hand',          // MediaPipe Hand Landmarker → auto wrist anchoring + rotation
     fitMin:        20,              // slider 0.20–0.50
     fitMax:        50,
-    fitDefault:    35,             // hidden top 0–35%, fade 35–55%, visible 55–100% (front curve on near side)
+    fitDefault:    42,             // hide top ~42% (behind wrist), thin feather, vivid full-opacity below.
+                                    // Bumped from 35 so the wrapped extent matches the old wide-feather look
+                                    // now that the feather no longer dims the visible band.
   });
   // Start perfectly level (user can still adjust via the rotate slider). The bracelet
   // uses the SAME background-removal path as the ring (shared initTryOn → removePendantBackgroundCanvas).
@@ -8259,6 +8268,9 @@ const MP_HAND_MODEL = 'https://storage.googleapis.com/mediapipe-models/hand_land
 // Tunable placement constants (fractions are of detected face/palm width).
 const MP_EAR_SIZE = { stud: 0.16, hoop: 0.26, drop: 0.22 };  // earring size ÷ face width
 const MP_EAR_DROP = { stud: 0.04, hoop: 0.38, drop: 0.46 };  // centre drop below the lobe anchor, × size
+// The tragus→jaw blend lands mid-lobe; push the anchor DOWN to the BOTTOM of the
+// earlobe (where a real earring hangs from) by this fraction of detected FACE HEIGHT.
+const MP_EAR_LOBE_YOFF = 0.07;
 const MP_RING_SIZE_FACTOR     = 2.1;   // ring image width vs estimated finger width
 const MP_BRACELET_SIZE_FACTOR = 1.55;  // bracelet image width vs palm width
 
@@ -8335,10 +8347,14 @@ function _mpParseFace(res, W, H) {
   const tB = _mpToCanvas(f[454], W, H), jB = _mpToCanvas(f[361], W, H);
   const faceW = Math.hypot(tB.x - tA.x, tB.y - tA.y);
   if (!(faceW > 1)) return null;
+  // Face height (forehead landmark 10 → chin 152) drives the earlobe-bottom drop.
+  const top = _mpToCanvas(f[10], W, H), chin = _mpToCanvas(f[152], W, H);
+  const faceH = Math.hypot(chin.x - top.x, chin.y - top.y) || faceW;
   const cx = (tA.x + tB.x) / 2;
   const lobe = (t, j) => {
     const p = { x: t.x + (j.x - t.x) * 0.55, y: t.y + (j.y - t.y) * 0.55 };
     p.x += (p.x < cx ? -1 : 1) * faceW * 0.03;
+    p.y += faceH * MP_EAR_LOBE_YOFF;   // drop from mid-lobe to the bottom of the earlobe (both ears)
     return p;
   };
   const a = lobe(tA, jA), b = lobe(tB, jB);
