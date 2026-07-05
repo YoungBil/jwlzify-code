@@ -60,6 +60,7 @@ Google Fonts, Firebase from gstatic CDN, Three.js via CDN importmap.
 | `mobile-nav.js` | Self-contained hamburger nav injected on every page. |
 | `about/support/shipping/returns/warranty/legal/orders/account/authenticity.html` | Static content pages sharing header/footer markup (copy-pasted per page, no shared component). |
 | `*-worker.js` + `*-wrangler.toml` | Cloudflare Worker sources (all 8, refreshed 2026-07-05 with origin+rate-limit security; see constraint #2). Deploy = dashboard paste only. |
+| `specs/` | Implementation specs for post-window work (2026-07-05): `stone-compositing.md` (guaranteed exact counts via sprite overlay), `flux-kontext-refine.md` (instruction img2img refine), `stripe-checkout.md` (30% deposit checkout + order status pipeline). Written to be executable by a weaker model without re-discovering the codebase. |
 | `generate-collection-images.js` | One-time Node batch script that generated the 90 gallery images via the hf-image worker (skips existing; not part of the site). |
 | `test-img2img.js` | Ad-hoc Node smoke test for the hf-image worker (txt2img → img2img). Not part of the site. |
 | `.env` | Local only, gitignored. Never commit. |

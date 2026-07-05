@@ -209,6 +209,12 @@ contract.
   `[Ring TryOn] using head-on index 0` logging stays truthful.
 - **Quote/order**: unchanged — pricing reads specs, and the refine never writes
   `jwlSpecifications` or its mirrors.
+- **Vision-verify loop** (landed 2026-07-05, after this spec's first draft:
+  `_generateVerified` in ailab.html): the new `startInstructionRefine()` path
+  deliberately bypasses `_generateImage`, so it also bypasses verification. For v1
+  run ONE `_verifyImage()` check on the kontext result for exact-count types
+  (ring/earrings/pendant) — log-only, no auto-retry (instruction edits are cheap to
+  redo manually and retrying an edit can compound drift). Revisit auto-retry in v2.
 - **Stone-compositing spec** (specs/stone-compositing.md): if compositing ships,
   `lastGeneratedImage` is the composited image, so Kontext edits operate on the
   exact-count image. Composite is NOT re-applied after a kontext edit (the edit

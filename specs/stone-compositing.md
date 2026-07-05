@@ -15,9 +15,12 @@ deterministic positions. Pure JS + `<canvas>`, no build step, no new workers.
   `_RING_EXTRA_STONES_NEG` ~4936, `_authoritativeStoneClause` ~3849, spec bookends in
   `_buildPromptSafeguards` ~2061) improves adherence but does not guarantee it.
   Pricing is already spec-math-driven, so only the *image* lies today.
-- **There is no vision-verify loop.** Verified by search — nothing re-inspects the
-  generated image for stone count. (The only image inspection anywhere is
-  `_checkPendantSizeMismatch` ~7394, which compares aspect ratio, not stones.)
+- **A vision-verify loop NOW EXISTS** (landed 2026-07-05, after this spec's first
+  draft): `_generateVerified()` (search `VISION-VERIFIED GENERATION` in ailab.html)
+  counts stones on the generated image via the `vision-verify` worker for ring
+  (head-on angle), earrings, and pendant, regenerating up to 3 attempts. It is
+  probabilistic (a checker, not a guarantee) — this spec's compositing remains the
+  path to a *guarantee*. **Critical interaction, see Integration points.**
 - **Authoritative count** comes from `_authoritativeStoneCount()` (~3842):
   `jwlSpecifications.stoneCount || stones.length || 1`. Shape comes from
   `jwlSpecifications.stoneShape || userSelections.gemShape || 'Round'` (see ~2067,
@@ -34,9 +37,10 @@ deterministic positions. Pure JS + `<canvas>`, no build step, no new workers.
   (`jewelryCutout(LAB.imageUrl)` cached in `bgRemovalCache`); `lastGeneratedImage`
   (base64 for img2img refine) is captured from the same blob (~4671, ~5036, ~5254);
   Save Design snapshots it; try-on masks it via `_buildRingMask` (~7466).
-- **Cutout chain** `jewelryCutout()` (~7301): fal birefnet worker → remove.bg → local
-  canvas BFS flood-fill (`removePendantBackgroundCanvas`, edge-seeded, with
-  "sparkle-stone protection") → original at 0.85 alpha.
+- **Cutout chain** `jewelryCutout()`: fal birefnet worker → local canvas BFS
+  flood-fill (`removePendantBackgroundCanvas`, edge-seeded, with "sparkle-stone
+  protection") → original at 0.85 alpha. (The remove.bg fallback step was removed
+  2026-07-05.)
 - **Ring try-on mask**: `_buildRingMask` hard-cuts everything below
   `dy + dh × 0.58` (`_RING_TOP_VISIBLE`, ~7453) — anything composited on the lower
   band is invisible in try-on.
@@ -78,9 +82,9 @@ feature flag, with silent fallback to today's behavior.**
   pipeline; overkill.
 - *Server-side compositing in a worker*: violates "front end owns image logic";
   canvas is already the house tool (masking, BFS cutout, HF crop all use it).
-- *Vision-verify loop (ask a VLM to count, regen on mismatch)*: costs a full extra
-  model call per attempt, still probabilistic, and no such loop exists today. Noted
-  as a possible complement, not a substitute for a guarantee.
+- *Vision-verify loop alone (ask a VLM to count, regen on mismatch)*: now shipped
+  (`_generateVerified`), but still probabilistic — a checker, not a guarantee.
+  Compositing complements it; it does not replace compositing.
 
 ## Step-by-step implementation plan
 
@@ -203,6 +207,16 @@ and try-on both operate on the composited image.
 
 ## Integration points
 
+- **⚠ Vision-verify loop (`_generateVerified`) — MUST be reconciled first.** With
+  compositing enabled, the ring head-on base render is generated with the
+  settings-only prompt (zero stones), so the existing count verification would FAIL
+  every attempt and burn 3 generations. Required change: in `_genRingAngle`, when
+  `COMPOSITE_STONES_ENABLED` applies to this generation, either (a) skip the count
+  check (pass `expected.stones = null`, keep the type/form check) and instead verify
+  the count AFTER compositing as a cheap sanity assert, or (b) verify
+  `expected.stones = 0` on the base render (settings must be empty). Option (a) is
+  recommended — simpler and it validates what the user actually sees. Pendant/
+  earrings keep normal verification until their compositing fast-follow ships.
 - **Try-on / cutout**: nothing changes — `jewelryCutout` receives the composited
   URL because compositing happens before `LAB.imageUrl` is set and before the
   `showRefineStep` preload (~5448). Sprites are opaque pixels inside the piece
