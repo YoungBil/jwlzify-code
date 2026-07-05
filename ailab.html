@@ -6522,6 +6522,7 @@ function teardownTryOn() {
   });
   if (_ringRafId)         { cancelAnimationFrame(_ringRafId);   _ringRafId = null; }
   if (_bgRemovalInterval) { clearInterval(_bgRemovalInterval); _bgRemovalInterval = null; }
+  if (typeof _mpStopTracking === 'function') _mpStopTracking(); // stop landmark tracking loop
   _ringTeardownEvents();
   const ringCanvas = document.getElementById('ring-tryon-canvas');
   if (ringCanvas) {
@@ -7584,35 +7585,87 @@ function _ringRenderLoop() {
       // (mirrored) — so one piece renders as a matched pair. Both ears use identical
       // size/mask (incl. the earlobe occlusion baked into _ringMaskedCanvas) → the
       // pair stays consistent. No rotate (hoops hang naturally).
-      //   • HOOP: each lobe has its OWN centre (_earL / _earR) so they drag apart.
-      //   • stud/drop: shared ringX ± spacing (unchanged pair behaviour).
+      //   • TRACKING (face landmarks fresh): each earring anchors to its detected
+      //     earlobe; size auto-scales to face width, with the shared Size slider/±
+      //     acting as a multiplier (slider at its default = 1.0×) — one size state.
+      //   • MANUAL (no tracking): hoops keep per-ear _earL/_earR; stud/drop keep the
+      //     shared ringX ± spacing pair — the original behaviour, untouched.
       const _spacing = W * 0.20;
-      const _lx = (_tryOnIsHoop && _earL) ? _earL.x : ringX - _spacing;
-      const _ly = (_tryOnIsHoop && _earL) ? _earL.y : ringY;
-      const _rx = (_tryOnIsHoop && _earR) ? _earR.x : ringX + _spacing;
-      const _ry = (_tryOnIsHoop && _earR) ? _earR.y : ringY;
+      let _lx, _ly, _rx, _ry, _esz = ringSize;
+      const _fa = _mpEarAnchors();
+      if (_fa) {
+        const _form = _tryOnIsHoop ? 'hoop'
+          : ((window.jwlSpecifications && window.jwlSpecifications.earringForm) || 'stud');
+        const _mult = _tryOnDefaultSize > 0 ? ringSize / _tryOnDefaultSize : 1;
+        _esz = Math.max(8, _fa.faceW * (MP_EAR_SIZE[_form] || 0.2) * _mult);
+        const _drop = _esz * (MP_EAR_DROP[_form] != null ? MP_EAR_DROP[_form] : 0.2);
+        _earAnchorL = { x: _fa.L.x, y: _fa.L.y + _drop };
+        _earAnchorR = { x: _fa.R.x, y: _fa.R.y + _drop };
+        _lx = _earAnchorL.x + _mpOffL.x;  _ly = _earAnchorL.y + _mpOffL.y;
+        _rx = _earAnchorR.x + _mpOffR.x;  _ry = _earAnchorR.y + _mpOffR.y;
+        // Keep the manual-state mirrors in step so losing tracking degrades IN PLACE
+        // (earrings stay where they were, not back at the page defaults).
+        if (_tryOnIsHoop) { _earL = { x: _lx, y: _ly }; _earR = { x: _rx, y: _ry }; }
+        else { ringX = (_lx + _rx) / 2; ringY = (_ly + _ry) / 2; }
+      } else {
+        _earAnchorL = _earAnchorR = null;
+        _lx = (_tryOnIsHoop && _earL) ? _earL.x : ringX - _spacing;
+        _ly = (_tryOnIsHoop && _earL) ? _earL.y : ringY;
+        _rx = (_tryOnIsHoop && _earR) ? _earR.x : ringX + _spacing;
+        _ry = (_tryOnIsHoop && _earR) ? _earR.y : ringY;
+      }
+      _earDrawL = { x: _lx, y: _ly }; _earDrawR = { x: _rx, y: _ry }; _earDrawSize = _esz;
       // left lobe
       ctx.save();
       ctx.globalAlpha = _alpha; ctx.shadowColor = 'rgba(0,0,0,0.35)'; ctx.shadowBlur = 8; ctx.shadowOffsetY = 2;
       ctx.translate(_lx, _ly);
-      ctx.drawImage(_ringMaskedCanvas, -ringSize / 2, -ringSize / 2, ringSize, ringSize);
+      ctx.drawImage(_ringMaskedCanvas, -_esz / 2, -_esz / 2, _esz, _esz);
       ctx.restore();
       // right lobe (mirrored)
       ctx.save();
       ctx.globalAlpha = _alpha; ctx.shadowColor = 'rgba(0,0,0,0.35)'; ctx.shadowBlur = 8; ctx.shadowOffsetY = 2;
       ctx.translate(_rx, _ry);
       ctx.scale(-1, 1);
-      ctx.drawImage(_ringMaskedCanvas, -ringSize / 2, -ringSize / 2, ringSize, ringSize);
+      ctx.drawImage(_ringMaskedCanvas, -_esz / 2, -_esz / 2, _esz, _esz);
       ctx.restore();
     } else {
+      // SINGLE PIECE (ring / bracelet / necklace). With live hand tracking, the ring
+      // rides the base–middle segment of the ring finger (auto-sized to finger width,
+      // rotated with it) and the bracelet rides the wrist (auto-sized to palm width,
+      // rotated with the forearm). The Size ± acts as a multiplier on the auto size;
+      // the Rotate slider becomes a fine-tune offset on the tracked angle. Necklace
+      // (and any un-tracked frame) uses the manual ringX/ringY/ringSize unchanged —
+      // the occlusion mask is baked into _ringMaskedCanvas and rotates with the piece.
+      let _px = ringX, _py = ringY, _prot = ringRotation, _psz = ringSize;
+      const _ha = _mpHandAnchors();
+      if (_ha && typeof LAB !== 'undefined' && LAB.type === 'ring') {
+        const _mult = _tryOnDefaultSize > 0 ? ringSize / _tryOnDefaultSize : 1;
+        _psz  = Math.max(12, _ha.fingerW * MP_RING_SIZE_FACTOR * _mult);
+        _px   = _ha.ring.x + _mpOffS.x;
+        _py   = _ha.ring.y + _mpOffS.y;
+        _prot = _ha.ringAngle + ringRotation;
+        _pieceAnchor = _ha.ring;
+        ringX = _px; ringY = _py;   // degrade in place if tracking drops
+      } else if (_ha && typeof LAB !== 'undefined' && LAB.type === 'bracelet') {
+        const _mult = _tryOnDefaultSize > 0 ? ringSize / _tryOnDefaultSize : 1;
+        _psz  = Math.max(16, _ha.palmW * MP_BRACELET_SIZE_FACTOR * _mult);
+        _px   = _ha.wrist.x + _mpOffS.x;
+        _py   = _ha.wrist.y + _mpOffS.y;
+        _prot = _ha.handAngle + ringRotation;
+        _pieceAnchor = _ha.wrist;
+        ringX = _px; ringY = _py;
+      } else {
+        _pieceAnchor = null;
+      }
+      _pieceDraw = { x: _px, y: _py, size: _psz };
       ctx.save();
       ctx.globalAlpha   = _alpha;
       ctx.shadowColor   = 'rgba(0,0,0,0.4)';
       ctx.shadowBlur    = 10;
       ctx.shadowOffsetY = 3;
-      ctx.translate(ringX, ringY);
-      ctx.rotate(ringRotation * Math.PI / 180);
-      ctx.drawImage(_ringMaskedCanvas, -ringSize / 2, -ringSize / 2, ringSize, ringSize);
+      ctx.translate(_px, _py);
+      ctx.rotate(_prot * Math.PI / 180);
+      ctx.drawImage(_ringMaskedCanvas, -_psz / 2, -_psz / 2, _psz, _psz);
       ctx.restore();
     }
   }
@@ -7626,9 +7679,10 @@ function _ringRenderLoop() {
   // hoops resize via the shared Size slider (no dot handle), and a single dot makes
   // no sense for a rendered pair.
   if (_ringMaskedCanvas && !(typeof LAB !== 'undefined' && LAB.type === 'earrings')) {
+    const _dot = _pieceDraw || { x: ringX, y: ringY, size: ringSize };
     ctx.save();
     ctx.beginPath();
-    ctx.arc(ringX + ringSize / 2 + 4, ringY - ringSize / 2 - 4, 5, 0, Math.PI * 2);
+    ctx.arc(_dot.x + _dot.size / 2 + 4, _dot.y - _dot.size / 2 - 4, 5, 0, Math.PI * 2);
     ctx.fillStyle = '#C9A84C';
     ctx.fill();
     ctx.strokeStyle = 'rgba(255,255,255,0.8)';
@@ -7653,45 +7707,62 @@ function _ringDragStart(e) {
   if (e.touches && e.touches.length !== 1) return;
   e.preventDefault();
   const { x, y } = _ringPtrPos(e);
-  const rH  = _ringImgH();
   const pad = 24;
-  let hit;
   _ringDragTarget = null;
-  const _inBox = (cx, cy) => (x >= cx - ringSize / 2 - pad && x <= cx + ringSize / 2 + pad &&
-                              y >= cy - ringSize / 2 - pad && y <= cy + ringSize / 2 + pad);
-  if (_tryOnIsHoop && _earL && _earR) {
-    // HOOP: hit-test each hoop's own box and grab whichever the pointer is over, so
-    // only that earring moves. Left checked first; ties resolve to the nearer centre.
-    const _hitL = _inBox(_earL.x, _earL.y);
-    const _hitR = _inBox(_earR.x, _earR.y);
-    if (_hitL && _hitR) {
-      _ringDragTarget = (Math.abs(x - _earL.x) <= Math.abs(x - _earR.x)) ? 'L' : 'R';
-    } else if (_hitL) { _ringDragTarget = 'L'; }
-    else if (_hitR)  { _ringDragTarget = 'R'; }
-    if (_ringDragTarget) {
-      const t = (_ringDragTarget === 'L') ? _earL : _earR;
-      _ringIsDragging = true;
-      _ringDragOffX   = x - t.x;
-      _ringDragOffY   = y - t.y;
-      _hideWristGuide();
+  _mpDragMode     = null;
+
+  if (typeof LAB !== 'undefined' && LAB.type === 'earrings') {
+    // Hit-test the positions the render loop actually DREW this frame — covers both
+    // manual placement and landmark tracking with one code path.
+    const _sz  = _earDrawSize || ringSize;
+    const _box = (c) => !!c && x >= c.x - _sz / 2 - pad && x <= c.x + _sz / 2 + pad &&
+                         y >= c.y - _sz / 2 - pad && y <= c.y + _sz / 2 + pad;
+    if (_tryOnIsHoop) {
+      // HOOP: grab whichever hoop the pointer is over — only that earring moves.
+      const _hitL = _box(_earDrawL), _hitR = _box(_earDrawR);
+      if (_hitL && _hitR) {
+        _ringDragTarget = (Math.abs(x - _earDrawL.x) <= Math.abs(x - _earDrawR.x)) ? 'L' : 'R';
+      } else if (_hitL) { _ringDragTarget = 'L'; }
+      else if (_hitR)  { _ringDragTarget = 'R'; }
+      if (_ringDragTarget) {
+        const t = (_ringDragTarget === 'L') ? _earDrawL : _earDrawR;
+        _ringIsDragging = true;
+        _ringDragOffX   = x - t.x;
+        _ringDragOffY   = y - t.y;
+        _mpDragMode     = _earAnchorL ? 'ear-offset' : 'manual';
+        _hideWristGuide();
+      }
+      return;
+    }
+    // stud/drop: the pair moves rigidly — accept a grab anywhere across the span
+    // between (and around) both drawn earrings. Reference point = LEFT earring.
+    if (_earDrawL && _earDrawR) {
+      const hit = x >= Math.min(_earDrawL.x, _earDrawR.x) - _sz / 2 - pad &&
+                  x <= Math.max(_earDrawL.x, _earDrawR.x) + _sz / 2 + pad &&
+                  y >= Math.min(_earDrawL.y, _earDrawR.y) - _sz / 2 - pad &&
+                  y <= Math.max(_earDrawL.y, _earDrawR.y) + _sz / 2 + pad;
+      if (hit) {
+        _ringIsDragging = true;
+        _ringDragTarget = 'PAIR';
+        _ringDragOffX   = x - _earDrawL.x;
+        _ringDragOffY   = y - _earDrawL.y;
+        _mpDragMode     = _earAnchorL ? 'ear-offset' : 'manual';
+        _hideWristGuide();
+      }
     }
     return;
   }
-  if (typeof LAB !== 'undefined' && LAB.type === 'earrings') {
-    // stud/drop earrings render as a pair at ringX ± spacing — accept a grab anywhere
-    // across the span between (and around) both so either ear drags the pair.
-    const ringCanvas = document.getElementById('ring-tryon-canvas');
-    const _spacing = (ringCanvas ? ringCanvas.width : 0) * 0.20;
-    hit = (x >= ringX - _spacing - ringSize / 2 - pad && x <= ringX + _spacing + ringSize / 2 + pad &&
-           y >= ringY - ringSize / 2 - pad           && y <= ringY + ringSize / 2 + pad);
-  } else {
-    hit = (x >= ringX - ringSize / 2 - pad && x <= ringX + ringSize / 2 + pad &&
-           y >= ringY - rH / 2 - pad       && y <= ringY + rH / 2 + pad);
-  }
+
+  // Ring / bracelet / necklace: single piece at its drawn position.
+  const d   = _pieceDraw || { x: ringX, y: ringY, size: ringSize };
+  const rHd = ringSize > 0 ? _ringImgH() * (d.size / ringSize) : d.size;
+  const hit = (x >= d.x - d.size / 2 - pad && x <= d.x + d.size / 2 + pad &&
+               y >= d.y - rHd / 2 - pad    && y <= d.y + rHd / 2 + pad);
   if (hit) {
     _ringIsDragging = true;
-    _ringDragOffX   = x - ringX;
-    _ringDragOffY   = y - ringY;
+    _ringDragOffX   = x - d.x;
+    _ringDragOffY   = y - d.y;
+    _mpDragMode     = _pieceAnchor ? 'piece-offset' : 'manual';
     _hideWristGuide(); // fade the wrist guide once the user starts positioning
   }
 }
@@ -7701,19 +7772,46 @@ function _ringDragMove(e) {
   if (e.touches && e.touches.length !== 1) { _ringIsDragging = false; return; }
   if (e.touches) e.preventDefault();
   const { x, y } = _ringPtrPos(e);
-  if (_ringDragTarget && (_earL || _earR)) {
-    // Move ONLY the grabbed hoop — the other stays put (independent placement).
-    const t = (_ringDragTarget === 'L') ? _earL : _earR;
-    if (t) { t.x = x - _ringDragOffX; t.y = y - _ringDragOffY; }
+  const dx = x - _ringDragOffX;   // desired drawn position of the grabbed piece
+  const dy = y - _ringDragOffY;
+
+  if (typeof LAB !== 'undefined' && LAB.type === 'earrings') {
+    if (_mpDragMode === 'ear-offset' && _earAnchorL && _earAnchorR) {
+      // TRACKING: dragging adjusts the user's OFFSET from the landmark anchor, so
+      // the fine-tune sticks while the earring keeps following the ear.
+      if (_ringDragTarget === 'L') {
+        _mpOffL = { x: dx - _earAnchorL.x, y: dy - _earAnchorL.y };
+      } else if (_ringDragTarget === 'R') {
+        _mpOffR = { x: dx - _earAnchorR.x, y: dy - _earAnchorR.y };
+      } else { // PAIR — same delta on both ears
+        const o = { x: dx - _earAnchorL.x, y: dy - _earAnchorL.y };
+        _mpOffL = { x: o.x, y: o.y };
+        _mpOffR = { x: o.x, y: o.y };
+      }
+      return;
+    }
+    // MANUAL (unchanged behaviour)
+    if (_ringDragTarget === 'L' && _earL) { _earL.x = dx; _earL.y = dy; return; }
+    if (_ringDragTarget === 'R' && _earR) { _earR.x = dx; _earR.y = dy; return; }
+    const c  = document.getElementById('ring-tryon-canvas');
+    const sp = (c ? c.width : 0) * 0.20;
+    ringX = dx + sp;   // reference was the LEFT earring at ringX − spacing
+    ringY = dy;
     return;
   }
-  ringX = x - _ringDragOffX;
-  ringY = y - _ringDragOffY;
+
+  if (_mpDragMode === 'piece-offset' && _pieceAnchor) {
+    _mpOffS = { x: dx - _pieceAnchor.x, y: dy - _pieceAnchor.y };
+    return;
+  }
+  ringX = dx;
+  ringY = dy;
 }
 
 function _ringDragEnd() {
   _ringIsDragging = false;
   _ringDragTarget = null;
+  _mpDragMode     = null;
 }
 
 
@@ -7733,9 +7831,10 @@ function loadRingForTryOn(imageUrl) {
     minSize:       60,
     maxSize:       300,
     getDefaultY:   (H) => H * 0.67, // centred on the hand
-    hintText:      'Drag to position · Use +/− to resize · Rotate with the slider',
+    hintText:      'Hold up your hand — the ring finds your finger · Drag / +/− to fine-tune',
     fitLabel:      'Fit on finger',
     maskDirection: 'hide-bottom',   // ring sits ON the finger → top ~58% shown, lower band hard-cut (_RING_TOP_VISIBLE)
+    mpMode:        'hand',          // MediaPipe Hand Landmarker → auto ring-finger anchoring
   });
 }
 
@@ -7918,6 +8017,14 @@ function initTryOn(cfg) {
   ringY              = cfg.getDefaultY(H);
   ringSize           = cfg.defaultSize * _dpr;
   ringRotation       = 0;
+  // MediaPipe tracking state: default-size basis for the size multiplier, fresh
+  // fine-tune offsets, and any previous tracking loop stopped before re-init.
+  _tryOnDefaultSize  = cfg.defaultSize * _dpr;
+  _mpOffL = { x: 0, y: 0 }; _mpOffR = { x: 0, y: 0 }; _mpOffS = { x: 0, y: 0 };
+  _mpDragMode = null;
+  _earAnchorL = _earAnchorR = _pieceAnchor = null;
+  _earDrawL = _earDrawR = null; _earDrawSize = 0; _pieceDraw = null;
+  if (typeof _mpStopTracking === 'function') _mpStopTracking();
   // HOOP earrings: seed independent per-earring centres either side of the frame so
   // each can be dragged/placed on its own lobe. Every other type clears them and
   // keeps the single shared ringX/ringY (incl. stud/drop earrings).
@@ -7951,6 +8058,13 @@ function initTryOn(cfg) {
   // Start render loop immediately — webcam feed shows with no blocking
   if (_ringRafId) cancelAnimationFrame(_ringRafId);
   _ringRafId = requestAnimationFrame(_ringRenderLoop);
+
+  // Landmark tracking (earrings → face, ring/bracelet → hand). Fire-and-forget:
+  // on ANY load/model/detection failure the try-on simply stays in the manual
+  // placement mode above — tracking is an enhancement, never a dependency.
+  if (cfg.mpMode && typeof _mpStartTracking === 'function') {
+    _mpStartTracking(cfg.mpMode);
+  }
 
   // Hide loading overlay — render loop drives the live feed directly
   const loadingEl = document.getElementById('ring-tryon-loading');
@@ -8031,6 +8145,237 @@ function _ringTeardownEvents() {
   window.removeEventListener('touchmove',  _ringDragMove);
   window.removeEventListener('mouseup',    _ringDragEnd);
   window.removeEventListener('touchend',   _ringDragEnd);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   MEDIAPIPE LANDMARK TRACKING — earrings (face) / ring + bracelet (hand)
+   Landmark-based auto-placement layered ON TOP of the existing manual
+   canvas try-on. The tracking loop only writes anchor data; the render
+   loop consumes it when fresh, and every code path falls back to the
+   unchanged manual behaviour when MediaPipe is unavailable, fails to
+   load, or no face/hand is currently detected. Occlusion is untouched:
+   the masks are baked into _ringMaskedCanvas and travel with the piece.
+
+   Loading: @mediapipe/tasks-vision from jsDelivr via native dynamic
+   import() (verified ESM, no build step); wasm from the same CDN path;
+   .task models from Google's storage bucket. All lazy — nothing loads
+   until a try-on that wants tracking opens.
+═══════════════════════════════════════════════════════════════════ */
+const MP_VISION_VERSION = '0.10.35';   // pinned — bump deliberately (0.10.22 has no bundle on jsDelivr)
+const MP_BUNDLE_URL = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@' + MP_VISION_VERSION + '/vision_bundle.mjs';
+const MP_WASM_BASE  = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@' + MP_VISION_VERSION + '/wasm';
+const MP_FACE_MODEL = 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task';
+const MP_HAND_MODEL = 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task';
+
+// Tunable placement constants (fractions are of detected face/palm width).
+const MP_EAR_SIZE = { stud: 0.16, hoop: 0.26, drop: 0.22 };  // earring size ÷ face width
+const MP_EAR_DROP = { stud: 0.04, hoop: 0.38, drop: 0.46 };  // centre drop below the lobe anchor, × size
+const MP_RING_SIZE_FACTOR     = 2.1;   // ring image width vs estimated finger width
+const MP_BRACELET_SIZE_FACTOR = 1.55;  // bracelet image width vs palm width
+
+let _mpVisionPromise  = null;   // cached import + wasm fileset
+let _mpFaceLandmarker = null;   // cached across try-on sessions
+let _mpHandLandmarker = null;
+let _mpMode       = null;       // 'face' | 'hand' | null
+let _mpFailed     = false;      // hard failure → manual mode for the rest of the session
+let _mpTracking   = false;      // landmarks seen within the last ~1.2s
+let _mpLastSeen   = 0;
+let _mpLoopId     = 0;          // generation token — bumping it stops stale loops
+let _mpIntervalMs = 66;         // adaptive throttle (~15 Hz target, backs off on slow devices)
+let _mpAnchors    = null;       // latest smoothed anchors (canvas device-px space)
+let _mpHinted     = false;
+
+// Fine-tune + frame-sync state shared with the render loop / drag handlers.
+let _tryOnDefaultSize = 0;                              // cfg.defaultSize × dpr — multiplier basis
+let _mpOffL = { x: 0, y: 0 };                           // user drag offsets on top of anchors
+let _mpOffR = { x: 0, y: 0 };
+let _mpOffS = { x: 0, y: 0 };                           // single-piece (ring / bracelet) offset
+let _mpDragMode = null;                                 // 'ear-offset' | 'piece-offset' | 'manual' | null
+let _earAnchorL = null, _earAnchorR = null;             // per-frame landmark anchors (incl. drop), or null
+let _pieceAnchor = null;                                // per-frame ring/bracelet anchor, or null
+let _earDrawL = null, _earDrawR = null, _earDrawSize = 0; // what was actually DRAWN (hit-testing)
+let _pieceDraw = null;                                  // { x, y, size } drawn single piece
+
+async function _mpEnsureVision() {
+  if (!_mpVisionPromise) {
+    _mpVisionPromise = (async () => {
+      const vision  = await import(MP_BUNDLE_URL);      // native ESM dynamic import — no build step
+      const fileset = await vision.FilesetResolver.forVisionTasks(MP_WASM_BASE);
+      return { vision, fileset };
+    })();
+  }
+  return _mpVisionPromise;
+}
+
+// Create (and cache) the landmarker for a mode. GPU delegate first, CPU fallback.
+async function _mpGetLandmarker(mode) {
+  const { vision, fileset } = await _mpEnsureVision();
+  async function _create(Ctor, modelPath, extra) {
+    for (const delegate of ['GPU', 'CPU']) {
+      try {
+        return await Ctor.createFromOptions(fileset, Object.assign({
+          baseOptions: { modelAssetPath: modelPath, delegate: delegate },
+          runningMode: 'VIDEO',
+        }, extra));
+      } catch (e) {
+        console.warn('[MP] ' + delegate + ' delegate failed:', e && e.message);
+        if (delegate === 'CPU') throw e;
+      }
+    }
+  }
+  if (mode === 'face') {
+    if (!_mpFaceLandmarker) _mpFaceLandmarker = await _create(vision.FaceLandmarker, MP_FACE_MODEL, { numFaces: 1 });
+    return _mpFaceLandmarker;
+  }
+  if (!_mpHandLandmarker) _mpHandLandmarker = await _create(vision.HandLandmarker, MP_HAND_MODEL, { numHands: 1 });
+  return _mpHandLandmarker;
+}
+
+// Landmarks are normalized to the raw video frame; the canvas draws that frame
+// MIRRORED and stretched to W×H, so x flips and both axes scale directly.
+function _mpToCanvas(lm, W, H) { return { x: (1 - lm.x) * W, y: lm.y * H }; }
+
+// Face → earlobe anchors. Tragus-area landmarks (234 / 454) biased 55% toward the
+// jaw landmarks (132 / 361) approximate the lobes; a small outward push accounts
+// for lobes sitting just outside the face oval. L/R are resolved in CANVAS space
+// (smaller x = left on screen) so the mirror never swaps ears.
+function _mpParseFace(res, W, H) {
+  const f = res && res.faceLandmarks && res.faceLandmarks[0];
+  if (!f || f.length < 468) return null;
+  const tA = _mpToCanvas(f[234], W, H), jA = _mpToCanvas(f[132], W, H);
+  const tB = _mpToCanvas(f[454], W, H), jB = _mpToCanvas(f[361], W, H);
+  const faceW = Math.hypot(tB.x - tA.x, tB.y - tA.y);
+  if (!(faceW > 1)) return null;
+  const cx = (tA.x + tB.x) / 2;
+  const lobe = (t, j) => {
+    const p = { x: t.x + (j.x - t.x) * 0.55, y: t.y + (j.y - t.y) * 0.55 };
+    p.x += (p.x < cx ? -1 : 1) * faceW * 0.03;
+    return p;
+  };
+  const a = lobe(tA, jA), b = lobe(tB, jB);
+  const L = a.x <= b.x ? a : b, R = a.x <= b.x ? b : a;
+  return { kind: 'face', L: L, R: R, faceW: faceW };
+}
+
+// Hand → ring-finger + wrist anchors. Ring rides the base–middle segment of the
+// ring finger (MCP 13 → PIP 14); finger width is estimated from palm width
+// (index MCP 5 ↔ pinky MCP 17). Bracelet anchors at the wrist crease (landmark 0),
+// nudged slightly toward the forearm. Angles are 0° when the finger/hand points
+// straight up on screen, matching the upright generated renders.
+function _mpParseHand(res, W, H) {
+  const h = res && res.landmarks && res.landmarks[0];
+  if (!h || h.length < 21) return null;
+  const P = i => _mpToCanvas(h[i], W, H);
+  const wrist = P(0), mcpMid = P(9), mcpRing = P(13), pipRing = P(14), mcpIdx = P(5), mcpPky = P(17);
+  const palmW = Math.hypot(mcpIdx.x - mcpPky.x, mcpIdx.y - mcpPky.y);
+  if (!(palmW > 1)) return null;
+  const ring = { x: mcpRing.x * 0.55 + pipRing.x * 0.45, y: mcpRing.y * 0.55 + pipRing.y * 0.45 };
+  const dR = { x: pipRing.x - mcpRing.x, y: pipRing.y - mcpRing.y };
+  const ringAngle = Math.atan2(dR.x, -dR.y) * 180 / Math.PI;
+  const dH = { x: mcpMid.x - wrist.x, y: mcpMid.y - wrist.y };
+  const handAngle = Math.atan2(dH.x, -dH.y) * 180 / Math.PI;
+  const bra = { x: wrist.x - dH.x * 0.12, y: wrist.y - dH.y * 0.12 };
+  return { kind: 'hand', ring: ring, ringAngle: ringAngle, fingerW: palmW * 0.24,
+           wrist: bra, handAngle: handAngle, palmW: palmW };
+}
+
+function _mpLerp(a, b, t)  { return a + (b - a) * t; }
+function _mpLerpPt(a, b, t){ return { x: _mpLerp(a.x, b.x, t), y: _mpLerp(a.y, b.y, t) }; }
+function _mpLerpAngle(a, b, t) {           // shortest-path — avoids ±180° wrap glitches
+  const d = ((b - a + 540) % 360) - 180;
+  return a + d * t;
+}
+function _mpBlend(prev, next, t) {
+  if (prev.kind === 'face') {
+    return { kind: 'face',
+      L: _mpLerpPt(prev.L, next.L, t), R: _mpLerpPt(prev.R, next.R, t),
+      faceW: _mpLerp(prev.faceW, next.faceW, t) };
+  }
+  return { kind: 'hand',
+    ring: _mpLerpPt(prev.ring, next.ring, t),
+    ringAngle: _mpLerpAngle(prev.ringAngle, next.ringAngle, t),
+    fingerW: _mpLerp(prev.fingerW, next.fingerW, t),
+    wrist: _mpLerpPt(prev.wrist, next.wrist, t),
+    handAngle: _mpLerpAngle(prev.handAngle, next.handAngle, t),
+    palmW: _mpLerp(prev.palmW, next.palmW, t) };
+}
+
+// Fresh-anchor accessors for the render loop — null means "manual mode this frame".
+function _mpEarAnchors()  { return (_mpTracking && _mpAnchors && _mpAnchors.kind === 'face') ? _mpAnchors : null; }
+function _mpHandAnchors() { return (_mpTracking && _mpAnchors && _mpAnchors.kind === 'hand') ? _mpAnchors : null; }
+
+function _mpShowTrackHint() {
+  if (_mpHinted) return;
+  _mpHinted = true;
+  const el = document.getElementById('tryon-hint-text');
+  if (!el) return;
+  el.textContent = _mpMode === 'face'
+    ? 'Tracking your face — earrings follow your ears · drag to fine-tune'
+    : (typeof LAB !== 'undefined' && LAB.type === 'bracelet'
+        ? 'Hand detected — bracelet follows your wrist · drag to fine-tune'
+        : 'Hand detected — ring follows your finger · drag to fine-tune');
+  el.style.color = 'rgba(201,168,76,0.85)';
+  el.style.opacity = '1';
+  setTimeout(() => { if (el) el.style.opacity = '0'; }, 4500);
+}
+
+// Detection loop. setTimeout-paced (not rAF) so throttling is explicit; only ever
+// writes _mpAnchors/_mpTracking — the render loop stays the single painter.
+async function _mpStartTracking(mode) {
+  if (!mode || _mpFailed) return;
+  const myId = ++_mpLoopId;
+  _mpMode = mode;
+  _mpTracking = false; _mpAnchors = null; _mpHinted = false;
+  let lm = null;
+  try {
+    lm = await _mpGetLandmarker(mode);
+  } catch (e) {
+    _mpFailed = true;   // CDN / wasm / model failure → manual try-on for this session
+    console.warn('[MP] tracking unavailable — manual try-on mode:', e && e.message);
+    return;
+  }
+  if (_mpLoopId !== myId || !isTryOnActive) return;
+  console.log('[MP]', mode, 'tracking started (tasks-vision v' + MP_VISION_VERSION + ')');
+  let lastVideoTime = -1;
+  while (_mpLoopId === myId && isTryOnActive) {
+    const t0 = performance.now();
+    const video  = document.getElementById('tryon-video');
+    const canvas = document.getElementById('ring-tryon-canvas');
+    if (video && canvas && canvas.width > 0 && video.readyState >= 2 && video.currentTime !== lastVideoTime) {
+      lastVideoTime = video.currentTime;
+      let res = null;
+      try { res = lm.detectForVideo(video, t0); } catch (err) { /* transient frame hiccup — skip */ }
+      const parsed = res
+        ? (mode === 'face' ? _mpParseFace(res, canvas.width, canvas.height)
+                           : _mpParseHand(res, canvas.width, canvas.height))
+        : null;
+      if (parsed) {
+        _mpAnchors  = (_mpAnchors && _mpAnchors.kind === parsed.kind) ? _mpBlend(_mpAnchors, parsed, 0.45) : parsed;
+        _mpLastSeen = t0;
+        if (!_mpTracking) {
+          _mpTracking = true;
+          console.log('[MP]', mode, 'detected — auto-anchoring active');
+          _mpShowTrackHint();
+          if (typeof LAB !== 'undefined' && LAB.type === 'bracelet') _hideWristGuide();
+        }
+      } else if (_mpTracking && (t0 - _mpLastSeen) > 1200) {
+        _mpTracking = false;   // lost — render loop degrades to manual placement in place
+        console.log('[MP]', mode, 'lost — manual placement until re-detected');
+      }
+      const dt = performance.now() - t0;
+      _mpIntervalMs = dt > 70 ? Math.min(240, _mpIntervalMs * 1.25) : Math.max(66, _mpIntervalMs * 0.94);
+    }
+    const wait = Math.max(16, _mpIntervalMs - (performance.now() - t0));
+    await new Promise(r => setTimeout(r, wait));
+  }
+}
+
+function _mpStopTracking() {
+  _mpLoopId++;               // stops any running loop; cached landmarkers are kept
+  _mpMode = null;
+  _mpTracking = false;
+  _mpAnchors = null;
+  _earAnchorL = _earAnchorR = _pieceAnchor = null;
 }
 
 
@@ -8315,6 +8660,7 @@ function loadEarringsForTryOn(imageUrl) {
     fitDefault:    52,
     hideRotate:    _isHoop,         // hoops: remove the (inert-for-earrings) Rotate control
     isHoop:        _isHoop,         // hoops: independent per-earring position state
+    mpMode:        'face',          // MediaPipe Face Landmarker → auto earlobe anchoring
   });
 }
 

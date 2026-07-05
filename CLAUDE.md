@@ -199,10 +199,34 @@ Two entry points that largely duplicate each other (Issues #6):
 ## Try-on pipeline (step 4)
 
 `setupTryOn()` (~6389) starts the mirrored webcam (`getUserMedia`, `#tryon-video` with
-CSS `scaleX(-1)`) and dispatches per type. **This is 2D compositing — there is no face,
-ear, hand, or wrist tracking.** Default placement is a heuristic Y fraction of the
-frame; the user drags/resizes manually. A shared disclaimer element
+CSS `scaleX(-1)`) and dispatches per type. **This is 2D compositing** — but as of
+2026-07-05 earrings, rings, and bracelets get **MediaPipe landmark tracking** layered
+on top (see below); pendant/necklace remain fully manual. A shared disclaimer element
 (`.tryon-disclaimer`) states the preview is visualization-only.
+
+**MediaPipe landmark tracking** (module after `_ringTeardownEvents`, search
+`MEDIAPIPE LANDMARK TRACKING`): `@mediapipe/tasks-vision@0.10.35` is loaded lazily
+via native dynamic `import()` from jsDelivr (verified ESM — note 0.10.22 has no bundle
+on jsDelivr, don't downgrade), wasm from the same CDN path, `.task` models from
+Google's storage bucket. `initTryOn(cfg)` starts a tracking loop when `cfg.mpMode` is
+set (`'face'` for earrings, `'hand'` for ring/bracelet); the loop (`_mpStartTracking`)
+runs `detectForVideo` on a setTimeout pace with adaptive throttle (~15 Hz target,
+backs off to 4 Hz on slow devices) and only writes smoothed anchors (`_mpAnchors`) —
+the existing render loop remains the single painter and consumes anchors when fresh
+(`_mpEarAnchors()`/`_mpHandAnchors()`, stale after 1.2 s without detection).
+- Earrings: earlobe anchors derived from face landmarks 234/454 (tragus) biased 55%
+  toward 132/361 (jaw); size auto-scales to face width (`MP_EAR_SIZE` per form); the
+  shared Size slider/± becomes a multiplier (slider at its default = 1.0×) so there is
+  still ONE size state. Drag while tracking writes per-ear offsets (`_mpOffL/R`)
+  instead of absolute positions. Occlusion is unchanged (baked into
+  `_ringMaskedCanvas`).
+- Ring: anchors to the ring finger's base–middle segment (hand landmarks 13→14),
+  sized to estimated finger width (palm width × 0.24 × `MP_RING_SIZE_FACTOR`),
+  rotated with the finger; the Rotate slider becomes a fine-tune offset.
+- Degradation: any CDN/wasm/model failure sets `_mpFailed` and the try-on stays in
+  the manual mode, byte-for-byte the old behaviour; tracking loss degrades in place
+  (manual mirrors `ringX/ringY/_earL/_earR` are synced each tracked frame).
+  Hit-testing always uses the actually-drawn positions (`_earDrawL/R`, `_pieceDraw`).
 
 **Canvas engine** (ring, bracelet, necklace, earrings) — `initTryOn(cfg)` (~7822):
 - One `#ring-tryon-canvas` backed at devicePixelRatio. `_ringRenderLoop` draws each
@@ -273,8 +297,11 @@ grams/carats only when specs are absent.
   not guarantee it. Pricing is therefore driven by spec math, never by the image
   (bracelet count is deterministic math; pendant shows a size-mismatch note when the
   rendered aspect ratio deviates >20% from the selected mm×mm).
-- **Try-on placement is a 2D approximation** — no tracking; occlusion is a baked mask,
-  not scene understanding.
+- **Try-on placement is a 2D approximation** — landmark tracking (earrings/ring/
+  bracelet) anchors the overlay but occlusion is still a baked mask, not scene
+  understanding. Earlobe/finger anchor constants (`MP_EAR_SIZE`, `MP_EAR_DROP`,
+  `MP_RING_SIZE_FACTOR`, `MP_BRACELET_SIZE_FACTOR`) are heuristics — tune, don't
+  derive.
 - Gemini worker rate-limits (HTTP 429 / `rate_limited` JSON) are expected under load —
   that's what the Flux → SDXL chain is for. The 90-image collections batch script
   deliberately skips Gemini entirely.
