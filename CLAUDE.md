@@ -23,10 +23,13 @@ Google Fonts, Firebase from gstatic CDN, Three.js via CDN importmap.
 1. **No build step.** Everything must run as static files opened by a browser. Do not
    introduce npm, bundlers, TypeScript, or module resolution beyond native ESM + CDN.
 2. **Cloudflare Workers deploy ONLY via the Cloudflare dashboard** (paste code, set
-   encrypted secrets there). **Never run Wrangler CLI.** The `*-worker.js` files in the
-   repo are reference copies — several are provably stale vs. what's deployed (see
-   Issues #5). Treat the front-end fetch code as the source of truth for the worker
-   contracts, not the repo copies.
+   encrypted secrets there). **Never run Wrangler CLI.** As of 2026-07-05 the repo has
+   a source file for EVERY worker, all with origin allowlisting + per-IP rate
+   limiting, written to match the contracts the front end actually consumes. Until
+   they are paste-deployed, the LIVE workers remain the old, unsecured versions —
+   and for `gemini-image` / `groq-enhance` (whose deployed code was never in the
+   repo) diff against the dashboard version before pasting (model names / prompts
+   may differ).
 3. **Git flow:** `git add ...` → `git commit -m "update"` → `git push origin master`.
    Commit message is always `update`. No branches, no PRs.
 4. **Metal options are locked to exactly three:** internal codes `925silver`,
@@ -56,8 +59,7 @@ Google Fonts, Firebase from gstatic CDN, Three.js via CDN importmap.
 | `firestore-service.js` | `window.JWL.saveDesign/saveOrder/getDesigns/getOrders` → `users/{uid}/designs` and `users/{uid}/orders`. |
 | `mobile-nav.js` | Self-contained hamburger nav injected on every page. |
 | `about/support/shipping/returns/warranty/legal/orders/account/authenticity.html` | Static content pages sharing header/footer markup (copy-pasted per page, no shared component). |
-| `*-worker.js` + `*-wrangler.toml` | Reference copies of Cloudflare Worker source (see constraint #2 and Issues #5). |
-| `ar-tryon.js` | **Dead** — loaded by no page. Old 3D AR pipeline (Three.js + MediaPipe + fal Hunyuan3D). Contains a hardcoded fal key (Issues #3). |
+| `*-worker.js` + `*-wrangler.toml` | Cloudflare Worker sources (all 8, refreshed 2026-07-05 with origin+rate-limit security; see constraint #2). Deploy = dashboard paste only. |
 | `generate-collection-images.js` | One-time Node batch script that generated the 90 gallery images via the hf-image worker (skips existing; not part of the site). |
 | `test-img2img.js` | Ad-hoc Node smoke test for the hf-image worker (txt2img → img2img). Not part of the site. |
 | `.env` | Local only, gitignored. Never commit. |
@@ -145,17 +147,22 @@ the (hidden) shared grid. Bracelet does **not** have such a guard (Issues #10).
 ## External integrations
 
 All AI/API keys live inside Cloudflare Workers (`*.sarkd333.workers.dev`); the front
-end POSTs JSON with no auth. Endpoints as they appear in the code:
+end POSTs JSON with no auth. All repo worker sources (2026-07-05) enforce an origin
+allowlist (`jwlzify.com`, `www.`, `localhost`/`127.0.0.1` any port — local dev must be
+served over http, not `file://`) and best-effort per-IP in-memory rate limits
+(15/min image gen + verify, 10/min matting, 20/min enhance, 30/min prices). The Node
+batch script `generate-collection-images.js` must send an `Origin:
+https://jwlzify.com` header if ever re-run. Endpoints as they appear in the code:
 
 | Endpoint | Role | Contract (front-end view) |
 |---|---|---|
-| `https://gemini-image.sarkd333.workers.dev/` | **Primary** image generation (Gemini) | POST `{prompt, negativePrompt}` → JSON `{imageData: base64, mimeType}` or `{error}` / `rate_limited`. **No source in repo.** |
-| `https://flux-image.sarkd333.workers.dev` (`FLUX_WORKER_URL`) | **Secondary** txt2img + img2img refine via fal.ai `flux-2-pro` / `flux-2-pro/edit` | POST `{prompt, image_size, initImage?}` → raw image bytes. Source: `flux-image-worker.js`. |
-| `https://hf-image.sarkd333.workers.dev/` | **Tertiary** fallback. Despite the "hf" name it runs **Cloudflare Workers AI** SDXL (`@cf/stabilityai/stable-diffusion-xl-lightning`; img2img variant at strength 0.45) | POST `{inputs, negative_prompt, guidance_scale, num_inference_steps, initImage?}` → raw PNG. Front end crops the bottom 40px off HF results (watermark strip). |
-| `https://fal-bg-remove.sarkd333.workers.dev` (`FAL_BG_REMOVE_URL`) | Background removal via fal `birefnet` (fallback `rembg`) | POST `{image_url: dataURL}` → **JSON with `image.url`** (front end then fetches that PNG). NB: the repo copy `bg-remove-worker.js` returns raw PNG bytes and is named `bg-remove` — deployed worker differs from the repo copy. |
-| `https://groq-enhance.sarkd333.workers.dev` (`ENHANCE_WORKER_URL`) | Prompt enhancement (Groq) | POST `{idea, jewelryType, earringStyle?, earringStyleDescriptor?}` → `{enhanced}`. **No source in repo.** Failure falls back silently to the raw idea. |
-| `https://gold-price.sarkd333.workers.dev`, `https://silver-price.sarkd333.workers.dev` | Live metal spot prices (metals.dev proxies) | GET → `{price}`; front end treats gold `price` as **pure 24k USD/gram** and silver via a field-name sniffing parser (oz vs gram). Repo copies request CAD with a placeholder key — stale. |
-| `https://api.remove.bg/v1.0/removebg` | Direct remove.bg call, **hardcoded API key in ailab.html** | Cutout fallback step (b). See Issues #3. |
+| `https://gemini-image.sarkd333.workers.dev/` | **Primary** image generation (Gemini) | POST `{prompt, negativePrompt}` → JSON `{imageData: base64, mimeType}` or `{error}` / `rate_limited`. Source: `gemini-image-worker.js` (written 2026-07-05 from the observed contract — **diff against dashboard before pasting**; `GEMINI_API_KEY` secret, `GEMINI_MODEL` var). |
+| `https://flux-image.sarkd333.workers.dev` (`FLUX_WORKER_URL`) | **Secondary** txt2img + img2img refine via fal.ai `flux-2-pro` / `flux-2-pro/edit` | POST `{prompt, image_size, initImage?}` → raw image bytes. Source: `flux-image-worker.js` (`FAL_KEY` secret). |
+| `https://hf-image.sarkd333.workers.dev/` | **Tertiary** fallback. Despite the "hf" name it runs **Cloudflare Workers AI** SDXL (`@cf/stabilityai/stable-diffusion-xl-lightning`; img2img variant at strength 0.45) | POST `{inputs, negative_prompt, guidance_scale, num_inference_steps, initImage?}` → raw PNG. Front end crops the bottom 40px off HF results (watermark strip). Needs an `AI` Workers-AI binding. |
+| `https://fal-bg-remove.sarkd333.workers.dev` (`FAL_BG_REMOVE_URL`) | Background removal via fal `birefnet` (fallback `rembg`) | POST `{image_url: dataURL}` → **JSON `{image:{url}, model}`** (front end fetches that PNG from the fal CDN). Source: `bg-remove-worker.js` (aligned to this contract 2026-07-05; `FAL_KEY` secret). |
+| `https://vision-verify.sarkd333.workers.dev` (`VERIFY_WORKER_URL`) | Generation verification (Groq Llama-4-Scout vision) | POST `{image: dataURL, expected?}` → `{jewelryType, form, stoneCount}`. Source: `vision-verify-worker.js` (`GROQ_API_KEY` secret). Front end fails open if undeployed/down. |
+| `https://groq-enhance.sarkd333.workers.dev` (`ENHANCE_WORKER_URL`) | Prompt enhancement (Groq) | POST `{idea, jewelryType, earringStyle?, earringStyleDescriptor?}` → `{enhanced}`. Source: `groq-enhance-worker.js` (written 2026-07-05 — **diff against dashboard before pasting**; `GROQ_API_KEY` secret). Failure falls back silently to the raw idea. |
+| `https://gold-price.sarkd333.workers.dev`, `https://silver-price.sarkd333.workers.dev` | Live metal spot prices (metals.dev proxies) | GET → `{price}` = pure metal **USD/gram** (front end applies purity factors). Sources updated 2026-07-05: `METALS_API_KEY` secret, `currency=USD&unit=g` (old copies requested CAD with a placeholder key). |
 | `https://api.anthropic.com/v1/messages` | AI spec card (`fetchSpecCard`, model `claude-sonnet-4-20250514`) | **Effectively disabled**: `CLAUDE_API_KEY = ''` → always renders the static fallback card. Browser-direct; if ever enabled it must move behind a worker. |
 | Firebase (`jwlzify-193c2`) | Google auth + Firestore | Designs/orders under `users/{uid}/...` (three different save paths — Issues #11). Web config in `firebase-auth.js` is public by design. |
 
@@ -358,19 +365,21 @@ Nothing below has been fixed; locations are approximate (post-2026-07-04 snapsho
    ~629–630; `MATERIAL_LABEL` ~1878). Internal codes `10ctgold`/`14ctgold` are
    load-bearing and must NOT change; only display strings should ever be converted.
 
-**Secrets committed to a public repo**
-3. `ailab.html` hardcodes the remove.bg API key twice (`REMOVE_BG_API_KEY` ~1850 — the
-   flag `USE_REMOVEBG_FALLBACK` guarding it is never read; and again inside
-   `removeBgWithApi` ~6857, which IS a live fallback path). `ar-tryon.js:16` hardcodes
-   a **fal.ai API key** (file is dead but committed — key should be rotated and the
-   call moved behind a worker like everything else).
+**Secrets — client code cleaned 2026-07-05, KEY ROTATION STILL REQUIRED**
+3. The hardcoded remove.bg key paths (`removeBgWithApi`, `REMOVE_BG_API_KEY`,
+   `USE_REMOVEBG_FALLBACK`) were removed from `ailab.html` (cutout chain is now fal
+   worker → canvas remover → original), and `ar-tryon.js` (dead file with a hardcoded
+   **fal.ai key**) was deleted. BOTH keys remain in the **git history** of a public
+   repo — rotate them manually on the remove.bg and fal.ai dashboards. If the
+   deployed price workers hardcode a real metals.dev key, rotate that too when
+   deploying the new secret-based versions.
 
 **Dead code (large, safe-to-delete candidates — verify before removing)**
-4. Ring 3D try-on: modal `#ringTryOnModal` (~8598) + entire Three.js script (~8633–8899)
-   — `startRing3DTryOn()` immediately throws `'3D pipeline disabled'`, and nothing
-   calls it. `RING_3D_CONFIG` (~1838) exists only for this. `fal-ring-3d-worker.js` is
-   its proxy. `ar-tryon.js` is loaded by no page; the only live reference is the
-   optional-chained `window.teardownARPipeline?.()` (~2600), which no-ops.
+4. Ring 3D try-on: modal `#ringTryOnModal` + entire Three.js script (near end of
+   ailab.html) — `startRing3DTryOn()` immediately throws `'3D pipeline disabled'`,
+   and nothing calls it. `RING_3D_CONFIG` exists only for this. `fal-ring-3d-worker.js`
+   is its proxy. (`ar-tryon.js` and the `teardownARPipeline` call were deleted
+   2026-07-05.)
 5. Old DOM-overlay try-on remnants in ailab.html:
    - `makeEarringDraggable`, `cropToSingleEarring`, `updateEarringHandles`
      (~8161–8276) — never called; `#tryon-earring-left/right` elements are always
@@ -393,15 +402,14 @@ Nothing below has been fixed; locations are approximate (post-2026-07-04 snapsho
    `#genBusyHint`, `#previewPlaceholder` are `getElementById`'d with null guards but
    exist nowhere in the HTML — several step-1 failure messages can never display.
 
-**Worker repo copies vs. deployed reality**
-7. `gold-price-worker.js`/`silver-price-worker.js` request `currency=CAD` with a
-   placeholder API key, while the front end (and `pricing.js`'s header) treat the
-   response as USD/g — the deployed workers evidently differ from the repo copies.
-   `bg-remove-worker.js` returns raw PNG bytes while the front end expects JSON
-   `{image:{url}}` from `fal-bg-remove.sarkd333.workers.dev` (repo copy is even named
-   `bg-remove`, a different subdomain). `gemini-image` and `groq-enhance` have **no
-   source in the repo at all**. Worker file comments also say "Deploy: wrangler …",
-   contradicting the dashboard-only rule.
+**Worker repo copies vs. deployed reality — repo side fixed 2026-07-05**
+7. All 8 workers now have repo sources matching the front-end contracts, with origin
+   allowlisting + per-IP rate limiting. REMAINING GAP: the **deployed** workers stay
+   the old, unsecured versions until each is paste-deployed from the repo copy;
+   `gemini-image`/`groq-enhance` sources were reconstructed from the observed
+   contract — diff against the dashboard code (model name, prompt) before replacing.
+   Price workers need the `METALS_API_KEY` secret set on deploy; `vision-verify` is a
+   NEW worker that must be created (front end fails open until it exists).
 
 **Duplication / drift risks**
 8. `confirmAndGenerate()` and `startGeneration()` duplicate ~80 lines of negative-

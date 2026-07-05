@@ -1,28 +1,68 @@
-// flux-image Cloudflare Worker — text-to-image + image-to-image via fal.ai
-// Deploy: wrangler deploy --config flux-image-wrangler.toml
+// flux-image Cloudflare Worker — text-to-image + image-to-image via fal.ai.
+// SECONDARY generator (Gemini-first, Flux fallback) + the img2img refine path.
 //
-// Required secret (never hardcoded here):
-//   wrangler secret put FAL_KEY --config flux-image-wrangler.toml
+// Deploy (Cloudflare dashboard ONLY — never Wrangler CLI):
+//   Worker name: flux-image  →  https://flux-image.sarkd333.workers.dev
+//   Settings → Variables → Add → Encrypt:
+//     FAL_KEY = <your fal.ai API key>
 //
-// Response contract: raw image bytes + image/jpeg Content-Type
-// — matches hf-image-worker.js so ailab.html needs no changes on this side
+// Response contract (unchanged): raw image bytes + image/jpeg (or png) Content-Type
+// — matches what ailab.html consumes; no front-end changes needed.
 
-const FAL_MODEL_GEN  = 'fal-ai/flux-2-pro';        // txt2img — swap to flux-2-max etc. here
-const FAL_MODEL_EDIT = 'fal-ai/flux-2-pro/edit';    // img2img (refine) — swap independently here
+const FAL_MODEL_GEN  = 'fal-ai/flux-2-pro';         // txt2img — swap model here
+const FAL_MODEL_EDIT = 'fal-ai/flux-2-pro/edit';    // img2img (refine) — swap independently
 
-const CORS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
-};
+/* ── Shared security: origin allowlist + best-effort per-IP rate limit ─────────
+   In-memory limiter is per-isolate/per-PoP (resets on recycle) — burst protection,
+   not a hard quota. Local dev must be served from localhost, not file://.
+   NOTE: generate-collection-images.js (the one-time Node batch script) has no
+   browser Origin — if it is ever re-run against this worker, temporarily add its
+   use or run it with an explicit  Origin: https://jwlzify.com  header. */
+const ALLOWED_ORIGINS = ['https://jwlzify.com', 'https://www.jwlzify.com'];
+function _originAllowed(origin) {
+  if (!origin) return false;
+  if (ALLOWED_ORIGINS.includes(origin)) return true;
+  return /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
+}
+const RATE = { windowMs: 60000, max: 15 };   // image generation: 15 req / min / IP
+const _hits = new Map();
+function _rateLimited(ip) {
+  const now = Date.now();
+  if (_hits.size > 5000) _hits.clear();
+  const h = _hits.get(ip);
+  if (!h || now - h.t0 > RATE.windowMs) { _hits.set(ip, { t0: now, n: 1 }); return false; }
+  h.n++;
+  return h.n > RATE.max;
+}
+function _cors(origin) {
+  return {
+    'Access-Control-Allow-Origin': _originAllowed(origin) ? origin : ALLOWED_ORIGINS[0],
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
+    'Vary': 'Origin',
+  };
+}
 
 export default {
   async fetch(request, env) {
+    const origin = request.headers.get('Origin') || '';
+    const CORS = _cors(origin);
     if (request.method === 'OPTIONS') {
       return new Response(null, { status: 204, headers: CORS });
     }
     if (request.method !== 'POST') {
       return new Response('Method not allowed', { status: 405, headers: CORS });
+    }
+    if (!_originAllowed(origin)) {
+      return new Response(JSON.stringify({ error: 'Origin not allowed' }), {
+        status: 403, headers: { ...CORS, 'Content-Type': 'application/json' },
+      });
+    }
+    const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+    if (_rateLimited(ip)) {
+      return new Response(JSON.stringify({ error: 'rate_limited' }), {
+        status: 429, headers: { ...CORS, 'Content-Type': 'application/json' },
+      });
     }
 
     if (!env.FAL_KEY) {
@@ -47,7 +87,7 @@ export default {
     const imageSize = body.image_size || 'portrait_4_3';
     const initImage = body.initImage || null;  // raw base64 string; presence triggers edit endpoint
     // Output format: default jpeg (unchanged for generation). PNG is requested for
-    // transparent cutouts (e.g. bracelet try-on isolation) where alpha must survive.
+    // transparent cutouts where alpha must survive.
     const outputFormat = (body.output_format === 'png') ? 'png' : 'jpeg';
 
     if (!prompt) {
@@ -125,7 +165,7 @@ export default {
       });
     }
 
-    // Fetch image bytes from fal CDN and pipe back — same contract as hf-image (raw bytes)
+    // Fetch image bytes from fal CDN and pipe back — same contract as before (raw bytes)
     let imgRes;
     try {
       imgRes = await fetch(imageUrl);

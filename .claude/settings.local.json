@@ -10,7 +10,9 @@
       "Bash(magick --version)",
       "Bash(convert --version)",
       "Bash(grep -rn \"YOUR_API_KEY\" *.html *.js)",
-      "Bash(echo \"EXIT:$?\")"
+      "Bash(echo \"EXIT:$?\")",
+      "Bash(curl -s \"https://data.jsdelivr.com/v1/packages/npm/@mediapipe/tasks-vision@0.10.35\" -o /dev/null -w \"%{http_code}\\\\n\")",
+      "Bash(curl -s \"https://data.jsdelivr.com/v1/packages/npm/@mediapipe/tasks-vision@0.10.35\")"
     ]
   }
 }

@@ -1847,10 +1847,6 @@ const RING_3D_CONFIG = {
   ROUGHNESS: 0.12,
 };
 
-const REMOVE_BG_API_KEY = 'SaaY6FrGJRJs7tj5zh7Jvs29'; // unused while flag is false
-// Set true to re-enable paid remove.bg as primary (with canvas as fallback)
-const USE_REMOVEBG_FALLBACK = false;
-
 /* ── Gemini image generation ── */
 
 /* ── Chain style selection for necklace type ── */
@@ -2727,9 +2723,6 @@ window.addEventListener('DOMContentLoaded', _loadIncomingCollectionPiece);
 function setType(btn, type) {
   document.querySelectorAll('.type-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
-  if (LAB.step === 3 && LAB.type === 'pendant' && type !== 'pendant') {
-    window.teardownARPipeline?.();
-  }
   const prevType = LAB.type;
   LAB.type = type;
   userSelections.jewelryType = type;
@@ -7060,39 +7053,14 @@ document.getElementById('s2ConfirmBtn').addEventListener('click', s2ConfirmSave)
 
 <!-- Try-On: background removal + canvas necklace loader -->
 <script>
-async function removeBgWithApi(imageUrl) {
-  const API_KEY = 'SaaY6FrGJRJs7tj5zh7Jvs29';
-  const formData = new FormData();
-
-  if (imageUrl.startsWith('blob:')) {
-    const res = await fetch(imageUrl);
-    const blob = await res.blob();
-    formData.append('image_file', blob, 'image.png');
-  } else {
-    formData.append('image_url', imageUrl);
-  }
-  formData.append('size', 'auto');
-
-  const res = await fetch('https://api.remove.bg/v1.0/removebg', {
-    method: 'POST',
-    headers: { 'X-Api-Key': API_KEY },
-    body: formData,
-  });
-
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(`remove.bg ${res.status}: ${err.errors?.[0]?.title || res.statusText}`);
-  }
-
-  const blob = await res.blob();
-  console.log('[JWLZIFY] remove.bg API SUCCESS');
-  return URL.createObjectURL(blob);
-}
+// (removeBgWithApi — the direct remove.bg fallback with its browser-exposed API
+// key — was removed 2026-07-05. The cutout chain is now: fal worker → local canvas
+// remover → original. Rotate the old remove.bg key on their dashboard.)
 
 async function removePendantBackground(imageUrl) {
   // UNIFIED PATH — pendant + earrings now use the exact same cutout chain as ring,
-  // bracelet and chain (fal birefnet → remove.bg → the shared improved canvas
-  // remover, which is jewelryCutout's final fallback). No per-type divergence.
+  // bracelet and chain (fal birefnet → the shared improved canvas remover, which is
+  // jewelryCutout's final fallback). No per-type divergence.
   const type = (typeof LAB !== 'undefined' && LAB.type) ? LAB.type : 'jewelry';
   try {
     const result = await jewelryCutout(imageUrl, type);
@@ -7441,11 +7409,11 @@ async function removePendantBackgroundCanvas(imageUrl) {
   });
 }
 
-/* ── Jewelry cutout (dedicated fal matting → remove.bg → original) ───
+/* ── Jewelry cutout (dedicated fal matting → canvas remover → original) ───
    Both ring AND bracelet route through fal.ai birefnet/rembg (the bg-remove
    worker), which returns a clean transparent PNG by design — including
    enclosed inner regions like the centre of a bracelet loop. Fallbacks:
-   remove.bg (if it has credits), then the original image at 0.85. */
+   the shared local canvas remover, then the original image at 0.85. */
 // Convert any image URL (incl. local blob: URLs) to a full base64 data URL the
 // worker/fal can consume as image_url.
 async function _imageUrlToDataURL(url) {
@@ -7514,17 +7482,7 @@ async function jewelryCutout(imageUrl, typeLabel) {
     return { url: url, method: 'fal-birefnet', innerTransparent: innerT };
   } catch (e) { console.warn('[Cutout] fal matting failed:', e.message); }
 
-  // b) remove.bg (only if it has credits)
-  try {
-    const url = await removeBgWithApi(imageUrl);
-    if (url) {
-      const innerT = await _isCenterTransparent(url);
-      console.log('[Cutout] type:', typeLabel, '| method:', 'remove.bg', '| inner transparent:', innerT);
-      return { url: url, method: 'remove.bg', innerTransparent: innerT };
-    }
-  } catch (e) { console.warn('[Cutout] remove.bg failed:', e.message); }
-
-  // c) SHARED canvas BFS remover (edge-connected, gradient-aware, stone-protected).
+  // b) SHARED canvas BFS remover (edge-connected, gradient-aware, stone-protected).
   //    This is the universal fallback for EVERY jewelry type — same code, same params.
   try {
     const url = await removePendantBackgroundCanvas(imageUrl);
@@ -7535,7 +7493,7 @@ async function jewelryCutout(imageUrl, typeLabel) {
     }
   } catch (e) { console.warn('[Cutout] canvas remover failed:', e.message); }
 
-  // d) original at 0.85 (last resort)
+  // c) original at 0.85 (last resort)
   console.log('[Cutout] type:', typeLabel, '| method:', 'original-0.85', '| inner transparent:', false);
   return { url: null, method: 'original-0.85', innerTransparent: false };
 }
