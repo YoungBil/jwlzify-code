@@ -7846,10 +7846,11 @@ function loadBraceletForTryOn(imageUrl) {
     minSize:       100,
     maxSize:       360,
     getDefaultY:   (H) => H * 0.75, // lower-center, where a raised wrist sits
-    hintText:      'Raise your wrist to the camera and align with the guide · Drag to position · +/− to resize · slider to rotate',
+    hintText:      'Raise your wrist to the camera — the bracelet finds it · Drag / +/− to fine-tune',
     fitLabel:      'Fit on wrist',
     maskDirection: 'hide-top',      // bracelet wraps AROUND the wrist → hide TOP arc (behind wrist)
-    wristGuide:    true,            // show the wrist-alignment guide overlay
+    wristGuide:    true,            // wrist-alignment guide — the manual-mode fallback aid
+    mpMode:        'hand',          // MediaPipe Hand Landmarker → auto wrist anchoring + rotation
     fitMin:        20,              // slider 0.20–0.50
     fitMax:        50,
     fitDefault:    35,             // hidden top 0–35%, fade 35–55%, visible 55–100% (front curve on near side)

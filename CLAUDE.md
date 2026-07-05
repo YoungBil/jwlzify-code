@@ -223,6 +223,11 @@ the existing render loop remains the single painter and consumes anchors when fr
 - Ring: anchors to the ring finger's base–middle segment (hand landmarks 13→14),
   sized to estimated finger width (palm width × 0.24 × `MP_RING_SIZE_FACTOR`),
   rotated with the finger; the Rotate slider becomes a fine-tune offset.
+- Bracelet: anchors to the wrist crease (landmark 0, nudged toward the forearm),
+  sized to palm width × `MP_BRACELET_SIZE_FACTOR`, rotated with the hand direction
+  (0° = hand pointing up, matching the horizontal-oval renders); hide-top occlusion
+  rotates with the piece. The wrist-guide overlay remains the manual-mode aid and is
+  hidden on first hand detection or first drag.
 - Degradation: any CDN/wasm/model failure sets `_mpFailed` and the try-on stays in
   the manual mode, byte-for-byte the old behaviour; tracking loss degrades in place
   (manual mirrors `ringX/ringY/_earL/_earR` are synced each tracked frame).
