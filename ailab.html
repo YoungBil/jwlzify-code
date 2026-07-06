@@ -2859,6 +2859,7 @@ function _necklaceInches() {
 //   16–18" ≈ 3g (light) · 20–22" ≈ 5g (medium) · 24"+ ≈ 7g (heavier)
 //   + Full placement adds ~2g (stones run the whole chain = more material)
 //   + Stations adds ~0.5g (a handful of set stones)
+// [WEIGHT-TUNE] necklace length-tier grams (see METAL-WEIGHT TUNING INDEX near MATERIAL_WEIGHTS)
 function _necklaceAutoWeight(inches, placement) {
   let g;
   if      (inches <= 18) g = 3;
@@ -2915,6 +2916,7 @@ const PENDANT_TIERS = {
   large:  { min: 8,   max: 11, label: '(8–11 ct)'  },
 };
 // Approx metal densities (g/cm³) and a tunable plate-thickness / fill model.
+// [WEIGHT-TUNE] pendant weight constants (see METAL-WEIGHT TUNING INDEX near MATERIAL_WEIGHTS)
 const PENDANT_METAL_DENSITY = { '925silver': 10.36, '10ctgold': 11.57, '14ctgold': 13.07 };
 const PENDANT_THICKNESS_MM  = 1.6;   // assumed average plate thickness
 const PENDANT_FILL_FACTOR   = 0.62;  // pendants aren't solid rectangles — proportional factor
@@ -3276,6 +3278,7 @@ function _resetRingFlow() {
    apply ONLY when LAB.type === 'bracelet'.
 ═══════════════════════════════════════════════════════════════════════ */
 const BRACELET_PER_STONE_CARAT = { accent: 0.10, medium: 0.25, large: 0.50 };
+// [WEIGHT-TUNE] bracelet weight constants (see METAL-WEIGHT TUNING INDEX near MATERIAL_WEIGHTS)
 const BRACELET_METAL_DENSITY   = { '925silver': 10.36, '10ctgold': 11.57, '14ctgold': 13.07 };
 const BRACELET_THICKNESS_MM    = 1.2;   // assumed link/strand thickness
 const BRACELET_FILL_FACTOR     = 0.55;  // links aren't solid bars — proportional factor
@@ -4460,7 +4463,7 @@ function _readSpecsFromDOM() {
     };
   }
 
-  const PRESET_GRAMS = { light: 2.5, medium: 4.5, heavy: 8.5 };
+  const PRESET_GRAMS = { light: 2.5, medium: 4.5, heavy: 8.5 };  // [WEIGHT-TUNE] ring preset grams
 
   // Metal weight — active preset button or custom input field
   const weightInput    = document.getElementById('specWeightInput');
@@ -5831,13 +5834,95 @@ function updateSpecCostEstimate() {
   }
 }
 
+/* ══════════════════════════════════════════════════════════════════════════
+   METAL-WEIGHT TUNING INDEX & DIAGNOSTICS  (2026-07-05)
+   ──────────────────────────────────────────────────────────────────────────
+   DIAGNOSTIC ONLY — no weight math is changed here yet. This block gathers the
+   realistic reference ranges and a logger so we can SEE, at every price calc,
+   how each type's derived metal grams compares to real-world jewelry, then tune.
+
+   ── ALL TUNABLE WEIGHT CONSTANTS (grouped here for the upcoming tuning pass) ──
+   Each still lives at its derivation site; grep the tag [WEIGHT-TUNE] to jump.
+     • RING      tier grams   → MATERIAL_WEIGHTS.ring.metalGrams (=4, below)
+                               + PRESET_GRAMS { light:2.5, medium:4.5, heavy:8.5 }
+                                 (inside _readSpecsFromDOM, ~line 4463)
+     • EARRINGS  fixed grams  → MATERIAL_WEIGHTS.earrings.metalGrams (=3, below)
+                                 NOTE: should represent the PAIR, not one earring.
+     • PENDANT   derivation   → PENDANT_THICKNESS_MM (=1.6), PENDANT_FILL_FACTOR
+                                 (=0.62), PENDANT_METAL_DENSITY {…}  (~line 2917)
+                                 grams = w × h × thickness × fill × density
+     • BRACELET  derivation   → BRACELET_THICKNESS_MM (=1.2), BRACELET_FILL_FACTOR
+                                 (=0.55), BRACELET_METAL_DENSITY {…}  (~line 3279)
+                                 grams = linkW × thickness × fill × lengthMm × density
+     • NECKLACE  length tiers → _necklaceAutoWeight(): ≤18"=3g, ≤22"=5g, else 7g;
+                                 +2g full / +0.5g stations  (~line 2862)
+
+   ── REALISTIC REFERENCE RANGES (approx grams, METAL portion only) ──
+   Broad min/max = the full realistic envelope; the `range` string shows the
+   light/medium/heavy breakdown supplied for tuning. */
+const METAL_WEIGHT_REFERENCE = {
+  ring:     { min: 2, max: 10, range: 'light 2–3g · medium 4–6g · heavy 7–10g',                 note: 'typical band; wide/ornate may exceed' },
+  pendant:  { min: 1, max: 12, range: 'small ~1–3g · medium ~3–6g · large ~6–12g',              note: '' },
+  bracelet: { min: 5, max: 40, range: 'light ~5–10g · medium ~10–20g · substantial ~20–40g',   note: 'tennis/link, ~7"' },
+  necklace: { min: 3, max: 45, range: 'delicate ~3–8g · medium ~8–20g · bold ~20–45g',          note: 'chain, ~18"' },
+  earrings: { min: 1, max: 12, range: 'small ~1–3g · medium ~3–6g · large ~6–12g',              note: 'PAIR total' },
+};
+
+// Emit the full weight derivation + an in/out-of-reference-range check for the
+// grams actually feeding the price. Reads per-type inputs from jwlSpecifications
+// and the global derivation constants; never mutates anything. Diagnostic only.
+function _logWeightDiagnostics(jewelryType, metalType, specs, grams) {
+  specs = specs || {};
+  let inputs, thickness = null, density = null;
+  switch (jewelryType) {
+    case 'ring':
+      inputs = { weightTier: specs.weightLabel || 'medium', source: specs.weightUserSet ? 'user preset/custom' : 'default' };
+      break;
+    case 'pendant':
+      thickness = (typeof PENDANT_THICKNESS_MM !== 'undefined') ? PENDANT_THICKNESS_MM : null;
+      density   = (typeof PENDANT_METAL_DENSITY !== 'undefined') ? (PENDANT_METAL_DENSITY[metalType] || PENDANT_METAL_DENSITY['925silver']) : null;
+      inputs = { widthMm: specs.pendantWidthMm, heightMm: specs.pendantHeightMm,
+                 fillFactor: (typeof PENDANT_FILL_FACTOR !== 'undefined') ? PENDANT_FILL_FACTOR : null };
+      break;
+    case 'bracelet':
+      thickness = (typeof BRACELET_THICKNESS_MM !== 'undefined') ? BRACELET_THICKNESS_MM : null;
+      density   = (typeof BRACELET_METAL_DENSITY !== 'undefined') ? (BRACELET_METAL_DENSITY[metalType] || BRACELET_METAL_DENSITY['925silver']) : null;
+      inputs = { linkWidthMm: specs.braceletLinkWidthMm, lengthIn: specs.braceletLengthIn,
+                 fillFactor: (typeof BRACELET_FILL_FACTOR !== 'undefined') ? BRACELET_FILL_FACTOR : null };
+      break;
+    case 'necklace':
+      inputs = { lengthIn: (typeof _necklaceInches === 'function' ? _necklaceInches() : '(n/a)'),
+                 placement: (typeof selectedNecklacePlacement !== 'undefined' ? selectedNecklacePlacement : specs.weightLabel),
+                 stoneCount: specs.stoneCount };
+      break;
+    case 'earrings':
+      inputs = { weightTier: specs.weightLabel || 'medium', note: 'grams should represent the PAIR' };
+      break;
+    default:
+      inputs = { note: 'unknown type — default MATERIAL_WEIGHTS used' };
+  }
+  console.log('[Weight]', jewelryType, '| inputs:', inputs, '| assumed thickness:', thickness, '| density:', density, '| derived grams:', grams);
+
+  const ref = METAL_WEIGHT_REFERENCE[jewelryType];
+  if (ref) {
+    const inRange = grams >= ref.min && grams <= ref.max;
+    const delta = inRange ? '' : (grams < ref.min
+      ? '(UNDER min by ' + (+(ref.min - grams).toFixed(2)) + 'g)'
+      : '(OVER max by ' + (+(grams - ref.max).toFixed(2)) + 'g)');
+    console.log('[Weight check]', jewelryType, '| derived:', grams, 'g | reference:', ref.range,
+                '| envelope:', ref.min + '–' + ref.max + 'g', '| in range:', inRange, delta);
+  } else {
+    console.log('[Weight check]', jewelryType, '| derived:', grams, 'g | reference: (none defined)');
+  }
+}
+
 /* ── Pricing engine ── */
 const MATERIAL_WEIGHTS = {
-  ring:     { metalGrams: 4,  stoneCarats: 0.80 },
-  necklace: { metalGrams: 8,  stoneCarats: 1.20 },
-  pendant:  { metalGrams: 5,  stoneCarats: 0.60 },
-  earrings: { metalGrams: 3,  stoneCarats: 0.50 },
-  bracelet: { metalGrams: 12, stoneCarats: 1.50 },
+  ring:     { metalGrams: 4,  stoneCarats: 0.80 },  // [WEIGHT-TUNE] ring default grams
+  necklace: { metalGrams: 8,  stoneCarats: 1.20 },  // [WEIGHT-TUNE] necklace fallback (live value from _necklaceAutoWeight)
+  pendant:  { metalGrams: 5,  stoneCarats: 0.60 },  // [WEIGHT-TUNE] pendant fallback (live value derived from mm×mm)
+  earrings: { metalGrams: 3,  stoneCarats: 0.50 },  // [WEIGHT-TUNE] earrings fixed grams (PAIR?)
+  bracelet: { metalGrams: 12, stoneCarats: 1.50 },  // [WEIGHT-TUNE] bracelet fallback (live value derived from width×length)
 };
 const STONE_RATES = {
   moissanite_vvsd: 2.00,
@@ -5884,6 +5969,11 @@ function calculatePrice(metalType, stoneType, jewelryType, userCarats) {
 
   // Override weights from Specifications step if user made selections
   if (specs && specs.metalGrams > 0) weights.metalGrams = specs.metalGrams;
+
+  // DIAGNOSTIC (no math change): surface the derived metal weight + how it compares
+  // to realistic reference ranges, for every price calc. See METAL_WEIGHT_REFERENCE.
+  try { _logWeightDiagnostics(jewelryType, metalType, specs, weights.metalGrams); }
+  catch (e) { console.warn('[Weight] diagnostics skipped:', e && e.message); }
 
   var stoneCarats, caratSource;
   if (jewelryType === 'necklace') {
