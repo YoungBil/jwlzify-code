@@ -6085,6 +6085,60 @@ function calcQuote() {
   return LAB.quote || { total: calculatePrice(LAB.material, LAB.gem, LAB.type).finalPrice };
 }
 
+/* ══════════════════════════════════════════════════════════════════════════
+   PRICING AUDIT (verification only — exercises the REAL calculatePrice; does not
+   change any formula value or logic). Runs one sample calc per jewelry type and
+   prints the full profit-tier matrix so the breakdown can be eyeballed against
+   the intended formula. Also exposed as window._auditPricing() to re-run in the
+   console after live spot prices load. Uses whatever spotPrices are current
+   (fallback USD/g at first load). See findings in the commit message / report.
+═══════════════════════════════════════════════════════════════════════════ */
+function _auditPricing() {
+  const _prevSpecs = window.jwlSpecifications;
+  console.log('[Price audit] ==== formula verification | spot source:', (typeof spotPrices !== 'undefined' ? spotPrices.source : 'n/a'), '====');
+  // One representative sample per jewelry type (grams/carats stand in for real specs).
+  const samples = [
+    { type: 'ring',     metal: '925silver', stone: 'moissanite_vvsd',    grams: 4,  carats: 0.80 },
+    { type: 'pendant',  metal: '14ctgold',  stone: 'lab_diamond',        grams: 5,  carats: 0.60 },
+    { type: 'bracelet', metal: '925silver', stone: 'lab_diamond_vvs',    grams: 12, carats: 1.50 },
+    { type: 'necklace', metal: '10ctgold',  stone: 'natural_diamond',    grams: 8,  carats: 1.20 },
+    { type: 'earrings', metal: '14ctgold',  stone: 'real_diamond_vsvvs', grams: 3,  carats: 0.50 },
+  ];
+  samples.forEach(s => {
+    // Temp specs so calculatePrice reads our sample grams/carats; restored after.
+    window.jwlSpecifications = { metalGrams: s.grams, totalCarats: s.carats, stoneCount: 1, stones: [s.carats] };
+    const r  = calculatePrice(s.metal, s.stone, s.type, 0);
+    const pt = r.baseCost > 0 ? Math.round((r.profitCost / r.baseCost) * 100) + '%' : 'n/a';
+    console.log('[Price audit]', s.type,
+      '| metal:', s.metal, '| stone:', s.stone,
+      '| metalGrams:', r.metalGrams,
+      '| metalCost:', +r.metalCost.toFixed(2),
+      '| stoneCost:', +r.stoneCost.toFixed(2),
+      '| baseCost:',  +r.baseCost.toFixed(2),
+      '| labour:',    +r.labourCost.toFixed(2),
+      '| profitTier:', pt,
+      '| profit:',    +r.profitCost.toFixed(2),
+      '| finalPrice:', +r.finalPrice.toFixed(2));
+  });
+  window.jwlSpecifications = _prevSpecs; // restore — never leave audit specs behind
+
+  // Full profit-tier matrix: every metal × stone combination, tier that WOULD be chosen.
+  console.log('[Price audit] ---- profit-tier matrix (metal × stone) ----');
+  const _metals = ['925silver', '10ctgold', '14ctgold'];
+  const _stones = ['moissanite_vvsd', 'lab_diamond', 'lab_diamond_vvs', 'real_diamond_vsvvs', 'natural_diamond'];
+  _metals.forEach(m => _stones.forEach(st => {
+    let profitRate = 1.00;
+    if (m === '925silver' && st === 'moissanite_vvsd') profitRate = 1.50;
+    else if ((m === '10ctgold' || m === '14ctgold') && (st === 'real_diamond_vsvvs' || st === 'natural_diamond')) profitRate = 0.70;
+    const rate = (typeof STONE_RATES !== 'undefined' && STONE_RATES[st] != null) ? STONE_RATES[st] : 2.00;
+    console.log('[Price audit] tier | metal:', m, '| stone:', st, '| profit:', (profitRate * 100) + '%', '| stoneRate: $' + rate + '/ct');
+  }));
+  console.log('[Price audit] ==== end verification ====');
+}
+window._auditPricing = _auditPricing;
+// Run once at load (fallback spot prices) so the breakdown is visible without interaction.
+try { _auditPricing(); } catch (e) { console.warn('[Price audit] skipped:', e && e.message); }
+
 // One-line stone description for the itemized quote sheet. Exact-count types
 // (ring / earrings / pendant, counts 1–7) state count × ct × type — the contract.
 // Coverage-priced layouts (bracelet, necklace full) state total carat coverage;
