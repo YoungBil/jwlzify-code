@@ -2678,6 +2678,36 @@ function setType(btn, type) {
     // Clear userSelections, keeping only the new type
     Object.keys(userSelections).forEach(k => { if (k !== 'jewelryType') delete userSelections[k]; });
 
+    // ── Re-sync stored values to the still-highlighted buttons (state desync fix) ──
+    // Metal, primary stone, stone shape and aesthetic are type-INDEPENDENT (they
+    // depend on metal, not jewelry type), so their buttons stay visually highlighted
+    // across a type switch. The mass-clear above wiped their STORED values, leaving
+    // the highlight and userSelections out of sync — which made "Generate" report
+    // "Please select a material and gem" for an option that still looks selected.
+    // Restore the stored value from whatever is actually highlighted so the source
+    // of truth the validation reads always matches the visible selection (option a:
+    // keep valid selections rather than clearing the highlight).
+    const _activeMetal = document.querySelector('.spec-material-btn.active');
+    if (_activeMetal && _activeMetal.dataset.material) {
+      userSelections.material = _activeMetal.dataset.material;
+      LAB.material = _activeMetal.dataset.material;
+    }
+    const _activeGem = document.querySelector('.spec-gem-btn.active');
+    if (_activeGem && _activeGem.dataset.gem) {
+      userSelections.gem = _activeGem.dataset.gem;
+      LAB.gem = _activeGem.dataset.gem;
+    }
+    const _activeShape = document.querySelector('.spec-gemshape-btn.active');
+    if (_activeShape && _activeShape.dataset.shape) {
+      userSelections.gemShape = _activeShape.dataset.shape;
+    }
+    const _activeStyle = document.querySelector('.lab-chip.active');
+    if (_activeStyle && _activeStyle.dataset.style) {
+      userSelections.style = _activeStyle.dataset.style;
+      LAB.style = _activeStyle.dataset.style;
+    }
+    console.log('[Specs] type switched, selections re-synced — metal:', userSelections.material, '| stone:', userSelections.gem);
+
     // Reset spec step buttons and inputs
     document.querySelectorAll('.spec-weight-btn, .spec-count-btn, .spec-chainlen-btn')
       .forEach(b => b.classList.remove('active'));
