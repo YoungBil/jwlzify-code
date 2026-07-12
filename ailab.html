@@ -2028,13 +2028,12 @@ function _buildHfJewelryDesc(type, material, gem, style, desc) {
   }
   return `${userPart}luxury ${s} ${m} ${type}, ${g}` + _authoritativeStoneClause(type);
 }
-const _HF_RING_NEGATIVE      = 'tilted, angled, three-quarter view, 3/4 view, perspective, side view, side angle, top-down, birds eye, isometric, diagonal, rotated, lying flat, flat lay, on its side, leaning, oblique, dutch angle, foreshortening, multiple rings, collage, grid, two rings, group of rings, blurry, deformed, asymmetrical';
-const _HF_BRACELET_NEGATIVE  = 'flat lay, laid flat, spread out, scattered, disconnected pieces, broken chain, straight strip, unclasped, open ends, multiple bracelets, two bracelets, collage, grid, tangled, deformed, asymmetrical, lying on surface, top-down, birds eye, side view, coiled, stacked, two bracelets, double band, two bands, stacked bracelets, pair of bracelets, multiple loops, double loop, two rings, twin bands, layered bracelets, second bracelet, duplicate';
-const _HF_NECKLACE_NEGATIVE  = 'flat lay, tabletop, top-down view, coiled chain, chain laid flat, jewelry box, angled perspective, asymmetrical drape, cropped chain, multiple necklaces, hands, neck skin, mannequin face, busy background, blurry, deformed, pendant, charm, hanging pendant, locket, dangling ornament, focal centerpiece, center stone hanging from chain, drop pendant, extra pendant, multiple chains, two necklaces, double chain, several chains, duplicate necklace, tangled chains, center stone, centre stone, focal stone, solitaire, central gemstone, large center gem, neck, bust, body, person, skin';
+// NOTE (2026-07-12): the entire negative-prompt system was removed. Flux 2 Pro has
+// no negative-prompt support — negatives were assembled, logged, and then silently
+// dropped before the worker call (dead code). Constraints now live in the POSITIVE
+// prompt as affirmative description only.
 // Single-band enforcement — bracelet only. Appended to the bracelet positive prompt.
 const _BRACELET_SINGLE_BAND   = 'ONE single bracelet band only. A single continuous loop. One unbroken band. Exactly one bracelet, not two, not a pair, not stacked, not double-banded. A single solitary bracelet shown as one closed oval loop facing the camera.';
-// Head-on band negative for bracelet (front-facing horizontal loop; no body parts, no side/tilt).
-const _HF_BRACELET_WRAP_NEG   = 'laid flat, flat lay, straight strip, side view, angled, tilted, angled down, slanted, diagonal, leaning, rotated, dutch angle, two bracelets, double band, multiple bracelets, person, hand, wrist, skin, collage, grid, deformed';
 // Extra single-band instruction folded into the bracelet prompt.
 const _BRACELET_SINGLE_INSTRUCTION = 'Generate exactly ONE single bracelet band. Do not show two bands, a double band, stacked bracelets, or a pair. One single continuous loop only.';
 // Flux 2 Pro worker — the SOLE txt2img + img2img generator (swap model by updating flux-image-worker.js FAL_MODEL)
@@ -2070,7 +2069,6 @@ const FAL_BG_REMOVE_URL = 'https://fal-bg-remove.sarkd333.workers.dev'; // fal b
    point (_generateImage), so specs are reinforced redundantly (start + end) and
    stones are instructed to sit naturally and tailored to the design. The spec
    selectors remain the sole source of truth — this only reinforces them. */
-const _PLACEMENT_NEGATIVES = 'awkward stone placement, randomly scattered stones, floating stones, misaligned stones, stones not in settings, unbalanced, asymmetrical placement, stones clipping, poorly integrated stones, stones pasted on';
 const _QUALITY_SAFEGUARDS  = 'professional luxury jewelry product photography, photorealistic, sharp focus, high detail, well-crafted, realistic proportions, elegant.';
 const _SG_NUM_WORDS = ['zero','one','two','three','four','five','six','seven','eight','nine','ten',
   'eleven','twelve','thirteen','fourteen','fifteen','sixteen','seventeen','eighteen','nineteen','twenty'];
@@ -2118,12 +2116,8 @@ function _applyPromptSafeguards(p, sg) {
   if (!p) return p;
   return [sg.lead, p, sg.placement, sg.quality, sg.tail].filter(Boolean).join(' ');
 }
-// Append the natural-placement negatives to an assembled negative prompt.
-function _applyNegativeSafeguards(neg) {
-  return (neg ? neg + ', ' : '') + _PLACEMENT_NEGATIVES;
-}
 
-async function _generateImage(prompt, negativePrompt, initImage, hfOverrides) {
+async function _generateImage(prompt, initImage, hfOverrides) {
   hfOverrides = hfOverrides || {};
 
   // ── Reinforce specs + natural stone placement on the FINAL prompt (all types) ──
@@ -2132,16 +2126,9 @@ async function _generateImage(prompt, negativePrompt, initImage, hfOverrides) {
   const _sg = _buildPromptSafeguards();
   prompt = _applyPromptSafeguards(prompt, _sg);
   if (hfOverrides.inputs) hfOverrides.inputs = _applyPromptSafeguards(hfOverrides.inputs, _sg);
-  negativePrompt = _applyNegativeSafeguards(negativePrompt);
-  if (hfOverrides.negative_prompt !== undefined) {
-    hfOverrides.negative_prompt = _applyNegativeSafeguards(hfOverrides.negative_prompt);
-  }
-  hfOverrides.guidance_scale = 9.0; // strong adherence for spec accuracy
 
   const finalPrompt    = hfOverrides.inputs || prompt;
-  const negForLog       = (hfOverrides.negative_prompt !== undefined) ? hfOverrides.negative_prompt : negativePrompt;
   console.log('[Gen] final prompt:', finalPrompt);
-  console.log('[Gen] negative prompt:', negForLog);
   console.log('[Gen] specs enforced — metal:', _sg.metal, '| stone:', _sg.stoneType, '| count:', _sg.count,
               '| size:', _sg.size, '| shape:', _sg.shape, '| style:', _sg.style);
 
@@ -2272,13 +2259,13 @@ async function _verifyImage(blobUrl, expected) {
 // Drop-in replacement for _generateImage at the flow level: generate → verify →
 // (regenerate up to maxAttempts−1 more times) → serve the best match. No error
 // spam: a full miss just serves the closest attempt with a console note.
-async function _generateVerified(prompt, negativePrompt, initImage, hfOverrides, expected, maxAttempts) {
-  if (!expected) return _generateImage(prompt, negativePrompt, initImage, hfOverrides);
+async function _generateVerified(prompt, initImage, hfOverrides, expected, maxAttempts) {
+  if (!expected) return _generateImage(prompt, initImage, hfOverrides);
   const tries = Math.max(1, maxAttempts || 3);
   const genText = document.getElementById('genText');
   let best = null;
   for (let i = 0; i < tries; i++) {
-    const url = await _generateImage(prompt, negativePrompt, initImage, hfOverrides);
+    const url = await _generateImage(prompt, initImage, hfOverrides);
     if (!url) continue;
     if (genText) genText.textContent = 'Verifying your design…';
     const v = await _verifyImage(url, expected);
@@ -3909,21 +3896,6 @@ function _earStudSurroundRequested() {
   return /\b(halo|bezel|framed?|surround(?:ing|ed)?|backing\s*dis[ck])\b/i.test(t);
 }
 
-// Earring negative-prompt suffix, form-aware. Base = count/cross-type/pair terms.
-// STUDS also get post/side-extension negatives and (unless the user asked for a
-// surround) surrounding-metal negatives. HOOP/DROP keep the original generic set
-// (base + unrequested pave + halo) — their behavior is unchanged.
-function _earringNegativeSuffix(form) {
-  const base = ', wrong number of stones, extra stones, additional stones, extra accent stones, stone cluster, ring, pendant, necklace, bracelet, brooch, mismatched pair, asymmetrical earrings, uneven stones, different stone sizes, two earrings in frame, multiple earrings, several earrings';
-  if (form === 'stud') {
-    return base
-      + ', protruding post, visible post, side extension, stem, nub, protrusion, side nub'
-      + (_earStudSurroundRequested() ? ''
-         : ', surrounding metal ring, bezel, halo, frame, backing disk, metal disk around stone, unrequested pave');
-  }
-  return base + ', unrequested pave, halo'; // hoop / drop — original generic set
-}
-
 // Authoritative stone count — ONLY from the spec selectors (synced into
 // window.jwlSpecifications from userSelections.stoneCount/stoneSizes at
 // generate time). Never derived from the typed text.
@@ -4610,30 +4582,6 @@ async function startGeneration(isTweak) {
     console.log('[JWLZIFY] Resolved type:', resolvedType, '(matches dropdown)');
   }
 
-  // Build a negative prompt that excludes all other jewelry types (uses resolved type)
-  const _TYPE_SYNONYMS = {
-    ring:     ['ring'],
-    necklace: ['necklace', 'chain necklace'],
-    pendant:  ['pendant', 'charm'],
-    earrings: ['earrings', 'earring', 'stud', 'hoop earring', 'drop earring'],
-    bracelet: ['bracelet', 'bangle', 'cuff'],
-  };
-  const negJewelryTerms = Object.entries(_TYPE_SYNONYMS)
-    .filter(([t]) => t !== resolvedType)
-    .flatMap(([, syns]) => syns)
-    .join(', ');
-  const _ringNegPrefix     = resolvedType === 'ring' ? 'collage, grid, multiple panels, multiple angles, contact sheet, multiple rings, split screen, tiled, montage, two rings, several rings, ' : '';
-  const _necklaceNegSuffix = resolvedType === 'necklace'
-    ? ', flat lay, tabletop, top-down view, coiled chain, chain laid flat, jewelry box, angled perspective, asymmetrical drape, cropped chain, multiple necklaces, hands, neck skin, mannequin face, busy background, pendant, charm, hanging pendant, locket, dangling ornament, focal centerpiece, center stone hanging from chain, drop pendant, extra pendant, multiple chains, two necklaces, double chain, several chains, duplicate necklace, tangled chains, center stone, centre stone, focal stone, solitaire, central gemstone, large center gem, neck, bust, body, skin'
-      + (selectedNecklacePlacement === 'stations' ? ', tennis necklace, continuous stones, fully set chain, pave chain, stones touching, no gaps between stones' : '')
-    : '';
-  // Earring spec-adherence negatives (count / cross-type / matched-pair) + stud-only
-  // no-surround / no-post negatives (form-aware; hoop & drop unchanged).
-  const _earringNegSuffix = resolvedType === 'earrings'
-    ? _earringNegativeSuffix((window.jwlSpecifications && window.jwlSpecifications.earringForm) || 'stud')
-    : '';
-  const negativePrompt = `${_ringNegPrefix}${negJewelryTerms}, brooch, anklet, person, human, model, body, face, hands, text, watermark, logo, blurry, low quality, distorted${_necklaceNegSuffix}${_earringNegSuffix}`;
-
   // Read all spec values fresh from the DOM at this exact click moment
   const _domSpecs = _readSpecsFromDOM();
   console.log('[JWLZIFY] === SPEC VALUES AT GENERATE CLICK ===');
@@ -4677,7 +4625,6 @@ async function startGeneration(isTweak) {
   console.log('[JWLZIFY] === GENERATION ===');
   console.log('[JWLZIFY] type (resolved):', resolvedType, '| dropdown was:', rawType);
   console.log('[JWLZIFY] full prompt:', fullPrompt);
-  console.log('[JWLZIFY] negative prompt:', negativePrompt);
   console.log('[JWLZIFY] metal:', LAB.material, '| stone:', LAB.gem);
 
   const ri = document.getElementById('refineImg');
@@ -4694,16 +4641,14 @@ async function startGeneration(isTweak) {
   if (resolvedType === 'ring') {
     const _hfDesc  = _buildHfJewelryDesc('ring', LAB.material, LAB.gem, LAB.style, desc);
     const _hfInput = `${_hfDesc}, front view, straight-on, dead center, upright ring, vertical band, symmetrical, eye-level shot, frontal elevation, centered composition, stone at top, band at bottom, perfectly vertical, head-on angle, orthographic front view, product photography, white background, studio lighting, sharp focus, photorealistic, 8k, highly detailed`;
-    _hfOverrides = { inputs: _hfInput, negative_prompt: _HF_RING_NEGATIVE, guidance_scale: 9.0, num_inference_steps: 30 };
-    console.log('[JWLZIFY] HF ring prompt:', _hfInput);
-    console.log('[JWLZIFY] HF negative prompt:', _HF_RING_NEGATIVE);
+    _hfOverrides = { inputs: _hfInput };
+    console.log('[JWLZIFY] ring prompt (keyword-stacked):', _hfInput);
     console.log('[JWLZIFY] Flux ring prompt:', fullPrompt);
   } else if (resolvedType === 'bracelet') {
     const _hfDesc  = _buildHfJewelryDesc('bracelet', LAB.material, LAB.gem, LAB.style, desc);
     const _hfInput = `${_hfDesc}, single closed-loop bracelet viewed perfectly head-on, horizontal oval band facing the camera, front face pointing directly at the viewer, clear symmetrical loop, one single continuous band, isolated, plain white studio background, no person, no body parts, product photography, studio lighting, sharp focus, photorealistic, 8k. ${_BRACELET_SINGLE_BAND}`;
-    _hfOverrides = { inputs: _hfInput, negative_prompt: _HF_BRACELET_WRAP_NEG, guidance_scale: 9.0, num_inference_steps: 30 };
-    console.log('[JWLZIFY] bracelet single-band prompt (HF):', _hfInput);
-    console.log('[JWLZIFY] bracelet negative:', _HF_BRACELET_NEGATIVE);
+    _hfOverrides = { inputs: _hfInput };
+    console.log('[JWLZIFY] bracelet single-band prompt:', _hfInput);
     console.log('[JWLZIFY] Flux bracelet prompt:', fullPrompt);
   } else if (resolvedType === 'necklace') {
     const _hfDesc  = _buildHfJewelryDesc('necklace', LAB.material, LAB.gem, LAB.style, desc);
@@ -4712,11 +4657,9 @@ async function startGeneration(isTweak) {
       : selectedNecklacePlacement === 'full'
         ? 'stones set continuously along entire chain tennis necklace'
         : `${_domSpecs.stoneCount} individual stones spaced far apart along chain, bare chain links clearly visible between each stone, NOT tennis necklace, NOT continuous, distinct gaps between stones`;
-    const _hfNegNecklace = _HF_NECKLACE_NEGATIVE + (selectedNecklacePlacement === 'stations' ? ', tennis necklace, continuous stones, fully set chain, pave chain, stones touching, no gaps between stones' : '');
     const _hfInput = `${_hfDesc}, ${_hfPlacement}, chain-only necklace, no pendant, no charm, no hanging centerpiece, necklace displayed as if worn, front-facing view photographed straight on, chain forms a clean symmetrical U-shape draped down both sides evenly, displayed on an invisible ghost mannequin neck form, vertical portrait orientation, light grey background, studio lighting, sharp focus, photorealistic, 8k`;
-    _hfOverrides = { inputs: _hfInput, negative_prompt: _hfNegNecklace, guidance_scale: 9.0, num_inference_steps: 30 };
-    console.log('[JWLZIFY] necklace prompt (HF):', _hfInput);
-    console.log('[JWLZIFY] necklace negative:', _hfNegNecklace);
+    _hfOverrides = { inputs: _hfInput };
+    console.log('[JWLZIFY] necklace prompt:', _hfInput);
     console.log('[JWLZIFY] Flux necklace prompt:', fullPrompt);
   }
 
@@ -4735,7 +4678,7 @@ async function startGeneration(isTweak) {
     return;
   }
 
-  _enqueueGen(() => _generateVerified(fullPrompt, negativePrompt, initImage, _hfOverrides, _buildVerifyExpectation())).then((blobUrl) => {
+  _enqueueGen(() => _generateVerified(fullPrompt, initImage, _hfOverrides, _buildVerifyExpectation())).then((blobUrl) => {
     console.log('[JWLZIFY] setting image src to:', blobUrl?.slice(0, 50));
     if (!blobUrl) {
       if (thisGen !== generationId) return;
@@ -4869,43 +4812,19 @@ async function confirmAndGenerate() {
   const thisGen = generationId;
   setGenLoading(true);
 
-  const _TYPE_SYNONYMS = {
-    ring:     ['ring'],
-    necklace: ['necklace', 'chain necklace'],
-    pendant:  ['pendant', 'charm'],
-    earrings: ['earrings', 'earring', 'stud', 'hoop earring', 'drop earring'],
-    bracelet: ['bracelet', 'bangle', 'cuff'],
-  };
-  const negJewelryTerms = Object.entries(_TYPE_SYNONYMS)
-    .filter(([t]) => t !== LAB.type)
-    .flatMap(([, syns]) => syns).join(', ');
-  const _ringNegPrefixC     = LAB.type === 'ring' ? 'collage, grid, multiple panels, multiple angles, contact sheet, multiple rings, split screen, tiled, montage, two rings, several rings, ' : '';
-  const _necklaceNegSuffixC = LAB.type === 'necklace'
-    ? ', flat lay, tabletop, top-down view, coiled chain, chain laid flat, jewelry box, angled perspective, asymmetrical drape, cropped chain, multiple necklaces, hands, neck skin, mannequin face, busy background, pendant, charm, hanging pendant, locket, dangling ornament, focal centerpiece, center stone hanging from chain, drop pendant, extra pendant, multiple chains, two necklaces, double chain, several chains, duplicate necklace, tangled chains, center stone, centre stone, focal stone, solitaire, central gemstone, large center gem, neck, bust, body, skin'
-      + (selectedNecklacePlacement === 'stations' ? ', tennis necklace, continuous stones, fully set chain, pave chain, stones touching, no gaps between stones' : '')
-    : '';
-  // Earring spec-adherence negatives (count / cross-type / matched-pair) + stud-only
-  // no-surround / no-post negatives (form-aware; hoop & drop unchanged).
-  const _earringNegSuffixC = LAB.type === 'earrings'
-    ? _earringNegativeSuffix((window.jwlSpecifications && window.jwlSpecifications.earringForm) || 'stud')
-    : '';
-  const negativePrompt = _ringNegPrefixC + negJewelryTerms + ', brooch, anklet, person, human, model, body, face, hands, text, watermark, logo, blurry, low quality, distorted' + _necklaceNegSuffixC + _earringNegSuffixC;
-
-  // HF-specific keyword-stacked overrides for ring / bracelet / necklace
+  // Keyword-stacked prompt overrides for ring / bracelet / necklace
   let _hfOverridesC = null;
   if (LAB.type === 'ring') {
     const _hfDesc  = _buildHfJewelryDesc('ring', LAB.material, LAB.gem, LAB.style || 'Modern', userIdea);
     const _hfInput = `${_hfDesc}, front view, straight-on, dead center, upright ring, vertical band, symmetrical, eye-level shot, frontal elevation, centered composition, stone at top, band at bottom, perfectly vertical, head-on angle, orthographic front view, product photography, white background, studio lighting, sharp focus, photorealistic, 8k, highly detailed`;
-    _hfOverridesC = { inputs: _hfInput, negative_prompt: _HF_RING_NEGATIVE, guidance_scale: 9.0, num_inference_steps: 30 };
-    console.log('[JWLZIFY] HF ring prompt:', _hfInput);
-    console.log('[JWLZIFY] HF negative prompt:', _HF_RING_NEGATIVE);
+    _hfOverridesC = { inputs: _hfInput };
+    console.log('[JWLZIFY] ring prompt (keyword-stacked):', _hfInput);
     console.log('[JWLZIFY] Flux ring prompt:', fullPrompt);
   } else if (LAB.type === 'bracelet') {
     const _hfDesc  = _buildHfJewelryDesc('bracelet', LAB.material, LAB.gem, LAB.style || 'Modern', userIdea);
     const _hfInput = `${_hfDesc}, single closed-loop bracelet viewed perfectly head-on, horizontal oval band facing the camera, front face pointing directly at the viewer, clear symmetrical loop, one single continuous band, isolated, plain white studio background, no person, no body parts, product photography, studio lighting, sharp focus, photorealistic, 8k. ${_BRACELET_SINGLE_BAND}`;
-    _hfOverridesC = { inputs: _hfInput, negative_prompt: _HF_BRACELET_WRAP_NEG, guidance_scale: 9.0, num_inference_steps: 30 };
-    console.log('[JWLZIFY] bracelet single-band prompt (HF):', _hfInput);
-    console.log('[JWLZIFY] bracelet negative:', _HF_BRACELET_NEGATIVE);
+    _hfOverridesC = { inputs: _hfInput };
+    console.log('[JWLZIFY] bracelet single-band prompt:', _hfInput);
     console.log('[JWLZIFY] Flux bracelet prompt:', fullPrompt);
   } else if (LAB.type === 'necklace') {
     const _hfDesc  = _buildHfJewelryDesc('necklace', LAB.material, LAB.gem, LAB.style || 'Modern', userIdea);
@@ -4914,16 +4833,13 @@ async function confirmAndGenerate() {
       : selectedNecklacePlacement === 'full'
         ? `${selectedNecklaceCt}ct stones set continuously along entire chain tennis necklace, every stone same size`
         : `${window.jwlSpecifications.stoneCount} ${selectedNecklaceCt}ct individual stones spaced far apart along chain, bare chain links clearly visible between each stone, NOT tennis necklace, NOT continuous, distinct gaps between stones, every stone same size`;
-    const _hfNegNecklaceC = _HF_NECKLACE_NEGATIVE + (selectedNecklacePlacement === 'stations' ? ', tennis necklace, continuous stones, fully set chain, pave chain, stones touching, no gaps between stones' : '');
     const _hfInput = `${_hfDesc}, ${_hfPlacement}, chain-only necklace, no pendant, no charm, no hanging centerpiece, necklace displayed as if worn, front-facing view photographed straight on, chain forms a clean symmetrical U-shape draped down both sides evenly, displayed on an invisible ghost mannequin neck form, vertical portrait orientation, light grey background, studio lighting, sharp focus, photorealistic, 8k`;
-    _hfOverridesC = { inputs: _hfInput, negative_prompt: _hfNegNecklaceC, guidance_scale: 9.0, num_inference_steps: 30 };
-    console.log('[JWLZIFY] necklace prompt (HF):', _hfInput);
-    console.log('[JWLZIFY] necklace negative:', _hfNegNecklaceC);
+    _hfOverridesC = { inputs: _hfInput };
+    console.log('[JWLZIFY] necklace prompt:', _hfInput);
     console.log('[JWLZIFY] Flux necklace prompt:', fullPrompt);
   }
 
   console.log('[JWLZIFY] generation prompt:', fullPrompt);
-  console.log('[JWLZIFY] negative prompt:', negativePrompt);
 
   // RING ONLY: generate 3 camera angles (head-on / hero / profile) instead of one image.
   if (LAB.type === 'ring') {
@@ -4937,7 +4853,7 @@ async function confirmAndGenerate() {
     return;
   }
 
-  _enqueueGen(() => _generateVerified(fullPrompt, negativePrompt, null, _hfOverridesC, _buildVerifyExpectation())).then(blobUrl => {
+  _enqueueGen(() => _generateVerified(fullPrompt, null, _hfOverridesC, _buildVerifyExpectation())).then(blobUrl => {
     if (!blobUrl) {
       if (thisGen !== generationId) return;
       setGenLoading(false);
@@ -4980,15 +4896,12 @@ async function confirmAndGenerate() {
 // redundantly — repeated at the START and END of the prompt — so the model cannot
 // drift to a tilted, three-quarter, or top-down framing. Ring only.
 const _RING_HEADON_PROMPT = 'Strict head-on front view of the ring, viewed straight on at eye level with zero tilt. The center stone faces directly toward the viewer and sits in the middle of the frame. The band curves downward symmetrically on the left and right sides. Perfectly symmetrical left to right. This is the view of a ring worn on a finger pointing straight up toward the camera. NOT angled, NOT tilted, NOT three-quarter, NOT a side view, NOT top-down.';
-const _RING_HEADON_NEG    = 'tilted, angled, three-quarter view, side view, profile, top-down, perspective, rotated, diagonal, asymmetrical, lying flat';
 const _RING_HEADON_HF     = 'strict head-on front view, viewed straight on at eye level, zero tilt, center stone facing directly toward the viewer, centered in the frame, band curving downward symmetrically on the left and right, perfectly symmetrical left to right, the view of a ring worn on a finger pointing straight up at the camera';
 
 const RING_ANGLES = [
   { cap: 'Head-On', headOn: true,
     clause: _RING_HEADON_PROMPT,
-    hf:     _RING_HEADON_HF,
-    neg:    _RING_HEADON_NEG,
-    guidance: 9.0 },
+    hf:     _RING_HEADON_HF },
   { cap: 'Hero Angle',
     clause: 'Three-quarter angle view, the classic flattering jewelry hero shot, showing the top, front, and side of the ring together, stone catching the light, sitting upright.',
     hf: 'three-quarter angle hero view, showing the top front and side together, stone catching the light, sitting upright' },
@@ -4996,13 +4909,12 @@ const RING_ANGLES = [
     clause: 'Direct side profile view showing the band thickness, setting height, and side stones or detailing, ring upright in profile.',
     hf: 'direct side profile view, showing band thickness, setting height and side detailing, ring upright in profile' },
 ];
-const RING_GALLERY_HF_NEG = 'person, human, hand, fingers, body part, worn, multiple rings, two rings, collage, grid, blurry, deformed, asymmetrical';
 
 /* ── RING exact-stone-count enforcement ──────────────────────────────
    The user's selected stone count (specs → _authoritativeStoneCount) is the
    absolute, exact number. Flux tends to add decorative extras
-   (pavé, halo, accents, side stones); these helpers push hard against that with
-   explicit positive count language + an aggressive negative list. RING ONLY. */
+   (pavé, halo, accents, side stones); these helpers state the exact count in
+   strong positive language. RING ONLY. */
 const _RING_NUM_WORDS = ['ZERO','ONE','TWO','THREE','FOUR','FIVE','SIX','SEVEN','EIGHT','NINE','TEN',
   'ELEVEN','TWELVE','THIRTEEN','FOURTEEN','FIFTEEN','SIXTEEN','SEVENTEEN','EIGHTEEN','NINETEEN','TWENTY'];
 function _ringSpellNum(n) { return _RING_NUM_WORDS[n] || String(n); }
@@ -5020,8 +4932,6 @@ function _ringExactCountReminder(n) {
   return 'Final reminder: this ring has EXACTLY ' + _ringSpellNum(n) + ' (' + n + ') stone' + (n === 1 ? '' : 's') +
     ' and the band is plain bare metal with no other diamonds or accent stones whatsoever.';
 }
-// Aggressive negative list — what removes the model's default decorative extras.
-const _RING_EXTRA_STONES_NEG = 'extra diamonds, additional stones, accent stones, pave, pave band, pave setting, side stones, halo, halo setting, encrusted band, diamonds on the band, stones on the shoulders, decorative gems, micro pave, channel set stones, eternity band, cluster, extra gems, more stones than specified, embellished band, gem-encrusted';
 
 let _ringGalleryUrls  = [];   // [{url, cap, orig}] of the angles that succeeded
 let _ringGalleryIndex = 0;
@@ -5048,11 +4958,9 @@ function _genRingAngle(core, shared, angle) {
   const stoneCount    = _authoritativeStoneCount();
   const exactClause   = _ringExactCountClause(stoneCount);   // strong count language, FIRST
   const exactReminder = _ringExactCountReminder(stoneCount); // restated count, LAST
-  // Head-on (index 0) is the try-on anchor: it gets its own angle-specific negative
-  // (prepended) and the head-on instruction restated at BOTH ends of the prompt.
+  // Head-on (index 0) is the try-on anchor: the head-on instruction is restated at
+  // BOTH ends of the prompt.
   const isHeadOn = !!angle.headOn;
-  // Aggressive negative pushes the model off its add-decorative-stones default.
-  const negativePrompt = (isHeadOn ? angle.neg + ', ' : '') + RING_GALLERY_HF_NEG + ', ' + _RING_EXTRA_STONES_NEG;
 
   // Assembly order: exact-count clause → design description → exact-count reminder.
   // For head-on, _RING_HEADON_PROMPT brackets the whole prompt (start AND end).
@@ -5062,16 +4970,10 @@ function _genRingAngle(core, shared, angle) {
   const hfInput = isHeadOn
     ? `${_RING_HEADON_PROMPT} ${exactClause} ${core}, ${angle.hf}, ${shared}. ${exactReminder} ${_RING_HEADON_PROMPT}`
     : `${exactClause} ${core}, ${angle.hf}, ${shared}. ${exactReminder}`;
-  const hfOverride = {
-    inputs: hfInput,
-    negative_prompt: negativePrompt,
-    guidance_scale: angle.guidance || 9.0,   // head-on pins 9.0; tighter adherence overall
-    num_inference_steps: 30,
-  };
+  const hfOverride = { inputs: hfInput };
 
   console.log('[Ring] exact stone count enforced:', stoneCount);
   console.log('[Ring] positive prompt:', positivePrompt);
-  console.log('[Ring] negative prompt:', negativePrompt);
 
   // Head-on (index 0) is the anchor the try-on + quote use — it gets the full
   // vision-verify loop (count + form, up to 3 attempts, best-match fallback).
@@ -5079,9 +4981,9 @@ function _genRingAngle(core, shared, angle) {
   // each other at those camera angles, so a count check would false-fail.
   if (isHeadOn) {
     const _vx = _buildVerifyExpectation();
-    return _enqueueGen(() => _generateVerified(positivePrompt, negativePrompt, null, hfOverride, _vx, 3)).catch(() => null);
+    return _enqueueGen(() => _generateVerified(positivePrompt, null, hfOverride, _vx, 3)).catch(() => null);
   }
-  return _enqueueGen(() => _generateImage(positivePrompt, negativePrompt, null, hfOverride)).catch(() => null);
+  return _enqueueGen(() => _generateImage(positivePrompt, null, hfOverride)).catch(() => null);
 }
 
 async function _generateRingMultiAngle(opts) {
@@ -5239,7 +5141,6 @@ function _wireRingGallery() {
 // Bracelet only — the other two gallery angles are unchanged.
 const _BRACELET_HEADON_PROMPT = 'STRICT FRONT ELEVATION VIEW, camera exactly at the bracelet\'s level, zero tilt, zero perspective: the bracelet is viewed perfectly straight-on from the front so it appears as a flat horizontal band running left to right across the frame. Only the front face of the band is visible — the tops of the settings are NOT visible, the inside of the band is NOT visible, no looking down into it, no looking up at it. The band reads as a straight horizontal strip of links/settings facing the camera directly, like a fence viewed head-on at eye level. Perfectly level and symmetrical, not rotated, not angled.';
 const _BRACELET_HEADON_REMINDER = 'Remember: dead-level front view, flat horizontal band, no top surfaces visible, no perspective, no tilt.';
-const _BRACELET_HEADON_NEG = 'tilted, angled, perspective view, three-quarter view, top-down, birds eye, looking into settings, visible top surfaces, visible inside of band, oval shape, elliptical, foreshortening, isometric, diagonal, rotated, leaning, dutch angle, curved perspective';
 
 const BRACELET_ANGLES = [
   { cap: 'Head-On', headOn: true,
@@ -5252,7 +5153,6 @@ const BRACELET_ANGLES = [
     clause: 'Close-up top view of the same bracelet band, the camera close so the individual set stones are clearly visible and countable along the length, sharp macro detail of the stones and links.',
     hf: 'close-up top view of the band, individual set stones clearly visible and countable, macro detail' },
 ];
-const BRACELET_GALLERY_HF_NEG = 'person, hand, wrist, skin, two bracelets, multiple bracelets, collage, grid, deformed';
 
 // Layout-FREE design core (metal / style / link width / gem / user idea). The stone
 // LAYOUT is enforced separately and redundantly by the helpers below so it leads and
@@ -5288,25 +5188,15 @@ function _braceletLayoutReminder(layout, stoneCount) {
   }
   return `Remember: every setting is filled with diamonds touching edge to edge in one unbroken continuous line, with no gaps of plain metal anywhere along the band.`;
 }
-function _braceletLayoutNegative(layout) {
-  if (layout === 'everyOther') {
-    return 'continuous diamonds, tennis bracelet, diamonds touching, unbroken row of stones, fully paved, diamonds set next to each other, no gaps, solid line of diamonds, densely set stones';
-  }
-  if (layout === 'everyFourth') {
-    return 'continuous diamonds, tennis bracelet, diamonds touching, densely set, fully paved, closely spaced stones, many diamonds, diamonds next to each other, unbroken row, no gaps';
-  }
-  return 'spaced diamonds, gaps between stones, station bracelet, plain metal sections, scattered stones, widely spaced, intermittent stones, bare metal between diamonds';
-}
-
 // Generate one bracelet angle via _generateImage (Flux only, no fallback). Layout positive FIRST,
 // design + view + constraints in the middle, restated layout reminder LAST.
 function _genBraceletAngle(designCore, layout, stoneCount, angle) {
   const layoutPos = _braceletLayoutPositive(layout, stoneCount);
   const layoutRem = _braceletLayoutReminder(layout, stoneCount);
-  const layoutNeg = _braceletLayoutNegative(layout);
   const isHeadOn  = !!angle.headOn;
   // Head-on (index 0, try-on anchor): the strict flat front-elevation instruction
   // brackets the whole prompt — stated at the START and restated (short) at the END.
+  // (Negative prompts removed 2026-07-12 — Flux 2 Pro has no negative support.)
   const positivePrompt = isHeadOn
     ? `${_BRACELET_HEADON_PROMPT} ${layoutPos} ${designCore}. ${angle.clause} Single closed-loop bracelet, one bracelet only, ` +
       `white seamless studio background, professional studio lighting, photorealistic, 8k, sharp focus, ` +
@@ -5314,24 +5204,10 @@ function _genBraceletAngle(designCore, layout, stoneCount, angle) {
     : `${layoutPos} ${designCore}. ${angle.clause} Single closed-loop bracelet, one bracelet only, ` +
       `white seamless studio background, professional studio lighting, photorealistic, 8k, sharp focus, ` +
       `no person, no hands, no wrist, no body parts. ${layoutRem}`;
-  // Head-on gets the anti-tilt/anti-perspective negatives prepended (angle-specific).
-  const negativePrompt = isHeadOn
-    ? `${_BRACELET_HEADON_NEG}, ${layoutNeg}, ${BRACELET_GALLERY_HF_NEG}`
-    : `${layoutNeg}, ${BRACELET_GALLERY_HF_NEG}`;
   console.log('[Bracelet] layout:', layout, '| target count:', stoneCount);
   console.log('[Bracelet] positive prompt:', positivePrompt);
-  console.log('[Bracelet] negative prompt:', negativePrompt);
-  if (isHeadOn) {
-    console.log('[Bracelet] head-on prompt (flat front elevation):', positivePrompt);
-    console.log('[Bracelet] head-on negative:', negativePrompt);
-  }
-  const hfOverride = {
-    inputs: positivePrompt,
-    negative_prompt: negativePrompt,
-    guidance_scale: 9.0,            // head-on pins 9.0; tighter adherence for structural/angle control
-    num_inference_steps: 30,
-  };
-  return _enqueueGen(() => _generateImage(positivePrompt, negativePrompt, null, hfOverride)).catch(() => null);
+  if (isHeadOn) console.log('[Bracelet] head-on prompt (flat front elevation):', positivePrompt);
+  return _enqueueGen(() => _generateImage(positivePrompt, null)).catch(() => null);
 }
 
 async function _generateBraceletMultiAngle(opts) {
