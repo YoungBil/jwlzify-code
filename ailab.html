@@ -2009,35 +2009,19 @@ async function _fetchWithRetry(makeUrl) {
 }
 
 /* ── HF-specific prompt helpers ── */
-function _buildHfJewelryDesc(type, material, gem, style, desc) {
-  const m = matLabel(material);
-  const g = gemLabel(gem);
-  const s = style || 'Modern';
-  // Same reconciliation as buildPrompt: strip typed stone quantities (specs are
-  // the source of truth) and append the authoritative spec count. This path feeds
-  // the Flux worker for ring/bracelet/necklace (hfOverrides.inputs) and the ring
-  // multi-angle core, plus the HuggingFace fallback.
-  const cleaned  = stripStoneQuantities(desc);
-  const userPart = cleaned ? cleaned + ', ' : '';
-  // Rings: encode the exact stone shape (cut) + per-stone carat layout so the
-  // rendered cut equals the user's Stone Shape selection. Specs source of truth.
-  if (type === 'ring') {
-    const cleanedR  = _stripShapeWords(cleaned); // shape from selector, not typed text
-    const userPartR = cleanedR ? cleanedR + ', ' : '';
-    return `${userPartR}luxury ${s} ${m} ring featuring ${_ringStoneDescriptor(g)}` + _authoritativeStoneClause('ring');
-  }
-  return `${userPart}luxury ${s} ${m} ${type}, ${g}` + _authoritativeStoneClause(type);
+// Ring flow: the user's typed text with stone quantities AND shape words stripped
+// out — both come from the spec selectors, the single source of truth. This is the
+// only reconciliation the ring prompt needs; everything else is built from specs.
+function _ringUserText(desc) {
+  return _stripShapeWords(stripStoneQuantities((desc || '').trim()));
 }
 // NOTE (2026-07-12): the entire negative-prompt system was removed. Flux 2 Pro has
 // no negative-prompt support — negatives were assembled, logged, and then silently
 // dropped before the worker call (dead code). Constraints now live in the POSITIVE
 // prompt as affirmative description only.
-// Single-band enforcement — bracelet only. Appended to the bracelet positive prompt.
-// AFFIRMATIVE ONLY: naming unwanted outcomes ("not two, not a pair") plants those
-// concepts in the model — describe only what SHOULD appear.
-const _BRACELET_SINGLE_BAND   = 'Exactly one bracelet: a single continuous band forming one closed oval loop, facing the camera.';
-// Extra single-band instruction folded into the bracelet prompt.
-const _BRACELET_SINGLE_INSTRUCTION = 'The frame contains one single bracelet, one unbroken continuous loop.';
+// AFFIRMATIVE PROMPTS ONLY: naming unwanted outcomes ("not two, not a pair")
+// plants those concepts in the model — every prompt describes only what SHOULD
+// appear. Single-band bracelet language lives inline in the bracelet builders.
 // Flux 2 Pro worker — the SOLE txt2img + img2img generator (swap model by updating flux-image-worker.js FAL_MODEL)
 const FLUX_WORKER_URL = 'https://flux-image.sarkd333.workers.dev';
 const FAL_BG_REMOVE_URL = 'https://fal-bg-remove.sarkd333.workers.dev'; // fal birefnet matting worker (returns JSON with image.url)
@@ -2066,73 +2050,22 @@ const FAL_BG_REMOVE_URL = 'https://fal-bg-remove.sarkd333.workers.dev'; // fal b
   console.log('[Switch] Flux sole generator; Gemini removed from image gen; other Gemini uses flagged:', flaggedUses);
 })();
 
-/* ── Universal spec-accuracy + natural-placement safeguards ──────────────────
-   Applied to EVERY jewelry type's final prompt at the single generation choke
-   point (_generateImage), so specs are reinforced redundantly (start + end) and
-   stones are instructed to sit naturally and tailored to the design. The spec
-   selectors remain the sole source of truth — this only reinforces them. */
-const _QUALITY_SAFEGUARDS  = 'professional luxury jewelry product photography, photorealistic, sharp focus, high detail, well-crafted, realistic proportions, elegant.';
+/* ── Prompt assembly (2026-07-12 restructure) ────────────────────────────────
+   Each generation sends ONE coherent natural-language paragraph, assembled by
+   the per-type builders: jewelry type + camera angle → metal → stones (count
+   spelled exactly once) → the user's style/aesthetic text → one short
+   photography quality clause. Every spec is stated exactly once — the old
+   lead/tail "Specifications restated" bookends and the long placement
+   paragraph are gone (stone placement is one sentence inside the stones
+   clause). The spec selectors remain the sole source of truth. */
 const _SG_NUM_WORDS = ['zero','one','two','three','four','five','six','seven','eight','nine','ten',
   'eleven','twelve','thirteen','fourteen','fifteen','sixteen','seventeen','eighteen','nineteen','twenty'];
 function _sgSpell(n) { return _SG_NUM_WORDS[n] || String(n); }
 
-// Build the spec-emphasis bookend (lead + tail), the natural-placement clause, and
-// the quality string from the CURRENT spec selections. Used by _generateImage.
-function _buildPromptSafeguards() {
-  const type      = (typeof LAB !== 'undefined' && LAB.type) ? LAB.type : 'ring';
-  const metal     = matLabel(LAB.material) || '';
-  const stoneType = gemLabel(LAB.gem) || '';
-  const style     = LAB.style || 'fine';
-  const specs     = window.jwlSpecifications || {};
-  const shape     = specs.stoneShape || (typeof userSelections !== 'undefined' && userSelections.gemShape) || (type === 'necklace' ? '' : 'Round');
-  const count     = _authoritativeStoneCount();
-  const size      = _caratSizeDescriptor(_primaryStoneInfo(type).carats);
-
-  // Plain chains (necklace 'none') have no stones — never induce phantom stones.
-  const hasStones = !(type === 'necklace' && selectedNecklacePlacement === 'none');
-  // Hard discrete count only where it is authoritative (ring/pendant/earrings).
-  // Necklace + bracelet counts are emergent by design, so state the size only.
-  const useHardCount = hasStones && (type === 'ring' || type === 'pendant' || type === 'earrings');
-
-  const countPhrase = useHardCount
-    ? `exactly ${_sgSpell(count)} (${count}) ${stoneType} stone${count === 1 ? '' : 's'}, ${size} in size`
-    : (hasStones ? `${size} ${stoneType} stones` : 'plain polished metal throughout');
-  const shapePhrase = (hasStones && shape) ? `${shape}-cut ` : '';
-
-  // Most-important specs at the START (models weight the start heavily).
-  const lead = `A ${style} fine jewelry piece crafted in ${metal}, set with ${shapePhrase}${countPhrase}.`
-                 .replace(/\s{2,}/g, ' ');
-  // The same specs restated at the END (models weight the end heavily too).
-  const tail = `Specifications restated: ${metal}; ${shapePhrase}${countPhrase}; ${style} design${stoneType ? '; ' + stoneType : ''}.`
-                 .replace(/\s{2,}/g, ' ');
-
-  const placement = hasStones
-    ? `The stones are arranged naturally, elegantly, and symmetrically, integrated seamlessly into the design as a skilled jeweler would set them. The placement is balanced, intentional, and tailored to the style of the piece. Each stone sits properly within its setting, in harmony with the overall design and the ${style} aesthetic. The arrangement suits a ${type} in the ${style} style — a minimalist piece keeps the stones clean and balanced, while an ornate or vintage piece integrates them richly but still neatly.`
-    : '';
-
-  return { lead, tail, placement, quality: _QUALITY_SAFEGUARDS, metal, stoneType, count, size, shape, style, hasStones };
-}
-
-// Wrap an assembled positive prompt with the spec bookend + placement + quality.
-function _applyPromptSafeguards(p, sg) {
-  if (!p) return p;
-  return [sg.lead, p, sg.placement, sg.quality, sg.tail].filter(Boolean).join(' ');
-}
-
-async function _generateImage(prompt, initImage, hfOverrides) {
-  hfOverrides = hfOverrides || {};
-
-  // ── Reinforce specs + natural stone placement on the FINAL prompt (all types) ──
-  // Strengthens the Flux input; the spec selectors stay the source of truth (typed
-  // quantities are already stripped upstream in buildPrompt / _buildHfJewelryDesc).
-  const _sg = _buildPromptSafeguards();
-  prompt = _applyPromptSafeguards(prompt, _sg);
-  if (hfOverrides.inputs) hfOverrides.inputs = _applyPromptSafeguards(hfOverrides.inputs, _sg);
-
-  const finalPrompt    = hfOverrides.inputs || prompt;
-  console.log('[Gen] final prompt:', finalPrompt);
-  console.log('[Gen] specs enforced — metal:', _sg.metal, '| stone:', _sg.stoneType, '| count:', _sg.count,
-              '| size:', _sg.size, '| shape:', _sg.shape, '| style:', _sg.style);
+async function _generateImage(prompt, initImage) {
+  // The prompt arrives fully assembled by the per-type builder — one coherent
+  // paragraph, every spec stated exactly once. Nothing is wrapped or appended here.
+  console.log('[Gen] final prompt:', prompt);
 
   // SOLE GENERATOR: Flux 2 Pro (fal-ai/flux-2-pro) via the flux-image worker.
   // txt2img (no initImage) or img2img edit (initImage present). NO fallback — if
@@ -2143,7 +2076,7 @@ async function _generateImage(prompt, initImage, hfOverrides) {
   try {
     const _fluxMode = initImage ? 'refine' : 'generate';
     console.log('[JWLZIFY] calling Flux worker (sole generator) | mode=' + _fluxMode + '...');
-    const _fluxBody = { prompt: finalPrompt, image_size: 'portrait_4_3' };
+    const _fluxBody = { prompt: prompt, image_size: 'portrait_4_3' };
     if (initImage) _fluxBody.initImage = initImage;
     const _fluxRes = await fetch(FLUX_WORKER_URL, {
       method: 'POST',
@@ -2261,13 +2194,13 @@ async function _verifyImage(blobUrl, expected) {
 // Drop-in replacement for _generateImage at the flow level: generate → verify →
 // (regenerate up to maxAttempts−1 more times) → serve the best match. No error
 // spam: a full miss just serves the closest attempt with a console note.
-async function _generateVerified(prompt, initImage, hfOverrides, expected, maxAttempts) {
-  if (!expected) return _generateImage(prompt, initImage, hfOverrides);
+async function _generateVerified(prompt, initImage, expected, maxAttempts) {
+  if (!expected) return _generateImage(prompt, initImage);
   const tries = Math.max(1, maxAttempts || 3);
   const genText = document.getElementById('genText');
   let best = null;
   for (let i = 0; i < tries; i++) {
-    const url = await _generateImage(prompt, initImage, hfOverrides);
+    const url = await _generateImage(prompt, initImage);
     if (!url) continue;
     if (genText) genText.textContent = 'Verifying your design…';
     const v = await _verifyImage(url, expected);
@@ -3256,23 +3189,22 @@ function _applyRingSpecs() {
   s.weightLabel     = 'medium';
 }
 
-// Ring-stone descriptor for the generation prompt — encodes shape (cut) AND the
-// exact per-stone carats so the rendered ring matches the spec selectors.
-function _ringStoneDescriptor(gDisp) {
+// ONE stones sentence for rings — the count is spelled exactly once, the centre
+// stone called out with its carat-driven visual size, stone placement in one
+// clause, and the band finish stated affirmatively (plain polished bare metal).
+function _ringStonesSentence(gDisp) {
   const specs  = window.jwlSpecifications || {};
-  const shape  = specs.stoneShape || userSelections.gemShape || 'Round';
-  const cut    = shape + '-cut';
+  const shape  = (specs.stoneShape || userSelections.gemShape || 'Round').toLowerCase();
   const carats = (specs.stones || []).map(_ctOf).filter(c => c != null && !isNaN(c));
   const n      = carats.length || specs.stoneCount || 1;
-  const total  = specs.totalCt != null ? specs.totalCt : (specs.totalCarats || carats.reduce((a, b) => a + b, 0));
   if (n <= 1) {
-    // Carat-driven visual size so a bigger carat renders a clearly bigger stone.
-    const ct = (carats[0] != null ? carats[0] : total);
-    return `a ${_caratSizeDescriptor(ct)} ${ct} carat ${cut} ${gDisp} center stone${_caratDomSuffix(ct)}`;
+    const ct = carats[0] != null ? carats[0] : (specs.totalCt || specs.totalCarats || 1);
+    return `set with exactly one ${shape}-cut ${gDisp} stone — a ${_caratSizeDescriptor(ct)} ${ct} carat center stone${_caratDomSuffix(ct)} — on a completely plain, smooth, polished bare-metal band`;
   }
-  // Multi-stone: name the center (largest) carat with a visual-size descriptor.
-  const center = Math.max.apply(null, carats);
-  return `${n} ${cut} ${gDisp} stones of ${carats.join('ct, ')}ct (${total}ct total), the center stone a ${_caratSizeDescriptor(center)} ${center} carat stone${_caratDomSuffix(center)}`;
+  const sorted = carats.slice().sort((a, b) => b - a);
+  const center = sorted[0];
+  const sides  = sorted.slice(1).map(c => c + 'ct').join(', ');
+  return `set with exactly ${_sgSpell(n)} (${n}) ${shape}-cut ${gDisp} stones — a ${_caratSizeDescriptor(center)} ${center} carat center stone${_caratDomSuffix(center)} accompanied by ${sides} side stones — each stone seated naturally in its own setting, the rest of the band plain polished bare metal`;
 }
 
 function _resetRingFlow() {
@@ -3649,22 +3581,6 @@ function _applyEarringSpecs() {
   s.weightLabel     = 'medium';
 }
 
-// Earring descriptor for the generation prompt — one earring of an identical
-// matching pair: perEarringCount stones at perStoneCt, the selected shape (cut).
-function _earringDescriptor(gDisp) {
-  const specs = window.jwlSpecifications || {};
-  const shape = specs.stoneShape || userSelections.gemShape || 'Round';
-  const cut   = shape + '-cut';
-  const perEar = specs.perEarringCount || 1;
-  const perCt  = specs.perStoneCt != null ? specs.perStoneCt
-    : (specs.totalCtPair ? +(specs.totalCtPair / (specs.totalStoneCount || 2)).toFixed(2) : 1);
-  // Carat-driven visual size per stone so the selected size shows in the render.
-  const d = _caratSizeDescriptor(perCt);
-  return perEar <= 1
-    ? `a ${d} ${perCt} carat ${cut} ${gDisp} stone`
-    : `${perEar} matching ${d} ${perCt} carat ${cut} ${gDisp} stones`;
-}
-
 function _resetEarringFlow() {
   _earTotalCtPair = 0;
   _earBucket = null;
@@ -3905,17 +3821,6 @@ function _authoritativeStoneCount() {
   const specs = window.jwlSpecifications || {};
   return specs.stoneCount || (Array.isArray(specs.stones) ? specs.stones.length : 0) || 1;
 }
-// Explicit, singular quantity instruction appended to the final prompt.
-// Necklaces already encode count + placement in their own prompt language,
-// so we don't inject a conflicting discrete-count sentence there.
-function _authoritativeStoneClause(type) {
-  // Necklaces encode count via placement; bracelets leave the count emergent
-  // (it is later estimated from the generated image), so don't force a number.
-  if (type === 'necklace' || type === 'bracelet') return '';
-  const n = _authoritativeStoneCount();
-  return ' The piece is set with exactly ' + n + ' stone' + (n === 1 ? '' : 's') + ' in total.';
-}
-
 // Map a carat value → descriptive visual-size language so the carat actually
 // drives how big the stone looks in the render. Specs stay the source of truth.
 //   <1ct = small · 1–2ct = medium · 3–5ct = large prominent · 6ct+ = very large statement
@@ -3970,8 +3875,9 @@ function buildPrompt(type, material, gem, style, desc) {
   const cleanedUserText = stripStoneQuantities(rawUserText);
   const stoneCount      = _authoritativeStoneCount();
 
-  const core        = _buildPromptCore(type, material, gem, style, cleanedUserText);
-  const finalPrompt = core + _authoritativeStoneClause(type);
+  // The per-type core IS the final prompt — counts are stated exactly once inside
+  // each type's stones sentence (never appended again here).
+  const finalPrompt = _buildPromptCore(type, material, gem, style, cleanedUserText);
 
   // Carat + stone-size → visual-size descriptor (so size actually shows in the image).
   const _si = _primaryStoneInfo(type);
@@ -3988,8 +3894,6 @@ function _buildPromptCore(type, material, gem, style, desc) {
   const mDisp = matLabel(material);
   const gDisp = gemLabel(gem);
   // User description moved to a suffix detail clause — type keyword leads every prompt
-  const descPart = desc.trim() ? ', ' + desc.trim() : '';
-
   // Pull specs for stone count/sizes and weight
   const specs       = window.jwlSpecifications || {};
   const stones      = specs.stones || [1.0];
@@ -4018,8 +3922,12 @@ function _buildPromptCore(type, material, gem, style, desc) {
                      :                 ', a pendant with balanced near-square proportions')
                     + ` (approximately ${_pw}mm wide by ${_ph}mm tall)`;
     }
-    // Type keyword leads; user description follows as detail context
-    return `luxury ${style} ${wPart}pendant charm${descPart}${proportionStr}, bail connector at top, ${mDisp}, ${gemPart}, close-up macro product photograph, pendant centered filling the frame, high contrast separation between pendant and background, soft even studio lighting, pure white seamless background, ultra sharp focus, hyper realistic, 8K ultra high definition, precious metal gleam, gemstone sparkle and brilliance. Isolated product-only photography: the pendant by itself is the sole subject and the only element in the image. Pendant displayed alone, flat lay on white surface, top-down view, studio lighting, luxury product photography.`;
+    // ONE paragraph: type + camera → metal → stone (count once) → user text → quality.
+    const _pendCt = totalCarats;
+    return `Professional close-up macro product photograph of a single luxury ${style} ${wPart}pendant charm, photographed alone in flat lay on a white surface from directly above, the pendant centered and filling the frame with its bail connector at the top${proportionStr}. ` +
+      `Crafted in ${mDisp}, set with a single ${_caratSizeDescriptor(_pendCt)} ${_pendCt} carat ${gDisp} center stone${_caratDomSuffix(_pendCt)} seated naturally in its setting.` +
+      (desc.trim() ? ` ${desc.trim()}.` : '') +
+      ` Ultra sharp focus, soft even studio lighting, pure white seamless background, photorealistic product-only photography with precious metal gleam and gemstone sparkle — the pendant by itself is the sole subject of the image.`;
   }
 
   if (type === 'necklace') {
@@ -4029,54 +3937,30 @@ function _buildPromptCore(type, material, gem, style, desc) {
     // link pattern, etc.), THAT takes priority — don't force a preset on top of it.
     const hasCustomDesc = userDesc.length > 0;
     const chainSpecific = hasCustomDesc ? '' : (selectedChainPrompt || '');
-    const chainStyleStr = (!hasCustomDesc && selectedChainLabel) ? `Chain style: ${selectedChainLabel}.` : '';
-    const selectedOrCustom = hasCustomDesc ? ('custom: ' + userDesc) : (selectedChainLabel || selectedChainStyle || 'none');
-    console.log('[Necklace] chain style:', selectedOrCustom);
+    const chainWord     = (!hasCustomDesc && selectedChainLabel) ? ` ${selectedChainLabel}` : '';
+    console.log('[Necklace] chain style:', hasCustomDesc ? ('custom: ' + userDesc) : (selectedChainLabel || selectedChainStyle || 'none'));
     // Necklace length applies to every necklace; longer reads as a longer chain / lower drop.
     const _neckLenIn = _necklaceLengthInches();
-    const _neckLenDesc = _neckLenIn >= 20 ? ', a longer chain that hangs lower on the chest'
-                       : _neckLenIn <= 16 ? ', a shorter choker-length chain sitting high on the neck'
-                       : ', a standard-length chain';
-    const chainLenStr = `This is a ${_neckLenIn} inch necklace${_neckLenDesc}.`;
-    const specStr = [chainStyleStr, chainLenStr].filter(Boolean).join(' ');
-    // Placement-aware gem description — chain-only necklaces, no pendant ever.
-    // A single carat value applies to EVERY stone; stone count is auto-derived
-    // from placement + length. Avoids "center stone" language entirely.
+    const _neckLenDesc = _neckLenIn >= 20 ? ', hanging lower on the chest'
+                       : _neckLenIn <= 16 ? ', sitting high on the neck at choker length'
+                       : '';
+    // Placement-aware stones sentence — a single carat applies to EVERY stone and
+    // the auto-derived station count is stated exactly once (or coverage described).
     const _ct = selectedNecklaceCt;
     const _autoStations = _necklaceAutoStoneCount(_necklaceInches(), selectedNecklacePlacement);
-    let necklaceGemStr = '';
-    if (selectedNecklacePlacement === 'none') {
-      necklaceGemStr = 'a plain polished bare-link chain from end to end';
-    } else if (gDisp) {
-      const _neckSize = _caratSizeDescriptor(_ct);
-      if (selectedNecklacePlacement === 'full') {
-        necklaceGemStr = `featuring ${_neckSize} ${_ct} carat ${gDisp} stones set continuously along the entire chain, tennis necklace style, every stone the same ${_ct}ct size`;
-      } else {
-        necklaceGemStr = `featuring ${_autoStations} ${_neckSize} ${_ct} carat ${gDisp} stones spaced evenly as stations far apart along a plain chain, long stretches of bare chain links clearly visible between each station, every stone the same ${_ct}ct size`;
-      }
+    let stonesStr;
+    if (selectedNecklacePlacement === 'none' || !gDisp) {
+      stonesStr = 'a plain polished bare-link chain running continuously from end to end';
+    } else if (selectedNecklacePlacement === 'full') {
+      stonesStr = `set with ${_caratSizeDescriptor(_ct)} ${_ct} carat ${gDisp} stones continuously along the entire chain in tennis-necklace style, every stone the same ${_ct}ct size, each seated in its own setting`;
+    } else {
+      stonesStr = `set with ${_autoStations} ${_caratSizeDescriptor(_ct)} ${_ct} carat ${gDisp} stones spaced evenly as stations, long stretches of bare chain links clearly visible between each station, every stone the same ${_ct}ct size`;
     }
-    const necklaceFraming = [
-      'a bare chain necklace, links running continuously from end to end',
-      'necklace displayed as if worn',
-      'front-facing view photographed straight on',
-      'chain forms a clean symmetrical U-shape draped down both sides evenly',
-      'displayed on an invisible ghost mannequin neck form',
-      'vertical portrait orientation',
-      'professional jewelry photography',
-      'plain seamless light grey background',
-      'soft even studio lighting',
-      'highly detailed',
-      'photorealistic'
-    ];
-    const necklaceCore = [
-      userDesc,
-      chainSpecific,
-      wPart.trim(),
-      mDisp ? `crafted in ${mDisp}` : '',
-      necklaceGemStr,
-      ...necklaceFraming
-    ].filter(Boolean).join(', ');
-    return necklaceCore + (specStr ? '. ' + specStr : '') + '.';
+    // ONE paragraph: type + camera → metal → stones (count once) → user text → quality.
+    return `Professional product photograph of a single ${_neckLenIn}-inch${chainWord} chain necklace displayed as if worn on an invisible ghost mannequin neck form, photographed straight on, the chain draping in a clean symmetrical U-shape down both sides${_neckLenDesc}. ` +
+      `Crafted in ${mDisp}, ${stonesStr}.` +
+      (hasCustomDesc ? ` ${userDesc}.` : (chainSpecific ? ` ${chainSpecific}.` : '')) +
+      ` Vertical portrait orientation, soft even studio lighting, seamless light grey background, highly detailed photorealistic jewelry photography — the necklace is the sole subject of the image.`;
   }
 
   if (type === 'earrings') {
@@ -4106,35 +3990,18 @@ function _buildPromptCore(type, material, gem, style, desc) {
     let studPositive = '';
     if (earForm === 'stud') {
       const _allowSurround = _earStudSurroundRequested();
-      studPositive =
-        (_allowSurround ? ''
-          : ' Simple solitaire stud: the stone held by minimal prongs only, the prongs being the only metal touching the stone, its girdle fully exposed.')
-        + ' Front-facing view with clean flush edges, the stone itself filling the silhouette.';
+      studPositive = _allowSurround ? ''
+        : ' Simple solitaire stud: the stone held by minimal prongs only, the prongs being the only metal touching the stone, its girdle fully exposed, clean flush edges.';
       console.log('[Earring Gen] stud settings — surrounding metal:', _allowSurround ? 'ALLOWED (user requested)' : 'OFF (default)');
     }
 
-    // ── HARD spec block FIRST ──
-    const specBlock =
-      `${earFormWord} earrings, a matching identical PAIR, ${earFormDesc}. ` +
-      `EXACTLY ${perEar} ${cut} ${gDisp} ${stoneWord} per earring (${totalCnt} stones total across the pair), ` +
-      `each stone ${perCt}ct, ${sizeWord} size. ` +
-      `Metal: ${mDisp}. ` +
-      (earMm ? `Each earring ${earMm}mm. ` : '') +
-      `Design aesthetic: ${style}. Style detail: ${earStyleDesc}` +
-      (cleanedText ? `, ${cleanedText}` : '') + '.';
-
-    // ── Render frame (single earring) + hard reinforcements ──
-    const renderFrame =
-      'Render ONE single individual earring only, one earring from this matching identical pair, ' +
-      'centered single earring, isolated single piece, white seamless background, ' +
-      'professional jewelry product photography, evenly lit, hyper realistic, 8K ultra high definition, ' +
-      'macro lens, sharp focus, highly detailed, photorealistic, precious metal gleam, gemstone sparkle and brilliance. ' +
-      `The earring form is strictly a ${earFormWord} — ${earFormDesc}. ` +
-      `This earring carries exactly ${perEar} ${stoneWord}; the matching pair totals ${totalCnt} stones. ` +
-      'Both earrings in the pair are identical. ' +
-      'Isolated product-only photography: the earring alone is the sole subject of the image.';
-
-    const finalEar = specBlock + studPositive + ' ' + renderFrame;
+    // ONE paragraph: type + camera → metal → stones (count once) → user text → quality.
+    const finalEar =
+      `Professional product photograph of one single ${earFormWord} earring from a matching identical pair, shown alone and centered, front-facing — ${earFormDesc}. ` +
+      `Crafted in ${mDisp}, set with exactly ${_sgSpell(perEar)} (${perEar}) ${cut} ${gDisp} ${stoneWord} per earring — ${perCt}ct each, ${sizeWord} size${earMm ? `, each earring ${earMm}mm` : ''} — the pair totalling ${totalCnt} identical stones, each seated naturally in its setting.` +
+      studPositive +
+      ` ${style} aesthetic: ${earStyleDesc}${cleanedText ? `, ${cleanedText}` : ''}.` +
+      ` Sharp macro focus, soft even studio lighting, seamless white background, photorealistic product-only jewelry photography — the single earring is the sole subject of the image.`;
     console.log('[Earring Gen] specs:', { earringForm: earForm, totalStoneCount: totalCnt, perEarringCount: perEar, perStoneCt: perCt, sizeBucket: sizeKey, earringMm: earMm, shape: earShape, metal: mDisp });
     console.log('[Earring Gen] stripped user text:', cleanedText);
     console.log('[Earring Gen] FINAL prompt:', finalEar);
@@ -4142,53 +4009,37 @@ function _buildPromptCore(type, material, gem, style, desc) {
   }
 
   if (type === 'bracelet') {
-    // Face-on horizontal oval band so the bracelet can convincingly WRAP a raised wrist
-    // in webcam try-on (mirrors the ring's face-on approach, oriented for the wrist).
-    const _braceletShape = 'A single closed-loop bracelet viewed perfectly head-on as a horizontal oval band facing the camera, the front face of the bracelet pointing directly at the viewer, the band forming a clear symmetrical loop — the view you get looking straight at a bracelet on a wrist raised toward you. A perfectly horizontal level oval band, symmetrical left-to-right, sitting flat and level like a horizontal ellipse viewed straight on. One single continuous band, isolated on a plain white studio background.';
-    // Bracelet: link width + per-stone tier drive the look. The stone COUNT is left
-    // emergent (estimated from the image later), so no fixed number is forced here.
+    // NOTE: real bracelet generations go through _genBraceletAngle (multi-angle);
+    // this branch feeds logging/asserts and any future single-image path. Same
+    // ONE-paragraph structure: type + camera → metal → stones → user text → quality.
     const _bTier  = (userSelections && userSelections.stoneSizeTier) || 'medium';
     const _bTierWord = ({ accent: 'small accent', medium: 'medium', large: 'large' })[_bTier] || 'medium';
     const _bLinkW = (userSelections && userSelections.linkWidthMm)
       ? `${userSelections.linkWidthMm}mm wide links` : 'fine links';
     const _bStoneDesc = gDisp
-      ? `a continuous line of evenly spaced ${_bTierWord} ${gDisp} stones running along the entire band, tennis bracelet style, each stone prong-set`
+      ? `set with a continuous line of evenly spaced ${_bTierWord} ${gDisp} stones running the entire band in tennis-bracelet style, each stone prong-set in its own setting`
       : 'a plain polished band';
-    return `luxury ${style} bracelet${descPart}, ${mDisp}, ${_bLinkW}, ${_bStoneDesc}, isolated fine jewelry product photograph, pure white seamless studio background, evenly lit, professional diffuse studio lighting, hyper realistic, 8K ultra high definition, sharp focus, precious metal gleam, gemstone sparkle and brilliance. ${_braceletShape} ${_BRACELET_SINGLE_BAND} ${_BRACELET_SINGLE_INSTRUCTION} Isolated product-only photography: the bracelet alone is the sole subject of the image.`;
+    return `Professional product photograph of exactly one luxury ${style} bracelet — a single continuous ${mDisp} band with ${_bLinkW}, viewed perfectly head-on as a level horizontal oval loop facing the camera, symmetrical left-to-right, the view of a bracelet on a wrist raised toward you. ` +
+      `The band is ${_bStoneDesc}.` +
+      (desc.trim() ? ` ${desc.trim()}.` : '') +
+      ` The single band is the sole subject, isolated on a pure white seamless studio background, evenly lit, sharp focus, photorealistic jewelry product photography.`;
   }
 
   if (type === 'ring') {
+    // NOTE: real ring generations go through _genRingAngle (multi-angle); this
+    // branch feeds logging/asserts. Same ONE-paragraph structure, head-on view.
     const userDesc = _stripShapeWords(desc.trim()); // shape from selector, not typed text
-    // Stone shape (cut) comes from the Stone Shape selector — must match the render.
-    const ringShape = specs.stoneShape || userSelections.gemShape || 'Round';
-    const cut = ringShape + '-cut';
-    // Per-stone carats from the carat-allocation flow (object-tolerant).
-    const stoneSizes = stones.map(s => _ctOf(s) + 'ct');
-    let stonePart;
-    if (stoneCount === 1) {
-      stonePart = `with a single ${stoneSizes[0]} ${cut} ${gDisp} center stone`;
-    } else if (stoneCount === 2) {
-      stonePart = `with 2 ${cut} stones set into the band of a single ring — one ${stoneSizes[0]} ${gDisp} center stone and one ${stoneSizes[1] || stoneSizes[0]} ${gDisp} side stone`;
-    } else if (stoneCount === 3) {
-      stonePart = `with 3 ${cut} stones set into the band of a single ring — one ${stoneSizes[0]} ${gDisp} center stone flanked by two side stones (${stoneSizes.slice(1).join(', ')})`;
-    } else if (stoneCount === 4) {
-      stonePart = `with 4 ${cut} stones set into the band of a single ring — one ${stoneSizes[0]} ${gDisp} center stone and three accent stones (${stoneSizes.slice(1).join(', ')})`;
-    } else {
-      stonePart = `with ${stoneCount} ${cut} ${gDisp} stones of ${stoneSizes.join(', ')} set into the band of a single ring`;
-    }
-    const stoneClarity = 'Every stone is the same ' + ringShape + ' cut, and all of them are set into this one single ring.';
-    return 'Single product photograph, single viewpoint: A single custom jewelry ring. '
-      + [userDesc, mDisp + ' ring', stonePart].filter(Boolean).join('. ')
-      + '. ' + stoneClarity
-      + ' Front view ring photography. The camera is positioned at exactly the same height as the center of the ring, pointing straight at the face of the ring. The ring is standing upright. The circular band is a perfect symmetrical oval at the bottom of the frame. The gemstone is dead center, pointing straight at the lens — the view of looking directly through a telescope or tunnel straight at the ring face. The ring alone fills the frame against a flat background. Perfectly sharp focus on the stone and prongs. Soft even studio lighting. White or very light grey background. Luxury jewelry product photography, e-commerce style. Isolated product-only photography: the ring is the sole subject of the image.'
-      + ' CAMERA ANGLE: strict front elevation view, dead-on, eye-level, zero perspective distortion. The ring is standing perfectly upright and vertical, like the letter O or a wheel viewed straight on. The circular band is a full vertical circle facing the camera. The center stone and setting are at the top position, pointing straight up. The band opening runs vertically, top to bottom. The ring is perfectly symmetrical left-to-right. Both sides of the band are equally visible and mirror each other. The ring is centered in frame with equal margin on all sides.'
-      + ' ONE single photograph of one ring from a single front-facing elevation angle, centered on a seamless white background. One image, one ring, one viewpoint: a perfectly upright, front-facing, symmetrical ring.';
+    return `Professional product photograph of a single luxury ${style} ${mDisp} ring. ${_RING_HEADON_PROMPT} ` +
+      `The ring is ${_ringStonesSentence(gDisp)}.` +
+      (userDesc ? ` ${userDesc}.` : '') +
+      ` The single ring is the sole subject, centered on a seamless white studio background, sharp macro focus, soft even studio lighting, photorealistic e-commerce jewelry photography.`;
   }
 
-  const typeMap = {};
-  const piece = typeMap[type] || type;
-  // Type keyword leads the prompt; user description follows as detail context
-  return `luxury ${style} ${wPart}${piece}${descPart}, ${mDisp}, ${gemPart}, isolated fine jewelry product photograph, pure white seamless background, evenly lit, professional diffuse studio lighting, hyper realistic, 8K ultra high definition, macro lens, sharp focus, precious metal gleam, gemstone sparkle and brilliance, luxury brand catalog`;
+  // Generic fallback (no dedicated builder) — same ONE-paragraph structure.
+  return `Professional product photograph of a single luxury ${style} ${wPart}${type}, shown alone and centered. ` +
+    `Crafted in ${mDisp}, set with ${gemPart}.` +
+    (desc.trim() ? ` ${desc.trim()}.` : '') +
+    ` Pure white seamless background, evenly lit, macro sharp focus, photorealistic luxury jewelry product photography with precious metal gleam and gemstone sparkle.`;
 }
 
 /* ── Alpha post-processing helpers ────────────── */
@@ -4636,49 +4487,22 @@ async function startGeneration(isTweak) {
   // Queue the fetch — Flux is the sole generator (no fallback), queue respects GEN_MAX_CONCURRENT
   const initImage = (isTweak && window._postGenMode === 'refine') ? lastGeneratedImage : null;
 
-  // Keyword-stacked prompt overrides fed to Flux as the final prompt (front-loaded keywords)
-  let _hfOverrides = null;
-  if (resolvedType === 'ring') {
-    const _hfDesc  = _buildHfJewelryDesc('ring', LAB.material, LAB.gem, LAB.style, desc);
-    const _hfInput = `${_hfDesc}, front view, straight-on, dead center, upright ring, vertical band, symmetrical, eye-level shot, frontal elevation, centered composition, stone at top, band at bottom, perfectly vertical, head-on angle, orthographic front view, product photography, white background, studio lighting, sharp focus, photorealistic, 8k, highly detailed`;
-    _hfOverrides = { inputs: _hfInput };
-    console.log('[JWLZIFY] ring prompt (keyword-stacked):', _hfInput);
-    console.log('[JWLZIFY] Flux ring prompt:', fullPrompt);
-  } else if (resolvedType === 'bracelet') {
-    const _hfDesc  = _buildHfJewelryDesc('bracelet', LAB.material, LAB.gem, LAB.style, desc);
-    const _hfInput = `${_hfDesc}, single closed-loop bracelet viewed perfectly head-on, horizontal oval band facing the camera, front face pointing directly at the viewer, clear symmetrical loop, one single continuous band, isolated on a plain white studio background, product photography, studio lighting, sharp focus, photorealistic, 8k. ${_BRACELET_SINGLE_BAND}`;
-    _hfOverrides = { inputs: _hfInput };
-    console.log('[JWLZIFY] bracelet single-band prompt:', _hfInput);
-    console.log('[JWLZIFY] Flux bracelet prompt:', fullPrompt);
-  } else if (resolvedType === 'necklace') {
-    const _hfDesc  = _buildHfJewelryDesc('necklace', LAB.material, LAB.gem, LAB.style, desc);
-    const _hfPlacement = selectedNecklacePlacement === 'none'
-      ? 'plain polished chain no stones'
-      : selectedNecklacePlacement === 'full'
-        ? 'stones set continuously along entire chain tennis necklace'
-        : `${_domSpecs.stoneCount} individual stones spaced far apart along chain, long stretches of bare chain links clearly visible between each stone`;
-    const _hfInput = `${_hfDesc}, ${_hfPlacement}, a bare chain necklace with links running continuously from end to end, displayed as if worn, front-facing view photographed straight on, chain forms a clean symmetrical U-shape draped down both sides evenly, displayed on an invisible ghost mannequin neck form, vertical portrait orientation, light grey background, studio lighting, sharp focus, photorealistic, 8k`;
-    _hfOverrides = { inputs: _hfInput };
-    console.log('[JWLZIFY] necklace prompt:', _hfInput);
-    console.log('[JWLZIFY] Flux necklace prompt:', fullPrompt);
-  }
-
+  // ONE prompt per generation — buildPrompt's paragraph IS what Flux receives.
   console.log('[JWLZIFY] generation prompt:', fullPrompt);
   console.log('[JWLZIFY] img2img:', initImage ? 'yes (initImage present)' : 'no (txt2img)');
 
   // RING ONLY: generate 3 camera angles (head-on / hero / profile) instead of one image.
   if (resolvedType === 'ring') {
-    const _ringCore = _buildHfJewelryDesc('ring', LAB.material, LAB.gem, LAB.style, desc);
-    _generateRingMultiAngle({ core: _ringCore, thisGen: thisGen, isTweak: isTweak, fullPromptForLog: fullPrompt });
+    _generateRingMultiAngle({ userText: _ringUserText(desc), thisGen: thisGen, isTweak: isTweak, fullPromptForLog: fullPrompt });
     return;
   }
   // BRACELET: generate 3 angles (head-on / three-quarter / stone detail) of the same design.
   if (resolvedType === 'bracelet') {
-    _generateBraceletMultiAngle({ braceletDescription: _buildBraceletDescription(desc), thisGen: thisGen, isTweak: isTweak, fullPromptForLog: fullPrompt });
+    _generateBraceletMultiAngle({ userText: desc, thisGen: thisGen, isTweak: isTweak, fullPromptForLog: fullPrompt });
     return;
   }
 
-  _enqueueGen(() => _generateVerified(fullPrompt, initImage, _hfOverrides, _buildVerifyExpectation())).then((blobUrl) => {
+  _enqueueGen(() => _generateVerified(fullPrompt, initImage, _buildVerifyExpectation())).then((blobUrl) => {
     console.log('[JWLZIFY] setting image src to:', blobUrl?.slice(0, 50));
     if (!blobUrl) {
       if (thisGen !== generationId) return;
@@ -4812,48 +4636,21 @@ async function confirmAndGenerate() {
   const thisGen = generationId;
   setGenLoading(true);
 
-  // Keyword-stacked prompt overrides for ring / bracelet / necklace
-  let _hfOverridesC = null;
-  if (LAB.type === 'ring') {
-    const _hfDesc  = _buildHfJewelryDesc('ring', LAB.material, LAB.gem, LAB.style || 'Modern', userIdea);
-    const _hfInput = `${_hfDesc}, front view, straight-on, dead center, upright ring, vertical band, symmetrical, eye-level shot, frontal elevation, centered composition, stone at top, band at bottom, perfectly vertical, head-on angle, orthographic front view, product photography, white background, studio lighting, sharp focus, photorealistic, 8k, highly detailed`;
-    _hfOverridesC = { inputs: _hfInput };
-    console.log('[JWLZIFY] ring prompt (keyword-stacked):', _hfInput);
-    console.log('[JWLZIFY] Flux ring prompt:', fullPrompt);
-  } else if (LAB.type === 'bracelet') {
-    const _hfDesc  = _buildHfJewelryDesc('bracelet', LAB.material, LAB.gem, LAB.style || 'Modern', userIdea);
-    const _hfInput = `${_hfDesc}, single closed-loop bracelet viewed perfectly head-on, horizontal oval band facing the camera, front face pointing directly at the viewer, clear symmetrical loop, one single continuous band, isolated on a plain white studio background, product photography, studio lighting, sharp focus, photorealistic, 8k. ${_BRACELET_SINGLE_BAND}`;
-    _hfOverridesC = { inputs: _hfInput };
-    console.log('[JWLZIFY] bracelet single-band prompt:', _hfInput);
-    console.log('[JWLZIFY] Flux bracelet prompt:', fullPrompt);
-  } else if (LAB.type === 'necklace') {
-    const _hfDesc  = _buildHfJewelryDesc('necklace', LAB.material, LAB.gem, LAB.style || 'Modern', userIdea);
-    const _hfPlacement = selectedNecklacePlacement === 'none'
-      ? 'plain polished chain no stones'
-      : selectedNecklacePlacement === 'full'
-        ? `${selectedNecklaceCt}ct stones set continuously along entire chain tennis necklace, every stone same size`
-        : `${window.jwlSpecifications.stoneCount} ${selectedNecklaceCt}ct individual stones spaced far apart along chain, long stretches of bare chain links clearly visible between each stone, every stone same size`;
-    const _hfInput = `${_hfDesc}, ${_hfPlacement}, a bare chain necklace with links running continuously from end to end, displayed as if worn, front-facing view photographed straight on, chain forms a clean symmetrical U-shape draped down both sides evenly, displayed on an invisible ghost mannequin neck form, vertical portrait orientation, light grey background, studio lighting, sharp focus, photorealistic, 8k`;
-    _hfOverridesC = { inputs: _hfInput };
-    console.log('[JWLZIFY] necklace prompt:', _hfInput);
-    console.log('[JWLZIFY] Flux necklace prompt:', fullPrompt);
-  }
-
+  // ONE prompt per generation — buildPrompt's paragraph IS what Flux receives.
   console.log('[JWLZIFY] generation prompt:', fullPrompt);
 
   // RING ONLY: generate 3 camera angles (head-on / hero / profile) instead of one image.
   if (LAB.type === 'ring') {
-    const _ringCore = _buildHfJewelryDesc('ring', LAB.material, LAB.gem, LAB.style || 'Modern', userIdea);
-    _generateRingMultiAngle({ core: _ringCore, thisGen: thisGen, isTweak: false, fullPromptForLog: fullPrompt });
+    _generateRingMultiAngle({ userText: _ringUserText(userIdea), thisGen: thisGen, isTweak: false, fullPromptForLog: fullPrompt });
     return;
   }
   // BRACELET: generate 3 angles (head-on / three-quarter / stone detail) of the same design.
   if (LAB.type === 'bracelet') {
-    _generateBraceletMultiAngle({ braceletDescription: _buildBraceletDescription(userIdea), thisGen: thisGen, isTweak: false, fullPromptForLog: fullPrompt });
+    _generateBraceletMultiAngle({ userText: userIdea, thisGen: thisGen, isTweak: false, fullPromptForLog: fullPrompt });
     return;
   }
 
-  _enqueueGen(() => _generateVerified(fullPrompt, null, _hfOverridesC, _buildVerifyExpectation())).then(blobUrl => {
+  _enqueueGen(() => _generateVerified(fullPrompt, null, _buildVerifyExpectation())).then(blobUrl => {
     if (!blobUrl) {
       if (thisGen !== generationId) return;
       setGenLoading(false);
@@ -4896,44 +4693,14 @@ async function confirmAndGenerate() {
 // redundantly — repeated at the START and END of the prompt — so the model cannot
 // drift to a tilted, three-quarter, or top-down framing. Ring only.
 const _RING_HEADON_PROMPT = 'Strict head-on front view of the ring, viewed straight on at eye level with zero tilt. The center stone faces directly toward the viewer and sits in the middle of the frame. The band curves downward symmetrically on the left and right sides. Perfectly symmetrical left to right. This is the view of a ring worn on a finger pointing straight up toward the camera.';
-const _RING_HEADON_HF     = 'strict head-on front view, viewed straight on at eye level, zero tilt, center stone facing directly toward the viewer, centered in the frame, band curving downward symmetrically on the left and right, perfectly symmetrical left to right, the view of a ring worn on a finger pointing straight up at the camera';
-
 const RING_ANGLES = [
   { cap: 'Head-On', headOn: true,
-    clause: _RING_HEADON_PROMPT,
-    hf:     _RING_HEADON_HF },
+    clause: _RING_HEADON_PROMPT },
   { cap: 'Hero Angle',
-    clause: 'Three-quarter angle view, the classic flattering jewelry hero shot, showing the top, front, and side of the ring together, stone catching the light, sitting upright.',
-    hf: 'three-quarter angle hero view, showing the top front and side together, stone catching the light, sitting upright' },
+    clause: 'Three-quarter angle view, the classic flattering jewelry hero shot, showing the top, front, and side of the ring together, stone catching the light, sitting upright.' },
   { cap: 'Profile',
-    clause: 'Direct side profile view showing the band thickness, setting height, and side stones or detailing, ring upright in profile.',
-    hf: 'direct side profile view, showing band thickness, setting height and side detailing, ring upright in profile' },
+    clause: 'Direct side profile view showing the band thickness, setting height, and side stones or detailing, ring upright in profile.' },
 ];
-
-/* ── RING exact-stone-count enforcement ──────────────────────────────
-   The user's selected stone count (specs → _authoritativeStoneCount) is the
-   absolute, exact number. Flux tends to add decorative extras
-   (pavé, halo, accents, side stones); these helpers state the exact count in
-   strong positive language. RING ONLY. */
-const _RING_NUM_WORDS = ['ZERO','ONE','TWO','THREE','FOUR','FIVE','SIX','SEVEN','EIGHT','NINE','TEN',
-  'ELEVEN','TWELVE','THIRTEEN','FOURTEEN','FIFTEEN','SIXTEEN','SEVENTEEN','EIGHTEEN','NINETEEN','TWENTY'];
-function _ringSpellNum(n) { return _RING_NUM_WORDS[n] || String(n); }
-
-// Strong positive clause stating the exact count (leads the prompt). AFFIRMATIVE
-// ONLY — the plain-band requirement is described as what the band IS (smooth
-// polished bare metal), never as a list of things it lacks.
-function _ringExactCountClause(n) {
-  if (n === 1) {
-    return 'A solitaire ring set with exactly one (1) stone: a single center stone, the only gem on the ring, mounted on a completely plain, smooth, polished bare-metal band.';
-  }
-  const w = _ringSpellNum(n).toLowerCase();
-  return 'A ring set with exactly ' + w + ' (' + n + ') stones in total — these ' + w + ' stones are the only gems on the ring, and every other part of the band is plain, smooth, polished bare metal.';
-}
-// Restated count reminder (closes the prompt).
-function _ringExactCountReminder(n) {
-  return 'Final reminder: this ring carries exactly ' + _ringSpellNum(n).toLowerCase() + ' (' + n + ') stone' + (n === 1 ? '' : 's') +
-    ' on an otherwise plain polished bare-metal band.';
-}
 
 let _ringGalleryUrls  = [];   // [{url, cap, orig}] of the angles that succeeded
 let _ringGalleryIndex = 0;
@@ -4954,28 +4721,21 @@ function _setRingLoadingMsg() {
   }
 }
 
-// Generate one angle via _generateImage (Flux only, no fallback). Returns blob URL or null.
-function _genRingAngle(core, shared, angle) {
-  // Exact stone count is absolute — from the spec selectors (never typed text).
-  const stoneCount    = _authoritativeStoneCount();
-  const exactClause   = _ringExactCountClause(stoneCount);   // strong count language, FIRST
-  const exactReminder = _ringExactCountReminder(stoneCount); // restated count, LAST
-  // Head-on (index 0) is the try-on anchor: the head-on instruction is restated at
-  // BOTH ends of the prompt.
+// Generate one angle via _generateImage (Flux only, no fallback). ONE coherent
+// natural-language paragraph per generation: jewelry type + camera angle → metal →
+// stones (count spelled exactly once, centre stone prominent, band finish stated
+// affirmatively) → the user's style text → one short quality clause. Returns blob
+// URL or null.
+function _genRingAngle(userText, angle) {
   const isHeadOn = !!angle.headOn;
+  const prompt =
+    `Professional product photograph of a single luxury ${LAB.style || 'Modern'} ${matLabel(LAB.material)} ring. ` +
+    `${angle.clause} ` +
+    `The ring is ${_ringStonesSentence(gemLabel(LAB.gem))}.` +
+    (userText ? ` ${userText}.` : '') +
+    ` The single ring is the sole subject, centered on a seamless white studio background, sharp macro focus, soft even studio lighting, photorealistic e-commerce jewelry photography.`;
 
-  // Assembly order: exact-count clause → design description → exact-count reminder.
-  // For head-on, _RING_HEADON_PROMPT brackets the whole prompt (start AND end).
-  const positivePrompt = isHeadOn
-    ? `${_RING_HEADON_PROMPT} ${exactClause} ${shared}. ${exactReminder} ${_RING_HEADON_PROMPT}`
-    : `${exactClause} ${angle.clause} ${shared}. ${exactReminder}`;
-  const hfInput = isHeadOn
-    ? `${_RING_HEADON_PROMPT} ${exactClause} ${core}, ${angle.hf}, ${shared}. ${exactReminder} ${_RING_HEADON_PROMPT}`
-    : `${exactClause} ${core}, ${angle.hf}, ${shared}. ${exactReminder}`;
-  const hfOverride = { inputs: hfInput };
-
-  console.log('[Ring] exact stone count enforced:', stoneCount);
-  console.log('[Ring] positive prompt:', positivePrompt);
+  console.log('[Ring]', angle.cap, '| stone count (specs):', _authoritativeStoneCount(), '| prompt:', prompt);
 
   // Head-on (index 0) is the anchor the try-on + quote use — it gets the full
   // vision-verify loop (count + form, up to 3 attempts, best-match fallback).
@@ -4983,22 +4743,20 @@ function _genRingAngle(core, shared, angle) {
   // each other at those camera angles, so a count check would false-fail.
   if (isHeadOn) {
     const _vx = _buildVerifyExpectation();
-    return _enqueueGen(() => _generateVerified(positivePrompt, null, hfOverride, _vx, 3)).catch(() => null);
+    return _enqueueGen(() => _generateVerified(prompt, null, _vx, 3)).catch(() => null);
   }
-  return _enqueueGen(() => _generateImage(positivePrompt, null, hfOverride)).catch(() => null);
+  return _enqueueGen(() => _generateImage(prompt, null)).catch(() => null);
 }
 
 async function _generateRingMultiAngle(opts) {
-  const core   = opts.core;
+  const userText = opts.userText || '';   // quantity/shape-stripped typed text
   const thisGen = opts.thisGen;
   const isTweak = !!opts.isTweak;
   const ri = document.getElementById('refineImg');
   _setRingLoadingMsg();
 
-  const shared = `${core}, single ring, one ring only, white seamless studio background, studio lighting, sharp focus, photorealistic, 8k, highly detailed, isolated product-only photograph, the ring alone in frame`;
-
   // Generate all 3 angles (queue caps concurrency). Any that fail resolve to null.
-  let urls = await Promise.all(RING_ANGLES.map(a => _genRingAngle(core, shared, a)));
+  let urls = await Promise.all(RING_ANGLES.map(a => _genRingAngle(userText, a)));
 
   // Try-on REQUIRES a real head-on at index 0. It is the priority angle — retry it
   // specifically up to 2 more times (3 attempts total) before giving up. The other
@@ -5007,7 +4765,7 @@ async function _generateRingMultiAngle(opts) {
   while (!urls[0] && retryCount < 2) {
     retryCount++;
     console.log('[Ring] head-on (index 0) missing — retry', retryCount, 'of 2');
-    urls[0] = await _genRingAngle(core, shared, RING_ANGLES[0]);
+    urls[0] = await _genRingAngle(userText, RING_ANGLES[0]);
   }
   const success = !!urls[0];
   console.log('[Ring] head-on angle generated at index 0:', success, '| retries:', retryCount);
@@ -5142,36 +4900,31 @@ function _wireRingGallery() {
 // instruction below brackets the head-on prompt (START + short restatement at END).
 // Bracelet only — the other two gallery angles are unchanged.
 const _BRACELET_HEADON_PROMPT = 'STRICT FRONT ELEVATION VIEW, camera exactly at the bracelet\'s level, zero tilt, zero perspective: the bracelet is viewed perfectly straight-on from the front so it appears as a flat horizontal band running left to right across the frame. Only the front face of the band is visible, every link and setting seen face-on. The band reads as a straight horizontal strip of links/settings facing the camera directly, like a fence viewed head-on at eye level. Perfectly level and symmetrical.';
-const _BRACELET_HEADON_REMINDER = 'Remember: a dead-level straight-on front view — the band reads as a flat horizontal strip showing only its front face.';
 
 const BRACELET_ANGLES = [
   { cap: 'Head-On', headOn: true,
-    clause: 'The band is a flat frontal strip — the visible front arc of the bracelet — running straight left to right across the frame, only the front face of the links/settings shown facing the camera, no oval interior visible, no top surfaces visible, perfectly level and symmetrical.',
-    hf: 'strict front elevation, flat horizontal band, front face only, no top surfaces, no perspective, level and symmetrical' },
+    clause: 'The band is a flat frontal strip — the visible front arc of the bracelet — running straight left to right across the frame, showing only the front face of the links and settings facing the camera, perfectly level and symmetrical.' },
   { cap: 'Three-Quarter',
-    clause: 'Three-quarter angle view of the same bracelet, the flattering hero shot showing the front and side of the band together, the loop turned slightly so depth is visible, stones catching the light.',
-    hf: 'three-quarter angle view, front and side of the band together, slight turn showing depth, stones catching light' },
+    clause: 'Three-quarter angle view of the same bracelet, the flattering hero shot showing the front and side of the band together, the loop turned slightly so depth is visible, stones catching the light.' },
   { cap: 'Stone Detail',
-    clause: 'Close-up top view of the same bracelet band, the camera close so the individual set stones are clearly visible and countable along the length, sharp macro detail of the stones and links.',
-    hf: 'close-up top view of the band, individual set stones clearly visible and countable, macro detail' },
+    clause: 'Close-up top view of the same bracelet band, the camera close so the individual set stones are clearly visible and countable along the length, sharp macro detail of the stones and links.' },
 ];
 
-// Layout-FREE design core (metal / style / link width / gem / user idea). The stone
-// LAYOUT is enforced separately and redundantly by the helpers below so it leads and
-// trails the prompt — never buried in the middle where models under-weight it.
-function _buildBraceletDescription(desc) {
+// Bracelet prompt building blocks: metal/link lead, stones-tier sentence, and the
+// user's typed text — each spec appears exactly once in the assembled paragraph.
+function _braceletPromptParts(desc) {
   const tier     = (userSelections && userSelections.stoneSizeTier) || 'medium';
   const tierWord = ({ accent: 'small', medium: 'medium', large: 'large' })[tier] || 'medium';
   const linkW    = (userSelections && userSelections.linkWidthMm) ? `${userSelections.linkWidthMm}mm wide links` : 'fine links';
-  const gd = gemLabel(LAB.gem);
-  const md = matLabel(LAB.material);
-  const userPart = (desc && desc.trim()) ? `, ${desc.trim()}` : '';
-  return `luxury ${LAB.style} ${md} bracelet, ${linkW}, set with ${tierWord} ${gd} diamonds, each stone prong-set${userPart}`;
+  return {
+    lead:   `single continuous luxury ${LAB.style} ${matLabel(LAB.material)} bracelet band with ${linkW}`,
+    stones: `set with ${tierWord} ${gemLabel(LAB.gem)} stones, each stone prong-set in its own setting`,
+    user:   (desc || '').trim(),
+  };
 }
 
-// ── Maximal STONE LAYOUT enforcement: concrete countable spatial language, stated
-//    up front (prepended) and restated at the end (appended), with the exact target
-//    {stoneCount} from the math, plus aggressive layout-specific negatives. ──
+// ── STONE LAYOUT language: concrete countable spatial description with the exact
+//    target {stoneCount} from the math, stated exactly once in the paragraph. ──
 function _braceletLayoutPositive(layout, stoneCount) {
   if (layout === 'everyOther') {
     return `A station-style diamond bracelet with a STRICT alternating pattern: exactly one diamond, then a clearly visible gap of plain bare polished metal of equal size, then exactly one diamond, then another equal gap of plain metal, repeating this diamond-gap-diamond-gap rhythm evenly along the entire band. Every diamond is separated from the next by a distinct empty section of plain metal. Approximately ${stoneCount} evenly spaced individual diamonds in total, with bare metal visible between each and every stone.`;
@@ -5181,39 +4934,27 @@ function _braceletLayoutPositive(layout, stoneCount) {
   }
   return `A classic tennis bracelet where diamonds are set directly next to each other in an unbroken continuous line, every single setting filled, stones touching edge to edge, a solid continuous row of diamonds running the entire length of the band.`;
 }
-function _braceletLayoutReminder(layout, stoneCount) {
-  if (layout === 'everyOther') {
-    return `Remember: this is a STATION bracelet — one diamond, then a gap of bare plain metal, then one diamond, then a gap, alternating evenly with clearly visible plain metal between every pair of stones; approximately ${stoneCount} stones in total.`;
-  }
-  if (layout === 'everyFourth') {
-    return `Remember: diamonds are sparse and widely spaced with large plain metal gaps between each stone, approximately ${stoneCount} stones in total.`;
-  }
-  return `Remember: every setting is filled, the diamonds touching edge to edge in one unbroken continuous line running the full length of the band.`;
-}
-// Generate one bracelet angle via _generateImage (Flux only, no fallback). Layout positive FIRST,
-// design + view + constraints in the middle, restated layout reminder LAST.
-function _genBraceletAngle(designCore, layout, stoneCount, angle) {
+// Generate one bracelet angle via _generateImage (Flux only, no fallback). ONE
+// coherent paragraph per generation: type + camera angle → metal/links → stones +
+// layout (approximate count stated exactly once) → user text → one quality clause.
+// The head-on angle (try-on anchor) uses the strict flat front-elevation camera
+// instruction, stated once.
+function _genBraceletAngle(userText, layout, stoneCount, angle) {
+  const parts     = _braceletPromptParts(userText);
   const layoutPos = _braceletLayoutPositive(layout, stoneCount);
-  const layoutRem = _braceletLayoutReminder(layout, stoneCount);
   const isHeadOn  = !!angle.headOn;
-  // Head-on (index 0, try-on anchor): the strict flat front-elevation instruction
-  // brackets the whole prompt — stated at the START and restated (short) at the END.
-  // (Negative prompts removed 2026-07-12 — Flux 2 Pro has no negative support.)
-  const positivePrompt = isHeadOn
-    ? `${_BRACELET_HEADON_PROMPT} ${layoutPos} ${designCore}. ${angle.clause} Single closed-loop bracelet, one bracelet only, ` +
-      `white seamless studio background, professional studio lighting, photorealistic, 8k, sharp focus, ` +
-      `the bracelet alone in frame. ${layoutRem} ${_BRACELET_HEADON_REMINDER}`
-    : `${layoutPos} ${designCore}. ${angle.clause} Single closed-loop bracelet, one bracelet only, ` +
-      `white seamless studio background, professional studio lighting, photorealistic, 8k, sharp focus, ` +
-      `the bracelet alone in frame. ${layoutRem}`;
-  console.log('[Bracelet] layout:', layout, '| target count:', stoneCount);
-  console.log('[Bracelet] positive prompt:', positivePrompt);
-  if (isHeadOn) console.log('[Bracelet] head-on prompt (flat front elevation):', positivePrompt);
-  return _enqueueGen(() => _generateImage(positivePrompt, null)).catch(() => null);
+  const prompt =
+    `Professional product photograph of exactly one bracelet — a ${parts.lead}. ` +
+    `${isHeadOn ? _BRACELET_HEADON_PROMPT : angle.clause} ` +
+    `The band is ${parts.stones}: ${layoutPos}` +
+    (parts.user ? ` ${parts.user}.` : '') +
+    ` The single band is the sole subject, isolated on a seamless white studio background, soft even studio lighting, sharp focus, photorealistic jewelry product photography.`;
+  console.log('[Bracelet]', angle.cap, '| layout:', layout, '| target count:', stoneCount, '| prompt:', prompt);
+  return _enqueueGen(() => _generateImage(prompt, null)).catch(() => null);
 }
 
 async function _generateBraceletMultiAngle(opts) {
-  const designCore = opts.braceletDescription;   // layout-free design core
+  const userText = opts.userText || '';   // the user's typed text (style flavor)
   const thisGen = opts.thisGen;
   const isTweak = !!opts.isTweak;
   const ri = document.getElementById('refineImg');
@@ -5222,13 +4963,13 @@ async function _generateBraceletMultiAngle(opts) {
   const layout     = (userSelections && userSelections.stoneLayout) || 'full';
   const stoneCount = _braceletStoneCount();   // exact math target stated in the prompt
 
-  let urls = await Promise.all(BRACELET_ANGLES.map(a => _genBraceletAngle(designCore, layout, stoneCount, a)));
+  let urls = await Promise.all(BRACELET_ANGLES.map(a => _genBraceletAngle(userText, layout, stoneCount, a)));
 
   // Try-on REQUIRES head-on (index 0): it is the priority angle, so retry it
   // specifically up to 2 times before falling back to another angle.
   for (let _attempt = 1; _attempt <= 2 && !urls[0]; _attempt++) {
     console.log(`[Bracelet] head-on (index 0) failed — retry ${_attempt}/2 before fallback`);
-    urls[0] = await _genBraceletAngle(designCore, layout, stoneCount, BRACELET_ANGLES[0]);
+    urls[0] = await _genBraceletAngle(userText, layout, stoneCount, BRACELET_ANGLES[0]);
   }
   if (!urls[0]) {
     urls[0] = urls[1] || urls[2] || null;
