@@ -2033,9 +2033,11 @@ function _buildHfJewelryDesc(type, material, gem, style, desc) {
 // dropped before the worker call (dead code). Constraints now live in the POSITIVE
 // prompt as affirmative description only.
 // Single-band enforcement — bracelet only. Appended to the bracelet positive prompt.
-const _BRACELET_SINGLE_BAND   = 'ONE single bracelet band only. A single continuous loop. One unbroken band. Exactly one bracelet, not two, not a pair, not stacked, not double-banded. A single solitary bracelet shown as one closed oval loop facing the camera.';
+// AFFIRMATIVE ONLY: naming unwanted outcomes ("not two, not a pair") plants those
+// concepts in the model — describe only what SHOULD appear.
+const _BRACELET_SINGLE_BAND   = 'Exactly one bracelet: a single continuous band forming one closed oval loop, facing the camera.';
 // Extra single-band instruction folded into the bracelet prompt.
-const _BRACELET_SINGLE_INSTRUCTION = 'Generate exactly ONE single bracelet band. Do not show two bands, a double band, stacked bracelets, or a pair. One single continuous loop only.';
+const _BRACELET_SINGLE_INSTRUCTION = 'The frame contains one single bracelet, one unbroken continuous loop.';
 // Flux 2 Pro worker — the SOLE txt2img + img2img generator (swap model by updating flux-image-worker.js FAL_MODEL)
 const FLUX_WORKER_URL = 'https://flux-image.sarkd333.workers.dev';
 const FAL_BG_REMOVE_URL = 'https://fal-bg-remove.sarkd333.workers.dev'; // fal birefnet matting worker (returns JSON with image.url)
@@ -2094,7 +2096,7 @@ function _buildPromptSafeguards() {
 
   const countPhrase = useHardCount
     ? `exactly ${_sgSpell(count)} (${count}) ${stoneType} stone${count === 1 ? '' : 's'}, ${size} in size`
-    : (hasStones ? `${size} ${stoneType} stones` : 'no stones, plain polished metal');
+    : (hasStones ? `${size} ${stoneType} stones` : 'plain polished metal throughout');
   const shapePhrase = (hasStones && shape) ? `${shape}-cut ` : '';
 
   // Most-important specs at the START (models weight the start heavily).
@@ -2105,7 +2107,7 @@ function _buildPromptSafeguards() {
                  .replace(/\s{2,}/g, ' ');
 
   const placement = hasStones
-    ? `The stones are arranged naturally, elegantly, and symmetrically, integrated seamlessly into the design as a skilled jeweler would set them. The placement is balanced, intentional, and tailored to the style of the piece — not random, not awkward, not floating. Each stone sits properly within its setting, in harmony with the overall design and the ${style} aesthetic. The arrangement suits a ${type} in the ${style} style — a minimalist piece keeps the stones clean and balanced, while an ornate or vintage piece integrates them richly but still neatly.`
+    ? `The stones are arranged naturally, elegantly, and symmetrically, integrated seamlessly into the design as a skilled jeweler would set them. The placement is balanced, intentional, and tailored to the style of the piece. Each stone sits properly within its setting, in harmony with the overall design and the ${style} aesthetic. The arrangement suits a ${type} in the ${style} style — a minimalist piece keeps the stones clean and balanced, while an ornate or vintage piece integrates them richly but still neatly.`
     : '';
 
   return { lead, tail, placement, quality: _QUALITY_SAFEGUARDS, metal, stoneType, count, size, shape, style, hasStones };
@@ -3504,7 +3506,7 @@ const EARRING_STYLE_DESCRIPTORS = {
 
 // Earring Form → hard form descriptor with the correct findings.
 const EARRING_FORM_DESCRIPTORS = {
-  stud: 'stud earrings (post and butterfly/friction back), sitting flush on the earlobe, no drop, no dangle',
+  stud: 'stud earrings (post and butterfly/friction back), sitting flush and compact directly on the earlobe',
   hoop: 'hoop earrings (a continuous closed loop / click-top hoop), circular ring form',
   drop: 'drop earrings (hook or lever-back ear wire) that hang and dangle below the ear',
 };
@@ -3911,7 +3913,7 @@ function _authoritativeStoneClause(type) {
   // (it is later estimated from the generated image), so don't force a number.
   if (type === 'necklace' || type === 'bracelet') return '';
   const n = _authoritativeStoneCount();
-  return ' This piece has EXACTLY ' + n + ' stones in total, no more and no fewer. Total stone count: ' + n + '.';
+  return ' The piece is set with exactly ' + n + ' stone' + (n === 1 ? '' : 's') + ' in total.';
 }
 
 // Map a carat value → descriptive visual-size language so the carat actually
@@ -4017,7 +4019,7 @@ function _buildPromptCore(type, material, gem, style, desc) {
                     + ` (approximately ${_pw}mm wide by ${_ph}mm tall)`;
     }
     // Type keyword leads; user description follows as detail context
-    return `luxury ${style} ${wPart}pendant charm${descPart}${proportionStr}, bail connector at top, ${mDisp}, ${gemPart}, close-up macro product photograph, pendant centered filling the frame, high contrast separation between pendant and background, soft even studio lighting with no shadows on background, pure white seamless background, ultra sharp focus, hyper realistic, 8K ultra high definition, precious metal gleam, gemstone sparkle and brilliance. No humans. No person. No body parts. No neck. No chest. No hands. No fingers. No ears. No skin. No model. Product-only photography. The jewelry piece is the sole subject of the image. No chain. No necklace cord. No string. The pendant is the only element in the image. Pendant displayed alone, flat lay on white surface, top-down view, studio lighting, luxury product photography.`;
+    return `luxury ${style} ${wPart}pendant charm${descPart}${proportionStr}, bail connector at top, ${mDisp}, ${gemPart}, close-up macro product photograph, pendant centered filling the frame, high contrast separation between pendant and background, soft even studio lighting, pure white seamless background, ultra sharp focus, hyper realistic, 8K ultra high definition, precious metal gleam, gemstone sparkle and brilliance. Isolated product-only photography: the pendant by itself is the sole subject and the only element in the image. Pendant displayed alone, flat lay on white surface, top-down view, studio lighting, luxury product photography.`;
   }
 
   if (type === 'necklace') {
@@ -4044,17 +4046,17 @@ function _buildPromptCore(type, material, gem, style, desc) {
     const _autoStations = _necklaceAutoStoneCount(_necklaceInches(), selectedNecklacePlacement);
     let necklaceGemStr = '';
     if (selectedNecklacePlacement === 'none') {
-      necklaceGemStr = 'plain polished chain, no stones';
+      necklaceGemStr = 'a plain polished bare-link chain from end to end';
     } else if (gDisp) {
       const _neckSize = _caratSizeDescriptor(_ct);
       if (selectedNecklacePlacement === 'full') {
         necklaceGemStr = `featuring ${_neckSize} ${_ct} carat ${gDisp} stones set continuously along the entire chain, tennis necklace style, every stone the same ${_ct}ct size`;
       } else {
-        necklaceGemStr = `featuring ${_autoStations} ${_neckSize} ${_ct} carat ${gDisp} stones spaced evenly as stations far apart along a plain chain with clearly visible bare chain links between each stone, NOT continuous, NOT a tennis necklace, distinct gaps between stones, every stone the same ${_ct}ct size`;
+        necklaceGemStr = `featuring ${_autoStations} ${_neckSize} ${_ct} carat ${gDisp} stones spaced evenly as stations far apart along a plain chain, long stretches of bare chain links clearly visible between each station, every stone the same ${_ct}ct size`;
       }
     }
     const necklaceFraming = [
-      'chain-only necklace, no pendant, no charm, no hanging centerpiece',
+      'a bare chain necklace, links running continuously from end to end',
       'necklace displayed as if worn',
       'front-facing view photographed straight on',
       'chain forms a clean symmetrical U-shape draped down both sides evenly',
@@ -4106,8 +4108,8 @@ function _buildPromptCore(type, material, gem, style, desc) {
       const _allowSurround = _earStudSurroundRequested();
       studPositive =
         (_allowSurround ? ''
-          : ' Simple solitaire stud, stone held by minimal prongs only, no surrounding metal, no bezel, no halo, no frame, no backing disk.')
-        + ' Front-facing view, clean edges, no visible post, no side extension.';
+          : ' Simple solitaire stud: the stone held by minimal prongs only, the prongs being the only metal touching the stone, its girdle fully exposed.')
+        + ' Front-facing view with clean flush edges, the stone itself filling the silhouette.';
       console.log('[Earring Gen] stud settings — surrounding metal:', _allowSurround ? 'ALLOWED (user requested)' : 'OFF (default)');
     }
 
@@ -4125,13 +4127,12 @@ function _buildPromptCore(type, material, gem, style, desc) {
     const renderFrame =
       'Render ONE single individual earring only, one earring from this matching identical pair, ' +
       'centered single earring, isolated single piece, white seamless background, ' +
-      'professional jewelry product photography, no shadows, hyper realistic, 8K ultra high definition, ' +
+      'professional jewelry product photography, evenly lit, hyper realistic, 8K ultra high definition, ' +
       'macro lens, sharp focus, highly detailed, photorealistic, precious metal gleam, gemstone sparkle and brilliance. ' +
       `The earring form is strictly a ${earFormWord} — ${earFormDesc}. ` +
-      `This earring has EXACTLY ${perEar} ${stoneWord}, no more and no fewer; the matching pair totals ${totalCnt} stones. ` +
+      `This earring carries exactly ${perEar} ${stoneWord}; the matching pair totals ${totalCnt} stones. ` +
       'Both earrings in the pair are identical. ' +
-      'No humans. No person. No body parts. No neck. No chest. No hands. No fingers. No ears. No skin. No model. ' +
-      'Product-only photography. The jewelry piece is the sole subject of the image.';
+      'Isolated product-only photography: the earring alone is the sole subject of the image.';
 
     const finalEar = specBlock + studPositive + ' ' + renderFrame;
     console.log('[Earring Gen] specs:', { earringForm: earForm, totalStoneCount: totalCnt, perEarringCount: perEar, perStoneCt: perCt, sizeBucket: sizeKey, earringMm: earMm, shape: earShape, metal: mDisp });
@@ -4143,7 +4144,7 @@ function _buildPromptCore(type, material, gem, style, desc) {
   if (type === 'bracelet') {
     // Face-on horizontal oval band so the bracelet can convincingly WRAP a raised wrist
     // in webcam try-on (mirrors the ring's face-on approach, oriented for the wrist).
-    const _braceletShape = 'A single closed-loop bracelet viewed perfectly head-on as a horizontal oval band facing the camera, the front face of the bracelet pointing directly at the viewer, the band forming a clear symmetrical loop — the view you get looking straight at a bracelet on a wrist raised toward you. A perfectly horizontal level oval band, symmetrical left-to-right, not tilted, not angled down, the band sits flat and level like a horizontal ellipse viewed straight on. One single continuous band, isolated on plain white studio background, no person, no body parts.';
+    const _braceletShape = 'A single closed-loop bracelet viewed perfectly head-on as a horizontal oval band facing the camera, the front face of the bracelet pointing directly at the viewer, the band forming a clear symmetrical loop — the view you get looking straight at a bracelet on a wrist raised toward you. A perfectly horizontal level oval band, symmetrical left-to-right, sitting flat and level like a horizontal ellipse viewed straight on. One single continuous band, isolated on a plain white studio background.';
     // Bracelet: link width + per-stone tier drive the look. The stone COUNT is left
     // emergent (estimated from the image later), so no fixed number is forced here.
     const _bTier  = (userSelections && userSelections.stoneSizeTier) || 'medium';
@@ -4153,7 +4154,7 @@ function _buildPromptCore(type, material, gem, style, desc) {
     const _bStoneDesc = gDisp
       ? `a continuous line of evenly spaced ${_bTierWord} ${gDisp} stones running along the entire band, tennis bracelet style, each stone prong-set`
       : 'a plain polished band';
-    return `luxury ${style} bracelet${descPart}, ${mDisp}, ${_bLinkW}, ${_bStoneDesc}, isolated fine jewelry product photograph, pure white seamless studio background, no shadows, professional diffuse studio lighting, hyper realistic, 8K ultra high definition, sharp focus, precious metal gleam, gemstone sparkle and brilliance. ${_braceletShape} ${_BRACELET_SINGLE_BAND} ${_BRACELET_SINGLE_INSTRUCTION} No humans. No person. No body parts. No hands. No wrist. No skin. No model. Product-only photography. The jewelry piece is the sole subject of the image.`;
+    return `luxury ${style} bracelet${descPart}, ${mDisp}, ${_bLinkW}, ${_bStoneDesc}, isolated fine jewelry product photograph, pure white seamless studio background, evenly lit, professional diffuse studio lighting, hyper realistic, 8K ultra high definition, sharp focus, precious metal gleam, gemstone sparkle and brilliance. ${_braceletShape} ${_BRACELET_SINGLE_BAND} ${_BRACELET_SINGLE_INSTRUCTION} Isolated product-only photography: the bracelet alone is the sole subject of the image.`;
   }
 
   if (type === 'ring') {
@@ -4175,20 +4176,19 @@ function _buildPromptCore(type, material, gem, style, desc) {
     } else {
       stonePart = `with ${stoneCount} ${cut} ${gDisp} stones of ${stoneSizes.join(', ')} set into the band of a single ring`;
     }
-    const stoneClarity = 'Every stone is the same ' + ringShape + ' cut. All stones are set into ONE single ring. This is one ring with multiple stones, not multiple rings. Do not generate more than one ring.';
+    const stoneClarity = 'Every stone is the same ' + ringShape + ' cut, and all of them are set into this one single ring.';
     return 'Single product photograph, single viewpoint: A single custom jewelry ring. '
       + [userDesc, mDisp + ' ring', stonePart].filter(Boolean).join('. ')
       + '. ' + stoneClarity
-      + ' Front view ring photography. The camera is positioned at exactly the same height as the center of the ring, pointing straight at the face of the ring. The ring is standing upright. The circular band is a perfect symmetrical oval at the bottom of the frame. The gemstone is dead center, pointing straight at the lens. This is NOT a hero shot. NOT a 3/4 angle. NOT shot from above or below. NOT tilted. The view is identical to looking directly through a telescope or tunnel straight at the ring face. Flat background. No hands. No fingers. No props. No fabric. Perfectly sharp focus on the stone and prongs. Soft even studio lighting. White or very light grey background. Luxury jewelry product photography, e-commerce style. No humans. No person. No body parts. No neck. No chest. No hands. No fingers. No ears. No skin. No model. Product-only photography. The jewelry piece is the sole subject of the image.'
+      + ' Front view ring photography. The camera is positioned at exactly the same height as the center of the ring, pointing straight at the face of the ring. The ring is standing upright. The circular band is a perfect symmetrical oval at the bottom of the frame. The gemstone is dead center, pointing straight at the lens — the view of looking directly through a telescope or tunnel straight at the ring face. The ring alone fills the frame against a flat background. Perfectly sharp focus on the stone and prongs. Soft even studio lighting. White or very light grey background. Luxury jewelry product photography, e-commerce style. Isolated product-only photography: the ring is the sole subject of the image.'
       + ' CAMERA ANGLE: strict front elevation view, dead-on, eye-level, zero perspective distortion. The ring is standing perfectly upright and vertical, like the letter O or a wheel viewed straight on. The circular band is a full vertical circle facing the camera. The center stone and setting are at the top position, pointing straight up. The band opening runs vertically, top to bottom. The ring is perfectly symmetrical left-to-right. Both sides of the band are equally visible and mirror each other. The ring is centered in frame with equal margin on all sides.'
-      + ' ONE single photograph. ONE ring from a single front-facing elevation angle. NOT a collage. NOT a grid. NOT multiple panels. NOT multiple angles. NOT a contact sheet. A single isolated product photograph of one ring, centered, on a seamless white background. One image, one ring, one viewpoint.'
-      + ' Do not tilt or angle the ring. Do not show a three-quarter or side view. Show only a perfectly upright, front-facing, symmetrical ring.';
+      + ' ONE single photograph of one ring from a single front-facing elevation angle, centered on a seamless white background. One image, one ring, one viewpoint: a perfectly upright, front-facing, symmetrical ring.';
   }
 
   const typeMap = {};
   const piece = typeMap[type] || type;
   // Type keyword leads the prompt; user description follows as detail context
-  return `luxury ${style} ${wPart}${piece}${descPart}, ${mDisp}, ${gemPart}, isolated fine jewelry product photograph, pure white seamless background, no shadows, no reflections on background, professional diffuse studio lighting, hyper realistic, 8K ultra high definition, macro lens, sharp focus, precious metal gleam, gemstone sparkle and brilliance, luxury brand catalog`;
+  return `luxury ${style} ${wPart}${piece}${descPart}, ${mDisp}, ${gemPart}, isolated fine jewelry product photograph, pure white seamless background, evenly lit, professional diffuse studio lighting, hyper realistic, 8K ultra high definition, macro lens, sharp focus, precious metal gleam, gemstone sparkle and brilliance, luxury brand catalog`;
 }
 
 /* ── Alpha post-processing helpers ────────────── */
@@ -4646,7 +4646,7 @@ async function startGeneration(isTweak) {
     console.log('[JWLZIFY] Flux ring prompt:', fullPrompt);
   } else if (resolvedType === 'bracelet') {
     const _hfDesc  = _buildHfJewelryDesc('bracelet', LAB.material, LAB.gem, LAB.style, desc);
-    const _hfInput = `${_hfDesc}, single closed-loop bracelet viewed perfectly head-on, horizontal oval band facing the camera, front face pointing directly at the viewer, clear symmetrical loop, one single continuous band, isolated, plain white studio background, no person, no body parts, product photography, studio lighting, sharp focus, photorealistic, 8k. ${_BRACELET_SINGLE_BAND}`;
+    const _hfInput = `${_hfDesc}, single closed-loop bracelet viewed perfectly head-on, horizontal oval band facing the camera, front face pointing directly at the viewer, clear symmetrical loop, one single continuous band, isolated on a plain white studio background, product photography, studio lighting, sharp focus, photorealistic, 8k. ${_BRACELET_SINGLE_BAND}`;
     _hfOverrides = { inputs: _hfInput };
     console.log('[JWLZIFY] bracelet single-band prompt:', _hfInput);
     console.log('[JWLZIFY] Flux bracelet prompt:', fullPrompt);
@@ -4656,8 +4656,8 @@ async function startGeneration(isTweak) {
       ? 'plain polished chain no stones'
       : selectedNecklacePlacement === 'full'
         ? 'stones set continuously along entire chain tennis necklace'
-        : `${_domSpecs.stoneCount} individual stones spaced far apart along chain, bare chain links clearly visible between each stone, NOT tennis necklace, NOT continuous, distinct gaps between stones`;
-    const _hfInput = `${_hfDesc}, ${_hfPlacement}, chain-only necklace, no pendant, no charm, no hanging centerpiece, necklace displayed as if worn, front-facing view photographed straight on, chain forms a clean symmetrical U-shape draped down both sides evenly, displayed on an invisible ghost mannequin neck form, vertical portrait orientation, light grey background, studio lighting, sharp focus, photorealistic, 8k`;
+        : `${_domSpecs.stoneCount} individual stones spaced far apart along chain, long stretches of bare chain links clearly visible between each stone`;
+    const _hfInput = `${_hfDesc}, ${_hfPlacement}, a bare chain necklace with links running continuously from end to end, displayed as if worn, front-facing view photographed straight on, chain forms a clean symmetrical U-shape draped down both sides evenly, displayed on an invisible ghost mannequin neck form, vertical portrait orientation, light grey background, studio lighting, sharp focus, photorealistic, 8k`;
     _hfOverrides = { inputs: _hfInput };
     console.log('[JWLZIFY] necklace prompt:', _hfInput);
     console.log('[JWLZIFY] Flux necklace prompt:', fullPrompt);
@@ -4822,7 +4822,7 @@ async function confirmAndGenerate() {
     console.log('[JWLZIFY] Flux ring prompt:', fullPrompt);
   } else if (LAB.type === 'bracelet') {
     const _hfDesc  = _buildHfJewelryDesc('bracelet', LAB.material, LAB.gem, LAB.style || 'Modern', userIdea);
-    const _hfInput = `${_hfDesc}, single closed-loop bracelet viewed perfectly head-on, horizontal oval band facing the camera, front face pointing directly at the viewer, clear symmetrical loop, one single continuous band, isolated, plain white studio background, no person, no body parts, product photography, studio lighting, sharp focus, photorealistic, 8k. ${_BRACELET_SINGLE_BAND}`;
+    const _hfInput = `${_hfDesc}, single closed-loop bracelet viewed perfectly head-on, horizontal oval band facing the camera, front face pointing directly at the viewer, clear symmetrical loop, one single continuous band, isolated on a plain white studio background, product photography, studio lighting, sharp focus, photorealistic, 8k. ${_BRACELET_SINGLE_BAND}`;
     _hfOverridesC = { inputs: _hfInput };
     console.log('[JWLZIFY] bracelet single-band prompt:', _hfInput);
     console.log('[JWLZIFY] Flux bracelet prompt:', fullPrompt);
@@ -4832,8 +4832,8 @@ async function confirmAndGenerate() {
       ? 'plain polished chain no stones'
       : selectedNecklacePlacement === 'full'
         ? `${selectedNecklaceCt}ct stones set continuously along entire chain tennis necklace, every stone same size`
-        : `${window.jwlSpecifications.stoneCount} ${selectedNecklaceCt}ct individual stones spaced far apart along chain, bare chain links clearly visible between each stone, NOT tennis necklace, NOT continuous, distinct gaps between stones, every stone same size`;
-    const _hfInput = `${_hfDesc}, ${_hfPlacement}, chain-only necklace, no pendant, no charm, no hanging centerpiece, necklace displayed as if worn, front-facing view photographed straight on, chain forms a clean symmetrical U-shape draped down both sides evenly, displayed on an invisible ghost mannequin neck form, vertical portrait orientation, light grey background, studio lighting, sharp focus, photorealistic, 8k`;
+        : `${window.jwlSpecifications.stoneCount} ${selectedNecklaceCt}ct individual stones spaced far apart along chain, long stretches of bare chain links clearly visible between each stone, every stone same size`;
+    const _hfInput = `${_hfDesc}, ${_hfPlacement}, a bare chain necklace with links running continuously from end to end, displayed as if worn, front-facing view photographed straight on, chain forms a clean symmetrical U-shape draped down both sides evenly, displayed on an invisible ghost mannequin neck form, vertical portrait orientation, light grey background, studio lighting, sharp focus, photorealistic, 8k`;
     _hfOverridesC = { inputs: _hfInput };
     console.log('[JWLZIFY] necklace prompt:', _hfInput);
     console.log('[JWLZIFY] Flux necklace prompt:', fullPrompt);
@@ -4895,7 +4895,7 @@ async function confirmAndGenerate() {
 // view of a ring on a finger pointing up at the camera). Stated explicitly and
 // redundantly — repeated at the START and END of the prompt — so the model cannot
 // drift to a tilted, three-quarter, or top-down framing. Ring only.
-const _RING_HEADON_PROMPT = 'Strict head-on front view of the ring, viewed straight on at eye level with zero tilt. The center stone faces directly toward the viewer and sits in the middle of the frame. The band curves downward symmetrically on the left and right sides. Perfectly symmetrical left to right. This is the view of a ring worn on a finger pointing straight up toward the camera. NOT angled, NOT tilted, NOT three-quarter, NOT a side view, NOT top-down.';
+const _RING_HEADON_PROMPT = 'Strict head-on front view of the ring, viewed straight on at eye level with zero tilt. The center stone faces directly toward the viewer and sits in the middle of the frame. The band curves downward symmetrically on the left and right sides. Perfectly symmetrical left to right. This is the view of a ring worn on a finger pointing straight up toward the camera.';
 const _RING_HEADON_HF     = 'strict head-on front view, viewed straight on at eye level, zero tilt, center stone facing directly toward the viewer, centered in the frame, band curving downward symmetrically on the left and right, perfectly symmetrical left to right, the view of a ring worn on a finger pointing straight up at the camera';
 
 const RING_ANGLES = [
@@ -4919,18 +4919,20 @@ const _RING_NUM_WORDS = ['ZERO','ONE','TWO','THREE','FOUR','FIVE','SIX','SEVEN',
   'ELEVEN','TWELVE','THIRTEEN','FOURTEEN','FIFTEEN','SIXTEEN','SEVENTEEN','EIGHTEEN','NINETEEN','TWENTY'];
 function _ringSpellNum(n) { return _RING_NUM_WORDS[n] || String(n); }
 
-// Strong positive clause stating the exact count (leads the prompt).
+// Strong positive clause stating the exact count (leads the prompt). AFFIRMATIVE
+// ONLY — the plain-band requirement is described as what the band IS (smooth
+// polished bare metal), never as a list of things it lacks.
 function _ringExactCountClause(n) {
   if (n === 1) {
-    return 'A ring with EXACTLY ONE (1) single solitaire stone and absolutely no other stones anywhere. One stone only. The band is completely plain, smooth, and bare metal with no diamonds, no accent stones, no pavé, no side stones, and no decorative gems of any kind — only the one single center stone.';
+    return 'A solitaire ring set with exactly one (1) stone: a single center stone, the only gem on the ring, mounted on a completely plain, smooth, polished bare-metal band.';
   }
-  const W = _ringSpellNum(n), w = W.toLowerCase();
-  return 'A ring with EXACTLY ' + W + ' (' + n + ') stones total and no other stones anywhere on the ring. Only ' + w + ' stones. The rest of the band is plain bare metal with no additional diamonds, accents, pavé, or side stones.';
+  const w = _ringSpellNum(n).toLowerCase();
+  return 'A ring set with exactly ' + w + ' (' + n + ') stones in total — these ' + w + ' stones are the only gems on the ring, and every other part of the band is plain, smooth, polished bare metal.';
 }
 // Restated count reminder (closes the prompt).
 function _ringExactCountReminder(n) {
-  return 'Final reminder: this ring has EXACTLY ' + _ringSpellNum(n) + ' (' + n + ') stone' + (n === 1 ? '' : 's') +
-    ' and the band is plain bare metal with no other diamonds or accent stones whatsoever.';
+  return 'Final reminder: this ring carries exactly ' + _ringSpellNum(n).toLowerCase() + ' (' + n + ') stone' + (n === 1 ? '' : 's') +
+    ' on an otherwise plain polished bare-metal band.';
 }
 
 let _ringGalleryUrls  = [];   // [{url, cap, orig}] of the angles that succeeded
@@ -4993,7 +4995,7 @@ async function _generateRingMultiAngle(opts) {
   const ri = document.getElementById('refineImg');
   _setRingLoadingMsg();
 
-  const shared = `${core}, single ring, one ring only, white seamless studio background, studio lighting, sharp focus, photorealistic, 8k, highly detailed, isolated product, no person, no hand, no body parts`;
+  const shared = `${core}, single ring, one ring only, white seamless studio background, studio lighting, sharp focus, photorealistic, 8k, highly detailed, isolated product-only photograph, the ring alone in frame`;
 
   // Generate all 3 angles (queue caps concurrency). Any that fail resolve to null.
   let urls = await Promise.all(RING_ANGLES.map(a => _genRingAngle(core, shared, a)));
@@ -5139,8 +5141,8 @@ function _wireRingGallery() {
 // the wrist far more cleanly with the existing hide-top occlusion mask. The strict
 // instruction below brackets the head-on prompt (START + short restatement at END).
 // Bracelet only — the other two gallery angles are unchanged.
-const _BRACELET_HEADON_PROMPT = 'STRICT FRONT ELEVATION VIEW, camera exactly at the bracelet\'s level, zero tilt, zero perspective: the bracelet is viewed perfectly straight-on from the front so it appears as a flat horizontal band running left to right across the frame. Only the front face of the band is visible — the tops of the settings are NOT visible, the inside of the band is NOT visible, no looking down into it, no looking up at it. The band reads as a straight horizontal strip of links/settings facing the camera directly, like a fence viewed head-on at eye level. Perfectly level and symmetrical, not rotated, not angled.';
-const _BRACELET_HEADON_REMINDER = 'Remember: dead-level front view, flat horizontal band, no top surfaces visible, no perspective, no tilt.';
+const _BRACELET_HEADON_PROMPT = 'STRICT FRONT ELEVATION VIEW, camera exactly at the bracelet\'s level, zero tilt, zero perspective: the bracelet is viewed perfectly straight-on from the front so it appears as a flat horizontal band running left to right across the frame. Only the front face of the band is visible, every link and setting seen face-on. The band reads as a straight horizontal strip of links/settings facing the camera directly, like a fence viewed head-on at eye level. Perfectly level and symmetrical.';
+const _BRACELET_HEADON_REMINDER = 'Remember: a dead-level straight-on front view — the band reads as a flat horizontal strip showing only its front face.';
 
 const BRACELET_ANGLES = [
   { cap: 'Head-On', headOn: true,
@@ -5177,16 +5179,16 @@ function _braceletLayoutPositive(layout, stoneCount) {
   if (layout === 'everyFourth') {
     return `A widely-spaced station diamond bracelet: exactly one single diamond, then a LONG gap of plain bare polished metal roughly three to four times wider than the diamond, then one single diamond, then another long plain metal gap, repeating evenly. The diamonds are sparse and clearly separated, set far apart with large visible stretches of plain metal between each stone. Approximately ${stoneCount} diamonds in total, widely and evenly spaced, with large bare metal sections dominating the space between stones.`;
   }
-  return `A classic tennis bracelet where diamonds are set directly next to each other in an unbroken continuous line, every single setting filled, stones touching edge to edge with absolutely no gaps of plain metal between them, a solid continuous row of diamonds running the entire length of the band.`;
+  return `A classic tennis bracelet where diamonds are set directly next to each other in an unbroken continuous line, every single setting filled, stones touching edge to edge, a solid continuous row of diamonds running the entire length of the band.`;
 }
 function _braceletLayoutReminder(layout, stoneCount) {
   if (layout === 'everyOther') {
-    return `Remember: this is a STATION bracelet — one diamond, then a gap of bare plain metal, then one diamond, then a gap, alternating evenly with clearly visible plain metal between every pair of stones; approximately ${stoneCount} stones only, NOT a continuous tennis bracelet.`;
+    return `Remember: this is a STATION bracelet — one diamond, then a gap of bare plain metal, then one diamond, then a gap, alternating evenly with clearly visible plain metal between every pair of stones; approximately ${stoneCount} stones in total.`;
   }
   if (layout === 'everyFourth') {
-    return `Remember: diamonds are sparse and widely spaced with large plain metal gaps between each stone, approximately ${stoneCount} stones only, NOT a continuous or densely set bracelet.`;
+    return `Remember: diamonds are sparse and widely spaced with large plain metal gaps between each stone, approximately ${stoneCount} stones in total.`;
   }
-  return `Remember: every setting is filled with diamonds touching edge to edge in one unbroken continuous line, with no gaps of plain metal anywhere along the band.`;
+  return `Remember: every setting is filled, the diamonds touching edge to edge in one unbroken continuous line running the full length of the band.`;
 }
 // Generate one bracelet angle via _generateImage (Flux only, no fallback). Layout positive FIRST,
 // design + view + constraints in the middle, restated layout reminder LAST.
@@ -5200,10 +5202,10 @@ function _genBraceletAngle(designCore, layout, stoneCount, angle) {
   const positivePrompt = isHeadOn
     ? `${_BRACELET_HEADON_PROMPT} ${layoutPos} ${designCore}. ${angle.clause} Single closed-loop bracelet, one bracelet only, ` +
       `white seamless studio background, professional studio lighting, photorealistic, 8k, sharp focus, ` +
-      `no person, no hands, no wrist, no body parts. ${layoutRem} ${_BRACELET_HEADON_REMINDER}`
+      `the bracelet alone in frame. ${layoutRem} ${_BRACELET_HEADON_REMINDER}`
     : `${layoutPos} ${designCore}. ${angle.clause} Single closed-loop bracelet, one bracelet only, ` +
       `white seamless studio background, professional studio lighting, photorealistic, 8k, sharp focus, ` +
-      `no person, no hands, no wrist, no body parts. ${layoutRem}`;
+      `the bracelet alone in frame. ${layoutRem}`;
   console.log('[Bracelet] layout:', layout, '| target count:', stoneCount);
   console.log('[Bracelet] positive prompt:', positivePrompt);
   if (isHeadOn) console.log('[Bracelet] head-on prompt (flat front elevation):', positivePrompt);
@@ -9034,7 +9036,7 @@ function loadNecklaceForTryOn(imageUrl) {
     <div style="display:flex;flex-direction:column;gap:10px;">
 
       <button class="chain-style-btn" data-style="cuban"
-        data-prompt="cuban link chain necklace, thick bold interlocking links, heavy miami cuban chain, no pendant"
+        data-prompt="cuban link chain necklace, thick bold interlocking links, heavy miami cuban chain, the bare chain alone"
         data-label="Cuban"
         style="display:flex;align-items:center;gap:14px;padding:12px 16px;border:1.5px solid #e0e0e0;border-radius:10px;
                background:#fff;cursor:pointer;text-align:left;transition:all 0.15s;">
@@ -9049,7 +9051,7 @@ function loadNecklaceForTryOn(imageUrl) {
       </button>
 
       <button class="chain-style-btn" data-style="rope"
-        data-prompt="rope chain necklace, twisted spiral links, no pendant"
+        data-prompt="rope chain necklace, twisted spiral links, the bare chain alone"
         data-label="Rope"
         style="display:flex;align-items:center;gap:14px;padding:12px 16px;border:1.5px solid #e0e0e0;border-radius:10px;
                background:#fff;cursor:pointer;text-align:left;transition:all 0.15s;">
@@ -9064,7 +9066,7 @@ function loadNecklaceForTryOn(imageUrl) {
       </button>
 
       <button class="chain-style-btn" data-style="box"
-        data-prompt="box chain necklace, square geometric links, no pendant"
+        data-prompt="box chain necklace, square geometric links, the bare chain alone"
         data-label="Box"
         style="display:flex;align-items:center;gap:14px;padding:12px 16px;border:1.5px solid #e0e0e0;border-radius:10px;
                background:#fff;cursor:pointer;text-align:left;transition:all 0.15s;">
@@ -9079,7 +9081,7 @@ function loadNecklaceForTryOn(imageUrl) {
       </button>
 
       <button class="chain-style-btn" data-style="cable"
-        data-prompt="cable chain necklace, classic simple oval links, no pendant"
+        data-prompt="cable chain necklace, classic simple oval links, the bare chain alone"
         data-label="Cable"
         style="display:flex;align-items:center;gap:14px;padding:12px 16px;border:1.5px solid #e0e0e0;border-radius:10px;
                background:#fff;cursor:pointer;text-align:left;transition:all 0.15s;">
@@ -9094,7 +9096,7 @@ function loadNecklaceForTryOn(imageUrl) {
       </button>
 
       <button class="chain-style-btn" data-style="choker"
-        data-prompt="choker necklace, close-fitting neck piece, sits high at the base of the neck, no pendant"
+        data-prompt="choker necklace, close-fitting neck piece, sits high at the base of the neck, the bare chain alone"
         data-label="Choker"
         style="display:flex;align-items:center;gap:14px;padding:12px 16px;border:1.5px solid #e0e0e0;border-radius:10px;
                background:#fff;cursor:pointer;text-align:left;transition:all 0.15s;">
