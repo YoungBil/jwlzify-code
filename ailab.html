@@ -5230,10 +5230,21 @@ function _wireRingGallery() {
    - braceletAngles[1] = three-quarter angle.
    - braceletAngles[2] = closer/top view showing the stones.
    ══════════════════════════════════════════════════════════ */
+// Index-0 head-on is the TRY-ON anchor: it must be a STRICT FLAT FRONT ELEVATION —
+// a flat horizontal band (the visible front arc of the bracelet), NOT an oval loop
+// with visible interior. Oval framing invited a tilted/perspective look (you could
+// see down into the settings), which warped on the wrist. A flat frontal strip overlays
+// the wrist far more cleanly with the existing hide-top occlusion mask. The strict
+// instruction below brackets the head-on prompt (START + short restatement at END).
+// Bracelet only — the other two gallery angles are unchanged.
+const _BRACELET_HEADON_PROMPT = 'STRICT FRONT ELEVATION VIEW, camera exactly at the bracelet\'s level, zero tilt, zero perspective: the bracelet is viewed perfectly straight-on from the front so it appears as a flat horizontal band running left to right across the frame. Only the front face of the band is visible — the tops of the settings are NOT visible, the inside of the band is NOT visible, no looking down into it, no looking up at it. The band reads as a straight horizontal strip of links/settings facing the camera directly, like a fence viewed head-on at eye level. Perfectly level and symmetrical, not rotated, not angled.';
+const _BRACELET_HEADON_REMINDER = 'Remember: dead-level front view, flat horizontal band, no top surfaces visible, no perspective, no tilt.';
+const _BRACELET_HEADON_NEG = 'tilted, angled, perspective view, three-quarter view, top-down, birds eye, looking into settings, visible top surfaces, visible inside of band, oval shape, elliptical, foreshortening, isometric, diagonal, rotated, leaning, dutch angle, curved perspective';
+
 const BRACELET_ANGLES = [
-  { cap: 'Head-On',
-    clause: 'Head-on front view: a single closed-loop bracelet viewed perfectly head-on as a horizontal oval band facing the camera, the front face pointing directly at the viewer, symmetrical left-to-right, level, not tilted — the view of a bracelet on a wrist raised toward you.',
-    hf: 'head-on front view, horizontal oval band facing the camera, symmetrical, level, not tilted' },
+  { cap: 'Head-On', headOn: true,
+    clause: 'The band is a flat frontal strip — the visible front arc of the bracelet — running straight left to right across the frame, only the front face of the links/settings shown facing the camera, no oval interior visible, no top surfaces visible, perfectly level and symmetrical.',
+    hf: 'strict front elevation, flat horizontal band, front face only, no top surfaces, no perspective, level and symmetrical' },
   { cap: 'Three-Quarter',
     clause: 'Three-quarter angle view of the same bracelet, the flattering hero shot showing the front and side of the band together, the loop turned slightly so depth is visible, stones catching the light.',
     hf: 'three-quarter angle view, front and side of the band together, slight turn showing depth, stones catching light' },
@@ -5293,18 +5304,31 @@ function _genBraceletAngle(designCore, layout, stoneCount, angle) {
   const layoutPos = _braceletLayoutPositive(layout, stoneCount);
   const layoutRem = _braceletLayoutReminder(layout, stoneCount);
   const layoutNeg = _braceletLayoutNegative(layout);
-  const positivePrompt =
-    `${layoutPos} ${designCore}. ${angle.clause} Single closed-loop bracelet, one bracelet only, ` +
-    `white seamless studio background, professional studio lighting, photorealistic, 8k, sharp focus, ` +
-    `no person, no hands, no wrist, no body parts. ${layoutRem}`;
-  const negativePrompt = `${layoutNeg}, ${BRACELET_GALLERY_HF_NEG}`;
+  const isHeadOn  = !!angle.headOn;
+  // Head-on (index 0, try-on anchor): the strict flat front-elevation instruction
+  // brackets the whole prompt — stated at the START and restated (short) at the END.
+  const positivePrompt = isHeadOn
+    ? `${_BRACELET_HEADON_PROMPT} ${layoutPos} ${designCore}. ${angle.clause} Single closed-loop bracelet, one bracelet only, ` +
+      `white seamless studio background, professional studio lighting, photorealistic, 8k, sharp focus, ` +
+      `no person, no hands, no wrist, no body parts. ${layoutRem} ${_BRACELET_HEADON_REMINDER}`
+    : `${layoutPos} ${designCore}. ${angle.clause} Single closed-loop bracelet, one bracelet only, ` +
+      `white seamless studio background, professional studio lighting, photorealistic, 8k, sharp focus, ` +
+      `no person, no hands, no wrist, no body parts. ${layoutRem}`;
+  // Head-on gets the anti-tilt/anti-perspective negatives prepended (angle-specific).
+  const negativePrompt = isHeadOn
+    ? `${_BRACELET_HEADON_NEG}, ${layoutNeg}, ${BRACELET_GALLERY_HF_NEG}`
+    : `${layoutNeg}, ${BRACELET_GALLERY_HF_NEG}`;
   console.log('[Bracelet] layout:', layout, '| target count:', stoneCount);
   console.log('[Bracelet] positive prompt:', positivePrompt);
   console.log('[Bracelet] negative prompt:', negativePrompt);
+  if (isHeadOn) {
+    console.log('[Bracelet] head-on prompt (flat front elevation):', positivePrompt);
+    console.log('[Bracelet] head-on negative:', negativePrompt);
+  }
   const hfOverride = {
     inputs: positivePrompt,
     negative_prompt: negativePrompt,
-    guidance_scale: 9.0,            // higher adherence for structural layout control
+    guidance_scale: 9.0,            // head-on pins 9.0; tighter adherence for structural/angle control
     num_inference_steps: 30,
   };
   return _enqueueGen(() => _generateImage(positivePrompt, negativePrompt, null, hfOverride)).catch(() => null);
@@ -5322,9 +5346,10 @@ async function _generateBraceletMultiAngle(opts) {
 
   let urls = await Promise.all(BRACELET_ANGLES.map(a => _genBraceletAngle(designCore, layout, stoneCount, a)));
 
-  // Try-on REQUIRES head-on (index 0): retry it specifically before falling back.
-  if (!urls[0]) {
-    console.log('[Bracelet] head-on (index 0) failed — retrying specifically before fallback');
+  // Try-on REQUIRES head-on (index 0): it is the priority angle, so retry it
+  // specifically up to 2 times before falling back to another angle.
+  for (let _attempt = 1; _attempt <= 2 && !urls[0]; _attempt++) {
+    console.log(`[Bracelet] head-on (index 0) failed — retry ${_attempt}/2 before fallback`);
     urls[0] = await _genBraceletAngle(designCore, layout, stoneCount, BRACELET_ANGLES[0]);
   }
   if (!urls[0]) {
