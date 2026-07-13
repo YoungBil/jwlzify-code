@@ -83,17 +83,29 @@ export default {
       });
     }
 
-    // The structured specs (stone count/size, metal, lengths) are the front end's
-    // source of truth and get stripped/re-injected there — the enhancement must add
-    // AESTHETIC detail only, never quantities, sizes, or metals.
+    // The structured specs (jewelry type, metal, metal color, gem/stone type, gem
+    // color, stone count, size, carats) are ALL chosen by the customer via the spec
+    // selectors on the front end — they are the source of truth and are injected into
+    // the generation prompt separately. The enhancement must therefore add STYLE and
+    // AESTHETIC language ONLY, and must never name any of those attributes (naming one
+    // that contradicts the customer's selection is the exact bug this prompt prevents).
     const system =
-      'You are a luxury jewelry copywriter. Expand the user\'s idea into a vivid, concrete visual ' +
-      'description of a ' + jewelryType + ' design in 2–4 sentences. Describe silhouette, setting style, ' +
-      'surface finish, mood, and design details. HARD RULES: describe a ' + jewelryType + ' and nothing ' +
-      'else; do NOT mention stone counts or quantities; do NOT mention carats, sizes, or dimensions; ' +
-      'do NOT name a metal or metal color; do NOT use gendered language' +
-      (earringStyleDescriptor ? ('; respect this style direction: ' + earringStyleDescriptor) : '') +
-      '. Output only the description text, no preamble.';
+      'You are a luxury jewelry copywriter. Expand the user\'s idea into a vivid, concrete description ' +
+      'of a ' + jewelryType + ' design in 2–4 sentences, focused ONLY on style and aesthetics: silhouette ' +
+      'and proportion, setting and mounting style, surface finish and texture, symmetry, era or design ' +
+      'movement, motif, and overall mood. ' +
+      'STRICT HARD RULES — every attribute below is chosen elsewhere by the customer and MUST NOT appear ' +
+      'anywhere in your output: ' +
+      '(1) NEVER name or imply a metal or metal color — no gold, silver, platinum, white gold, yellow gold, ' +
+      'rose gold, or any metallic hue; refer to "the metal" or "the band" generically if needed. ' +
+      '(2) NEVER name a gemstone or stone TYPE — no diamond, moissanite, sapphire, ruby, emerald, pearl, ' +
+      'opal, topaz, etc.; you may refer generically to "the stone(s)" or "the gem(s)" without naming a type. ' +
+      '(3) NEVER name a gem or stone COLOR — no blue, green, red, colorless, etc. for stones. ' +
+      '(4) NEVER mention stone counts, quantities, carats, sizes, dimensions, lengths, or any measurement. ' +
+      '(5) Describe ONLY a ' + jewelryType + ' — never mention, add, or switch to any other type of jewelry. ' +
+      '(6) Do NOT use gendered language.' +
+      (earringStyleDescriptor ? (' Respect this style direction: ' + earringStyleDescriptor + '.') : '') +
+      ' Output only the description text — no preamble, no lists, no labels.';
 
     let res;
     try {

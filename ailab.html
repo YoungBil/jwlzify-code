@@ -2013,7 +2013,8 @@ async function _fetchWithRetry(makeUrl) {
 // out — both come from the spec selectors, the single source of truth. This is the
 // only reconciliation the ring prompt needs; everything else is built from specs.
 function _ringUserText(desc) {
-  return _stripShapeWords(stripStoneQuantities((desc || '').trim()));
+  // + metal / gem-type strip so typed/enhanced text can't contradict the metal & gem selectors.
+  return _stripMaterialWords(_stripShapeWords(stripStoneQuantities((desc || '').trim())));
 }
 // NOTE (2026-07-12): the entire negative-prompt system was removed. Flux 2 Pro has
 // no negative-prompt support — negatives were assembled, logged, and then silently
@@ -3790,6 +3791,36 @@ function _stripShapeWords(text) {
   return t;
 }
 
+// Strip METAL words + metal colors and GEM-TYPE (stone) nouns from typed/enhanced
+// text. Metal (matLabel) and gem type (gemLabel) come ONLY from the spec selectors and
+// are injected authoritatively; the user OR the Groq enhancer could otherwise name one
+// that CONTRADICTS the selection (e.g. "rose gold" when 925 Silver is selected). This
+// is the CLIENT-SIDE second guard (the worker system prompt is the first). Applied to
+// the active description for EVERY type, before prompt assembly.
+// NOTE: "emerald" is preserved when it names a CUT ("emerald cut/shape") so the ring
+// Stone-Shape flow stays intact — it is removed only as a standalone stone noun.
+function _stripMaterialWords(text) {
+  if (!text) return '';
+  let t = String(text);
+  // ── Metals + metal colors. Multi-word phrases FIRST so no orphan color word (the
+  //    "rose"/"white" in "rose gold"/"white gold") is left dangling. ──
+  t = t.replace(/\b(?:rose|white|yellow|red|green)[\s-]?gold\b/gi, ' ');
+  t = t.replace(/\bsterling[\s-]?silver\b/gi, ' ');
+  t = t.replace(/\bstainless[\s-]?steel\b/gi, ' ');
+  t = t.replace(/\b(?:gold|silver|platinum|palladium|titanium|tungsten|rhodium|steel|brass|bronze|copper|pewter|gunmetal|gold-?tone|silver-?tone|gilded|gilt)\b/gi, ' ');
+  // ── Gem/stone TYPE nouns (the gem type is authoritative from the selector). ──
+  // "emerald" only when it is NOT immediately a cut/shape word — that stays legal.
+  t = t.replace(/\bemeralds?\b(?!\s*-?\s*(?:cut|shaped?|shape))/gi, ' ');
+  t = t.replace(/\b(?:moissanites?|sapphires?|rubies|ruby|topaz|amethysts?|garnets?|aquamarines?|opals?|pearls?|onyx|turquoise|citrines?|peridots?|tanzanites?|morganites?|tourmalines?|spinels?|alexandrites?|zircons?|cubic\s+zirconias?|zirconias?|cz)\b/gi, ' ');
+  // tidy leftover punctuation/whitespace from the removals
+  t = t.replace(/\s*,\s*,\s*/g, ', ')
+       .replace(/\s{2,}/g, ' ')
+       .replace(/\s+([,.;])/g, '$1')
+       .replace(/^[\s,;.]+|[\s,;.]+$/g, '')
+       .trim();
+  return t;
+}
+
 // EARRING flow only: strip anything from the typed/Groq text that could FIGHT the
 // spec selectors — stone quantities, earring-TYPE/form words, and size words. The
 // specs (count, form, size bucket, mm) win silently; only neutral aesthetic flavor
@@ -3877,7 +3908,9 @@ function buildPrompt(type, material, gem, style, desc) {
   // If the typed count differs from the spec count we silently prefer the spec
   // count (it is the source of truth) — stripping the typed quantity achieves this.
   const rawUserText     = (desc || '').trim();
-  const cleanedUserText = stripStoneQuantities(rawUserText);
+  // Second guard: strip typed/enhanced quantities AND any metal / gem-type words so the
+  // description can never contradict the authoritative metal + gem-type selectors.
+  const cleanedUserText = _stripMaterialWords(stripStoneQuantities(rawUserText));
   const stoneCount      = _authoritativeStoneCount();
 
   // The per-type core IS the final prompt — counts are stated exactly once inside
@@ -3888,7 +3921,7 @@ function buildPrompt(type, material, gem, style, desc) {
   const _si = _primaryStoneInfo(type);
   console.log('[Gen] carat:', _si.carats, '| stone size:', _si.sizeTier, '| size descriptor:', _caratSizeDescriptor(_si.carats));
   console.log('[Gen] user typed (raw):', rawUserText);
-  console.log('[Gen] user typed (quantities stripped):', cleanedUserText);
+  console.log('[Gen] user typed (quantities + metal/gem stripped):', cleanedUserText);
   console.log('[Gen] authoritative stone count from specs:', stoneCount);
   console.log('[Gen] final Flux prompt:', finalPrompt);
   return finalPrompt;
@@ -4924,7 +4957,9 @@ function _braceletPromptParts(desc) {
   return {
     lead:   `single continuous luxury ${LAB.style} ${matLabel(LAB.material)} bracelet band with ${linkW}`,
     stones: `set with ${tierWord} ${gemLabel(LAB.gem)} stones, each stone prong-set in its own setting`,
-    user:   (desc || '').trim(),
+    // Second guard: strip quantities + metal / gem-type words so typed text can't
+    // contradict the metal/gem selectors (mirrors buildPrompt and _ringUserText).
+    user:   _stripMaterialWords(stripStoneQuantities((desc || '').trim())),
   };
 }
 
