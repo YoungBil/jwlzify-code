@@ -2161,7 +2161,16 @@ function _buildVerifyExpectation() {
     // Stone SHAPE (cut) is verified for rings only — from the Stone Shape selector,
     // the same source the ring prompt uses.
     const shape = String(s.stoneShape || (typeof userSelections !== 'undefined' && userSelections.gemShape) || 'Round').toLowerCase();
-    return { type: 'ring', stones: (n >= 1 && n <= 7) ? n : null, metalColor: metalColor, stoneShape: shape };
+    return {
+      type: 'ring',
+      stones: (n >= 1 && n <= 7) ? n : null,
+      metalColor: metalColor,
+      stoneShape: shape,
+      // All carats equal (2+ stones) → the prompt promises identical sizes, so the
+      // verifier should check for a visibly dominant stone. Same helper the prompt
+      // uses (_ringCaratsAllEqual) — the two can never drift apart.
+      equalSize: _ringCaratsAllEqual() ? true : undefined,
+    };
   }
   if (t === 'earrings') {
     // The image renders ONE earring — verify the per-earring count.
@@ -2212,9 +2221,14 @@ async function _verifyImage(blobUrl, expected) {
     const metalOk    = !metalKnown || seen.metalColor === expected.metalColor;
     const shapeKnown = !!expected.stoneShape && typeof seen.stoneShape === 'string' && !!seen.stoneShape && seen.stoneShape !== 'other';
     const shapeOk    = !shapeKnown || seen.stoneShape === expected.stoneShape;
-    const score = (typeOk ? 0 : 100) + (metalOk ? 0 : 30) + (formOk ? 0 : 25) + (shapeOk ? 0 : 15)
+    // Equal stone sizes (rings with all-equal carats). Enforced ONLY when expected
+    // AND the worker returned a definite boolean — an older deployed worker (no
+    // stonesEqual field) fails OPEN, never blocking generation.
+    const equalKnown = !!expected.equalSize && typeof seen.stonesEqual === 'boolean';
+    const equalOk    = !equalKnown || seen.stonesEqual === true;
+    const score = (typeOk ? 0 : 100) + (metalOk ? 0 : 30) + (formOk ? 0 : 25) + (equalOk ? 0 : 20) + (shapeOk ? 0 : 15)
                 + (countKnown ? Math.abs(seen.stoneCount - expected.stones) * 10 : 0);
-    return { pass: typeOk && formOk && countOk && metalOk && shapeOk, score: score, seen: seen, unverified: false };
+    return { pass: typeOk && formOk && countOk && metalOk && shapeOk && equalOk, score: score, seen: seen, unverified: false };
   } catch (e) {
     console.warn('[Verify] unavailable — accepting image unverified:', e && e.message);
     return { pass: true, score: 0, seen: null, unverified: true };

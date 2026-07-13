@@ -14,9 +14,12 @@
 //   `expected` is logged for debugging only — it is deliberately NOT shown to the
 //   model, so what it reports is unbiased.
 // Response (JSON): { jewelryType: string, form: string|null, metalColor: string|null,
-//                    stoneShape: string|null, stoneCount: number|null }
-//   Any upstream failure returns a 5xx — the front end FAILS OPEN (accepts the
-//   image unverified) so this worker can never block generation.
+//                    stoneShape: string|null, stoneCount: number|null,
+//                    stonesEqual: boolean|null }
+//   stonesEqual: with 2+ stones visible, whether they all appear ~the same size
+//   (null when fewer than 2 stones). Any upstream failure returns a 5xx — the
+//   front end FAILS OPEN (accepts the image unverified) so this worker can never
+//   block generation.
 
 const GROQ_URL      = 'https://api.groq.com/openai/v1/chat/completions';
 const DEFAULT_MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct';
@@ -31,7 +34,9 @@ const VERIFY_PROMPT =
   '"stone_shape": "<the cut/shape of the main stone(s): one of round, oval, cushion, princess, emerald, ' +
   'pear, marquise, radiant, asscher, heart, baguette, trillion, other; null if there are no stones>", ' +
   '"stone_count": <integer — count every distinct gemstone/diamond visible, including small accent ' +
-  'stones; if there are clearly more than 12 stones return 13; if there are no stones return 0>}';
+  'stones; if there are clearly more than 12 stones return 13; if there are no stones return 0>, ' +
+  '"stones_equal_size": <if 2 or more stones are visible: true when they all appear approximately ' +
+  'the same size, false when one stone is clearly larger than the others; null if fewer than 2 stones>}';
 
 /* ── Shared security: origin allowlist + best-effort per-IP rate limit ─────────
    The rate limiter is per-isolate (resets on worker recycle, independent per PoP)
@@ -113,7 +118,7 @@ export default {
         body: JSON.stringify({
           model: env.GROQ_MODEL || DEFAULT_MODEL,
           temperature: 0,
-          max_completion_tokens: 160,
+          max_completion_tokens: 180,
           response_format: { type: 'json_object' },
           messages: [{
             role: 'user',
@@ -155,6 +160,7 @@ export default {
       metalColor:  typeof parsed.metal_color === 'string' ? parsed.metal_color.toLowerCase() : null,
       stoneShape:  typeof parsed.stone_shape === 'string' ? parsed.stone_shape.toLowerCase() : null,
       stoneCount:  Number.isFinite(parsed.stone_count) ? Math.max(0, Math.round(parsed.stone_count)) : null,
+      stonesEqual: typeof parsed.stones_equal_size === 'boolean' ? parsed.stones_equal_size : null,
     };
     console.log('[vision-verify] seen:', JSON.stringify(out));
     return new Response(JSON.stringify(out), {
