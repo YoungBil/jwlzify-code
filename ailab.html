@@ -3244,6 +3244,14 @@ function _applyRingSpecs() {
 // ONE stones sentence for rings — the count is spelled exactly once, the centre
 // stone called out with its carat-driven visual size, stone placement in one
 // clause, and the band finish stated affirmatively (plain polished bare metal).
+// True when the ring has 2+ stones and every carat matches (within rounding) —
+// drives BOTH the equal-size prompt wording below and the verifier's equalSize
+// expectation, so the two can never drift apart.
+function _ringCaratsAllEqual() {
+  const carats = ((window.jwlSpecifications || {}).stones || []).map(_ctOf).filter(c => c != null && !isNaN(c));
+  return carats.length >= 2 && carats.every(c => Math.abs(c - carats[0]) < 0.005);
+}
+
 function _ringStonesSentence(gDisp) {
   const specs  = window.jwlSpecifications || {};
   const shape  = (specs.stoneShape || userSelections.gemShape || 'Round').toLowerCase();
@@ -3253,6 +3261,16 @@ function _ringStonesSentence(gDisp) {
     const ct = carats[0] != null ? carats[0] : (specs.totalCt || specs.totalCarats || 1);
     return `set with exactly one ${shape}-cut ${gDisp} stone — a ${_caratSizeDescriptor(ct)} ${ct} carat center stone${_caratDomSuffix(ct)} — on a completely plain, smooth, polished bare-metal band`;
   }
+  // EQUAL CARATS: no center/side framing at all — "center stone accompanied by side
+  // stones" reads to Flux as an instruction to render one dominant stone, which is
+  // exactly the bug when every stone is the same size. State equal size plainly.
+  // (No _caratDomSuffix here either — dominance language is for unequal layouts.)
+  if (_ringCaratsAllEqual()) {
+    const ct = carats[0];
+    return `set with exactly ${_sgSpell(n)} (${n}) ${shape}-cut ${gDisp} stones, each ${ct} carat and all identical in size, evenly spaced across the band, each seated naturally in its own setting, the rest of the band plain polished bare metal`;
+  }
+  // UNEQUAL CARATS: the largest stone is genuinely the center stone — keep the
+  // prominent-center framing.
   const sorted = carats.slice().sort((a, b) => b - a);
   const center = sorted[0];
   const sides  = sorted.slice(1).map(c => c + 'ct').join(', ');
