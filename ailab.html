@@ -2140,20 +2140,35 @@ async function _verifyDownscale(url, maxDim) {
 // What the current spec promises, for types where it is verifiable. Returns null
 // for types whose counts are emergent/coverage-priced (necklace, bracelet) — those
 // pass through unverified by design.
+// Metal COLOR the vision check should see, derived from the selected material code.
+// The material selector offers only 925 Silver / 10k / 14k gold (no rose/white-gold
+// variant), so silver → "white metal", gold → "yellow gold". Returns null if unknown
+// so the metal check fails OPEN.
+function _expectedMetalColor(material) {
+  const m = String(material || '').toLowerCase();
+  if (m.includes('silver')) return 'white metal';
+  if (m.includes('gold'))   return 'yellow gold';
+  return null;
+}
+
 function _buildVerifyExpectation() {
   if (!VERIFY_GEN_ENABLED) return null;
   const t = (typeof LAB !== 'undefined' && LAB.type) || '';
   const s = window.jwlSpecifications || {};
+  const metalColor = _expectedMetalColor(typeof LAB !== 'undefined' && LAB.material);
   if (t === 'ring') {
     const n = _authoritativeStoneCount();
-    return { type: 'ring', stones: (n >= 1 && n <= 7) ? n : null };
+    // Stone SHAPE (cut) is verified for rings only — from the Stone Shape selector,
+    // the same source the ring prompt uses.
+    const shape = String(s.stoneShape || (typeof userSelections !== 'undefined' && userSelections.gemShape) || 'Round').toLowerCase();
+    return { type: 'ring', stones: (n >= 1 && n <= 7) ? n : null, metalColor: metalColor, stoneShape: shape };
   }
   if (t === 'earrings') {
     // The image renders ONE earring — verify the per-earring count.
     const n = s.perEarringCount || 1;
-    return { type: 'earrings', stones: (n >= 1 && n <= 7) ? n : null, form: s.earringForm || 'stud' };
+    return { type: 'earrings', stones: (n >= 1 && n <= 7) ? n : null, form: s.earringForm || 'stud', metalColor: metalColor };
   }
-  if (t === 'pendant') return { type: 'pendant', stones: 1 };
+  if (t === 'pendant') return { type: 'pendant', stones: 1, metalColor: metalColor };
   return null;
 }
 
@@ -2190,9 +2205,16 @@ async function _verifyImage(blobUrl, expected) {
     const formOk = !expected.form || !seen.form || seen.form === expected.form;
     const countKnown = expected.stones != null && typeof seen.stoneCount === 'number';
     const countOk = !countKnown || seen.stoneCount === expected.stones;
-    const score = (typeOk ? 0 : 100) + (formOk ? 0 : 25)
+    // Metal color + stone shape (NEW). Enforced ONLY when the spec expects one AND the
+    // worker returned a definite value — so an older deployed worker (no such fields) or
+    // an "other"/unknown reading fails OPEN, never blocking generation.
+    const metalKnown = !!expected.metalColor && typeof seen.metalColor === 'string' && !!seen.metalColor && seen.metalColor !== 'other';
+    const metalOk    = !metalKnown || seen.metalColor === expected.metalColor;
+    const shapeKnown = !!expected.stoneShape && typeof seen.stoneShape === 'string' && !!seen.stoneShape && seen.stoneShape !== 'other';
+    const shapeOk    = !shapeKnown || seen.stoneShape === expected.stoneShape;
+    const score = (typeOk ? 0 : 100) + (metalOk ? 0 : 30) + (formOk ? 0 : 25) + (shapeOk ? 0 : 15)
                 + (countKnown ? Math.abs(seen.stoneCount - expected.stones) * 10 : 0);
-    return { pass: typeOk && formOk && countOk, score: score, seen: seen, unverified: false };
+    return { pass: typeOk && formOk && countOk && metalOk && shapeOk, score: score, seen: seen, unverified: false };
   } catch (e) {
     console.warn('[Verify] unavailable — accepting image unverified:', e && e.message);
     return { pass: true, score: 0, seen: null, unverified: true };

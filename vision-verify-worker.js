@@ -12,8 +12,9 @@
 //
 // Request  (POST JSON): { image: "data:image/jpeg;base64,...", expected?: {...} }
 //   `expected` is logged for debugging only — it is deliberately NOT shown to the
-//   model, so the count it reports is unbiased.
-// Response (JSON): { jewelryType: string, form: string|null, stoneCount: number|null }
+//   model, so what it reports is unbiased.
+// Response (JSON): { jewelryType: string, form: string|null, metalColor: string|null,
+//                    stoneShape: string|null, stoneCount: number|null }
 //   Any upstream failure returns a 5xx — the front end FAILS OPEN (accepts the
 //   image unverified) so this worker can never block generation.
 
@@ -25,6 +26,10 @@ const VERIFY_PROMPT =
   'no prose, no markdown fences, exactly this shape: ' +
   '{"jewelry_type": "<one of: ring, earring, pendant, necklace, bracelet, other>", ' +
   '"form": "<for earrings one of: stud, hoop, drop; otherwise null>", ' +
+  '"metal_color": "<the color of the metal the piece is made of: one of yellow gold, white metal, ' +
+  'rose gold, other; use white metal for silver/white gold/platinum>", ' +
+  '"stone_shape": "<the cut/shape of the main stone(s): one of round, oval, cushion, princess, emerald, ' +
+  'pear, marquise, radiant, asscher, heart, baguette, trillion, other; null if there are no stones>", ' +
   '"stone_count": <integer — count every distinct gemstone/diamond visible, including small accent ' +
   'stones; if there are clearly more than 12 stones return 13; if there are no stones return 0>}';
 
@@ -93,7 +98,7 @@ export default {
         status: 400, headers: { ...CORS, 'Content-Type': 'application/json' },
       });
     }
-    if (String(image).length > 1500000) { // ~1.1MB decoded — front end sends ≤512px JPEG
+    if (String(image).length > 2500000) { // front end sends a ≤1024px JPEG (~0.4MB data URL); headroom to spare
       return new Response(JSON.stringify({ error: 'image too large' }), {
         status: 413, headers: { ...CORS, 'Content-Type': 'application/json' },
       });
@@ -108,7 +113,7 @@ export default {
         body: JSON.stringify({
           model: env.GROQ_MODEL || DEFAULT_MODEL,
           temperature: 0,
-          max_completion_tokens: 128,
+          max_completion_tokens: 160,
           response_format: { type: 'json_object' },
           messages: [{
             role: 'user',
@@ -147,6 +152,8 @@ export default {
     const out = {
       jewelryType: typeof parsed.jewelry_type === 'string' ? parsed.jewelry_type.toLowerCase() : null,
       form:        typeof parsed.form === 'string' ? parsed.form.toLowerCase() : null,
+      metalColor:  typeof parsed.metal_color === 'string' ? parsed.metal_color.toLowerCase() : null,
+      stoneShape:  typeof parsed.stone_shape === 'string' ? parsed.stone_shape.toLowerCase() : null,
       stoneCount:  Number.isFinite(parsed.stone_count) ? Math.max(0, Math.round(parsed.stone_count)) : null,
     };
     console.log('[vision-verify] seen:', JSON.stringify(out));
