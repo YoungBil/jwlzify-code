@@ -2062,9 +2062,13 @@ const _SG_NUM_WORDS = ['zero','one','two','three','four','five','six','seven','e
   'eleven','twelve','thirteen','fourteen','fifteen','sixteen','seventeen','eighteen','nineteen','twenty'];
 function _sgSpell(n) { return _SG_NUM_WORDS[n] || String(n); }
 
-async function _generateImage(prompt, initImage) {
+async function _generateImage(prompt, initImage, opts) {
   // The prompt arrives fully assembled by the per-type builder — one coherent
   // paragraph, every spec stated exactly once. Nothing is wrapped or appended here.
+  // opts.seed (optional): forwarded to fal for reproducible generations. NOTE:
+  // flux-2-pro exposes NO guidance_scale / prompt-adherence parameter (verified
+  // against fal's API schema 2026-07-12) — the old guidance_scale=9.0 was a no-op
+  // and was removed rather than forwarded.
   console.log('[Gen] final prompt:', prompt);
 
   // SOLE GENERATOR: Flux 2 Pro (fal-ai/flux-2-pro) via the flux-image worker.
@@ -2078,6 +2082,7 @@ async function _generateImage(prompt, initImage) {
     console.log('[JWLZIFY] calling Flux worker (sole generator) | mode=' + _fluxMode + '...');
     const _fluxBody = { prompt: prompt, image_size: 'portrait_4_3' };
     if (initImage) _fluxBody.initImage = initImage;
+    if (opts && Number.isFinite(opts.seed)) _fluxBody.seed = opts.seed;
     const _fluxRes = await fetch(FLUX_WORKER_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -4927,12 +4932,12 @@ function _braceletPromptParts(desc) {
 //    target {stoneCount} from the math, stated exactly once in the paragraph. ──
 function _braceletLayoutPositive(layout, stoneCount) {
   if (layout === 'everyOther') {
-    return `A station-style diamond bracelet with a STRICT alternating pattern: exactly one diamond, then a clearly visible gap of plain bare polished metal of equal size, then exactly one diamond, then another equal gap of plain metal, repeating this diamond-gap-diamond-gap rhythm evenly along the entire band. Every diamond is separated from the next by a distinct empty section of plain metal. Approximately ${stoneCount} evenly spaced individual diamonds in total, with bare metal visible between each and every stone.`;
+    return `A station-style bracelet with a STRICT alternating pattern: exactly one stone, then a clearly visible gap of plain bare polished metal of equal size, then exactly one stone, then another equal gap of plain metal, repeating this stone-gap-stone-gap rhythm evenly along the entire band. Every stone is separated from the next by a distinct empty section of plain metal. Approximately ${stoneCount} evenly spaced individual stones in total, with bare metal visible between each and every stone.`;
   }
   if (layout === 'everyFourth') {
-    return `A widely-spaced station diamond bracelet: exactly one single diamond, then a LONG gap of plain bare polished metal roughly three to four times wider than the diamond, then one single diamond, then another long plain metal gap, repeating evenly. The diamonds are sparse and clearly separated, set far apart with large visible stretches of plain metal between each stone. Approximately ${stoneCount} diamonds in total, widely and evenly spaced, with large bare metal sections dominating the space between stones.`;
+    return `A widely-spaced station bracelet: exactly one single stone, then a LONG gap of plain bare polished metal roughly three to four times wider than the stone, then one single stone, then another long plain metal gap, repeating evenly. The stones are sparse and clearly separated, set far apart with large visible stretches of plain metal between each stone. Approximately ${stoneCount} stones in total, widely and evenly spaced, with large bare metal sections dominating the space between stones.`;
   }
-  return `A classic tennis bracelet where diamonds are set directly next to each other in an unbroken continuous line, every single setting filled, stones touching edge to edge, a solid continuous row of diamonds running the entire length of the band.`;
+  return `A classic tennis bracelet where the stones are set directly next to each other in an unbroken continuous line, every single setting filled, touching edge to edge, a solid continuous row of stones running the entire length of the band.`;
 }
 // Generate one bracelet angle via _generateImage (Flux only, no fallback). ONE
 // coherent paragraph per generation: type + camera angle → metal/links → stones +

@@ -7,6 +7,16 @@
 //   Settings → Variables → Add → Encrypt:
 //     FAL_KEY = <your fal.ai API key>
 //
+// Schema notes (verified against fal's API docs 2026-07-12):
+//   • flux-2-pro / flux-2-pro/edit expose NO guidance_scale or negative_prompt —
+//     those inputs were removed from the whole pipeline (they never did anything).
+//   • `seed` IS supported on both endpoints and is forwarded when the client
+//     sends one ({ seed: <int> } in the request body).
+//   • The edit endpoint takes `image_urls` (a LIST) — the old `image_url`
+//     (singular) did not match the current schema. Fixed below.
+//   • Edit mode omits image_size so fal's `auto` default preserves the source
+//     image's framing (deliberate: edits should not recompose the design).
+//
 // Response contract (unchanged): raw image bytes + image/jpeg (or png) Content-Type
 // — matches what ailab.html consumes; no front-end changes needed.
 
@@ -17,8 +27,8 @@ const FAL_MODEL_EDIT = 'fal-ai/flux-2-pro/edit';    // img2img (refine) — swap
    In-memory limiter is per-isolate/per-PoP (resets on recycle) — burst protection,
    not a hard quota. Local dev must be served from localhost, not file://.
    NOTE: generate-collection-images.js (the one-time Node batch script) has no
-   browser Origin — if it is ever re-run against this worker, temporarily add its
-   use or run it with an explicit  Origin: https://jwlzify.com  header. */
+   browser Origin — if it is ever re-run against this worker, run it with an
+   explicit  Origin: https://jwlzify.com  header. */
 const ALLOWED_ORIGINS = ['https://jwlzify.com', 'https://www.jwlzify.com'];
 function _originAllowed(origin) {
   if (!origin) return false;
@@ -87,6 +97,7 @@ export default {
     const prompt    = body.inputs || body.prompt || '';
     const imageSize = body.image_size || 'portrait_4_3';
     const initImage = body.initImage || null;  // raw base64 string; presence triggers edit endpoint
+    const seed      = Number.isFinite(body.seed) ? body.seed : null;  // optional reproducibility
     // Output format: default jpeg (unchanged for generation). PNG is requested for
     // transparent cutouts where alpha must survive.
     const outputFormat = (body.output_format === 'png') ? 'png' : 'jpeg';
@@ -105,8 +116,9 @@ export default {
     const falBody     = isEdit
       ? {
           prompt,
-          image_url:             `data:image/png;base64,${initImage}`,
-          image_size:            imageSize,
+          // Current schema: image_urls is a LIST. image_size omitted → fal 'auto'
+          // preserves the source image's framing on edits.
+          image_urls:            [`data:image/png;base64,${initImage}`],
           output_format:         outputFormat,
           enable_safety_checker: true,
         }
@@ -116,8 +128,9 @@ export default {
           output_format:         outputFormat,
           enable_safety_checker: true,
         };
+    if (seed !== null) falBody.seed = seed;
 
-    console.log(`[JWLZIFY] flux-image: calling ${falModel} | mode=${isEdit ? 'edit' : 'gen'}`);
+    console.log(`[JWLZIFY] flux-image: calling ${falModel} | mode=${isEdit ? 'edit' : 'gen'}${seed !== null ? ' | seed=' + seed : ''}`);
 
     let falRes;
     try {

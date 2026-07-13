@@ -159,7 +159,7 @@ https://jwlzify.com` header if ever re-run. Endpoints as they appear in the code
 
 | Endpoint | Role | Contract (front-end view) |
 |---|---|---|
-| `https://flux-image.sarkd333.workers.dev` (`FLUX_WORKER_URL`) | **SOLE** image generator — txt2img + img2img refine via fal.ai `flux-2-pro` / `flux-2-pro/edit`. NO fallback: if it fails, `_generateImage` returns null and the caller shows "Generation temporarily unavailable — please try again". | POST `{prompt, image_size, initImage?}` → raw image bytes. Source: `flux-image-worker.js` (`FAL_KEY` secret). |
+| `https://flux-image.sarkd333.workers.dev` (`FLUX_WORKER_URL`) | **SOLE** image generator — txt2img + img2img refine via fal.ai `flux-2-pro` / `flux-2-pro/edit`. NO fallback: if it fails, `_generateImage` returns null and the caller shows "Generation temporarily unavailable — please try again". | POST `{prompt, image_size, initImage?, seed?}` → raw image bytes. No negative_prompt / guidance_scale (fal's flux-2-pro doesn't support them, verified 2026-07-12). Edit mode sends fal `image_urls` (LIST) and omits image_size (fal `auto` preserves source framing). Source: `flux-image-worker.js` (`FAL_KEY` secret) — paste-deploy pending. |
 | ~~`https://gemini-image.sarkd333.workers.dev/`~~ | **REMOVED** from image generation (2026-07-05). Gemini is no longer called anywhere in the app; `gemini-image-worker.js` was deleted. The deployed endpoint, if still live, is unused. | — |
 | `https://hf-image.sarkd333.workers.dev/` | **No longer in the live generation chain** (was the tertiary SDXL fallback; removed 2026-07-05). Still used by the offline `generate-collection-images.js` batch script only. Despite the "hf" name it runs **Cloudflare Workers AI** SDXL (`@cf/stabilityai/stable-diffusion-xl-lightning`). | POST `{inputs, negative_prompt, guidance_scale, num_inference_steps, initImage?}` → raw PNG (batch script crops the bottom 40px watermark strip). Needs an `AI` Workers-AI binding. |
 | `https://fal-bg-remove.sarkd333.workers.dev` (`FAL_BG_REMOVE_URL`) | Background removal via fal `birefnet` (fallback `rembg`) | POST `{image_url: dataURL}` → **JSON `{image:{url}, model}`** (front end fetches that PNG from the fal CDN). Source: `bg-remove-worker.js` (aligned to this contract 2026-07-05; `FAL_KEY` secret). |
@@ -175,35 +175,46 @@ Two entry points that largely duplicate each other (Issues #6):
 `confirmAndGenerate()` (step-2 button, ~4714) and `startGeneration(isTweak)`
 (refine/regenerate, ~4468). Both funnel into the same machinery:
 
-1. **Prompt assembly** — `buildPrompt(type, material, gem, style, desc)` (~3903)
-   dispatches to fully type-specific prompt builders (pendant / necklace / earrings /
-   bracelet / ring each have bespoke, heavily-negotiated prompt text). Rules:
+1. **Prompt assembly (restructured 2026-07-12)** — ONE coherent natural-language
+   paragraph per generation, each spec stated exactly once, ordered: jewelry type +
+   camera angle → metal → stones (count spelled once, centre stone prominent) →
+   the user's style text → one short quality clause. Single-image types build it in
+   `buildPrompt`/`_buildPromptCore` (~3900); ring angles in `_genRingAngle` (+
+   `_ringStonesSentence`); bracelet angles in `_genBraceletAngle` (+
+   `_braceletPromptParts`, `_braceletLayoutPositive`). Rules:
    - **Spec selectors are the single source of truth.** Typed/Groq text is style
      flavor only: `stripStoneQuantities()` removes typed stone counts,
-     `_stripShapeWords()` (ring) removes typed cuts, `_stripEarringConflicts()`
-     (earrings) removes count/form/size words.
-   - `_authoritativeStoneClause()` appends "EXACTLY N stones" for ring/pendant/earrings
-     (necklace and bracelet counts are emergent by design).
+     `_stripShapeWords()`/`_ringUserText()` (ring) removes typed cuts,
+     `_stripEarringConflicts()` (earrings) removes count/form/size words.
+   - **AFFIRMATIVE ONLY — never name the unwanted outcome.** No "not two, not a
+     pair", no "no pendant/no humans" litanies, no "no more and no fewer": describe
+     what SHOULD appear ("exactly one bracelet: a single continuous band…", "the
+     rest of the band plain polished bare metal"). This is a hard prompt-writing
+     rule for this codebase.
+   - **There is NO negative-prompt system.** Flux 2 Pro doesn't support negatives;
+     the old system was dead code (assembled, logged, silently dropped before the
+     worker call) and was removed entirely 2026-07-12. Never reintroduce
+     negative_prompt fields — put constraints in the positive paragraph.
    - Carat → visual-size language via `_caratSizeDescriptor` (small / medium / large
      prominent / very large statement) so carat changes actually change rendered size.
-2. **Single choke point** — `_generateImage(prompt, negativePrompt, initImage,
-   hfOverrides)` (~2106) wraps every prompt with `_buildPromptSafeguards()` (spec
-   bookends restated at start AND end, natural-placement clause, quality string,
-   placement negatives; `guidance_scale` pinned 9.0), then calls **Flux only** (the
-   sole generator — no fallback; Gemini and HF/SDXL were removed 2026-07-05),
-   returning a blob URL or null. A null propagates up to a clean "Generation
-   temporarily unavailable — please try again" error the user can retry.
-3. **Multi-angle for ring and bracelet** — `_generateRingMultiAngle` /
-   `_generateBraceletMultiAngle` generate 3 angles concurrently (queue caps at
-   `GEN_MAX_CONCURRENT = 2`). **Index 0 is always the head-on view and is what try-on
-   uses**; it is retried specifically (ring: up to 3 attempts) before falling back to
-   another angle. Ring prompts additionally carry aggressive exact-stone-count clauses
-   (`_ringExactCountClause`/`Reminder` + `_RING_EXTRA_STONES_NEG`) and head-on framing
-   bracketing (`_RING_HEADON_PROMPT` at both ends). Bracelet prompts lead and trail
-   with layout language (`_braceletLayoutPositive/Reminder/Negative`).
+2. **Single choke point** — `_generateImage(prompt, initImage, opts)` (~2050) sends
+   `{prompt, image_size, initImage?, seed?}` to the flux-image worker — the prompt
+   arrives fully assembled, nothing is wrapped or appended (the old
+   lead/tail/placement "safeguard" bookends are gone). **Flux only** (sole
+   generator, no fallback; Gemini + HF/SDXL removed). fal's flux-2-pro schema
+   (verified 2026-07-12) has NO guidance_scale — the old 9.0 was a no-op and is
+   gone; `seed` IS supported and threads through via `opts.seed`. A null return
+   propagates to a clean "Generation temporarily unavailable" retry error.
+3. **Multi-angle for ring and bracelet** — `_generateRingMultiAngle({userText,…})` /
+   `_generateBraceletMultiAngle({userText,…})` generate 3 angles concurrently (queue
+   caps at `GEN_MAX_CONCURRENT = 2`). **Index 0 is always the head-on view and is
+   what try-on uses**; it is retried specifically before falling back to another
+   angle. The head-on camera clauses (`_RING_HEADON_PROMPT`,
+   `_BRACELET_HEADON_PROMPT`) are stated ONCE (no bracketing/restating).
 4. **Refine (img2img)** — post-gen UI sets `window._postGenMode`; "Refine This" passes
    `lastGeneratedImage` (base64 of the last render) as `initImage` → Flux edit
-   endpoint (`flux-2-pro/edit`). "Start Fresh" is a new txt2img. No SDXL fallback.
+   endpoint (`flux-2-pro/edit`; NOTE: current fal schema takes `image_urls` as a
+   LIST — the worker handles this). "Start Fresh" is a new txt2img.
 5. **Vision verification** (2026-07-05, search `VISION-VERIFIED GENERATION` ~after
    `_generateImage`): `_generateVerified()` wraps generation for exact-count types —
    ring (head-on angle only; hero/profile skip count checks since stones occlude at
