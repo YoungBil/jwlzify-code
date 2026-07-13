@@ -2170,7 +2170,9 @@ function _verifyTypeOk(expectedType, seenType) {
 // score = closer match. Any failure (network, worker down, timeout) fails OPEN.
 async function _verifyImage(blobUrl, expected) {
   try {
-    const dataUrl = await _verifyDownscale(blobUrl, 512);
+    // 1024px (up from 512) so small accent stones + metal color read clearly for the
+    // vision model. A 1024px JPEG @0.85 stays well under the worker's data-URL size cap.
+    const dataUrl = await _verifyDownscale(blobUrl, 1024);
     const ctrl  = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 20000);
     let res;
