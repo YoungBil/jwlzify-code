@@ -4141,7 +4141,7 @@ function _buildPromptCore(type, material, gem, style, desc) {
     // NOTE: real ring generations go through _genRingAngle (multi-angle); this
     // branch feeds logging/asserts. Same ONE-paragraph structure, head-on view.
     const userDesc = _stripShapeWords(desc.trim()); // shape from selector, not typed text
-    return `Professional product photograph of a single luxury ${style} ${mDisp} ring. ${_RING_HEADON_PROMPT} ` +
+    return `Professional product photograph of a single luxury ${style} ${mDisp} ring. ${_ringHeadOnClause()} ` +
       `The ring is ${_ringStonesSentence(gDisp)}.` +
       (userDesc ? ` ${userDesc}.` : '') +
       ` The single ring is the sole subject, centered on a seamless white studio background, sharp macro focus, soft even studio lighting, photorealistic e-commerce jewelry photography.`;
@@ -4809,14 +4809,24 @@ async function confirmAndGenerate() {
 // view of a ring on a finger pointing up at the camera). Stated explicitly and
 // redundantly — repeated at the START and END of the prompt — so the model cannot
 // drift to a tilted, three-quarter, or top-down framing. Ring only.
-const _RING_HEADON_PROMPT = 'Strict head-on front view of the ring, viewed straight on at eye level with zero tilt. The center stone faces directly toward the viewer and sits in the middle of the frame. The band curves downward symmetrically on the left and right sides. Perfectly symmetrical left to right. This is the view of a ring worn on a finger pointing straight up toward the camera.';
+// Head-on camera clause, resolved at CALL time. The focal sentence adapts: with
+// all-equal carats there is no designated "center stone" (naming one tells Flux to
+// render a dominant stone — the equal-sizing bug), so the clause references the
+// stones generically. The words "center stone" never appear in an equal-carat prompt.
+function _ringHeadOnClause() {
+  const focal = _ringCaratsAllEqual()
+    ? 'The set stones face directly toward the viewer, the ring centered in the frame.'
+    : 'The center stone faces directly toward the viewer and sits in the middle of the frame.';
+  return 'Strict head-on front view of the ring, viewed straight on at eye level with zero tilt. ' + focal +
+    ' The band curves downward symmetrically on the left and right sides. Perfectly symmetrical left to right.' +
+    ' This is the view of a ring worn on a finger pointing straight up toward the camera.';
+}
 const RING_ANGLES = [
-  { cap: 'Head-On', headOn: true,
-    clause: _RING_HEADON_PROMPT },
+  { cap: 'Head-On', headOn: true },   // clause resolved at call time via _ringHeadOnClause()
   { cap: 'Hero Angle',
     clause: 'Three-quarter angle view, the classic flattering jewelry hero shot, showing the top, front, and side of the ring together, stone catching the light, sitting upright.' },
   { cap: 'Profile',
-    clause: 'Direct side profile view showing the band thickness, setting height, and side stones or detailing, ring upright in profile.' },
+    clause: 'Direct side profile view showing the band thickness, setting height, and stone detailing, ring upright in profile.' },
 ];
 
 let _ringGalleryUrls  = [];   // [{url, cap, orig}] of the angles that succeeded
@@ -4845,9 +4855,12 @@ function _setRingLoadingMsg() {
 // URL or null.
 function _genRingAngle(userText, angle) {
   const isHeadOn = !!angle.headOn;
+  // Head-on resolves its camera clause at call time (equal-carat rings get the
+  // clause variant with no "center stone" wording — see _ringHeadOnClause).
+  const angleClause = isHeadOn ? _ringHeadOnClause() : angle.clause;
   const prompt =
     `Professional product photograph of a single luxury ${LAB.style || 'Modern'} ${matLabel(LAB.material)} ring. ` +
-    `${angle.clause} ` +
+    `${angleClause} ` +
     `The ring is ${_ringStonesSentence(gemLabel(LAB.gem))}.` +
     (userText ? ` ${userText}.` : '') +
     ` The single ring is the sole subject, centered on a seamless white studio background, sharp macro focus, soft even studio lighting, photorealistic e-commerce jewelry photography.`;
