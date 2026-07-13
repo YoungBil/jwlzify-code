@@ -4005,10 +4005,6 @@ function _buildPromptCore(type, material, gem, style, desc) {
 
   // Build gem part with actual count + carat sizes. The single center stone now
   // carries a carat-driven visual-size descriptor so the stone scales in the image.
-  const gemPart = stoneCount === 1
-    ? `${_caratSizePhrase(totalCarats, gDisp, 'center stone')}`
-    : `${stoneCount} ${gDisp} stones (${stones.map(s => s + 'ct').join(', ')}, ${totalCarats}ct total)`;
-
   // Weight adds a descriptor to the piece style
   const weightDesc = { light: 'delicate lightweight ', heavy: 'substantial bold ' };
   const wPart = weightDesc[weightLabel] || '';
@@ -4138,6 +4134,11 @@ function _buildPromptCore(type, material, gem, style, desc) {
   }
 
   // Generic fallback (no dedicated builder) — same ONE-paragraph structure.
+  // gemPart lives HERE (the only consumer): rings get their single stones sentence
+  // from _ringStonesSentence and must never see this center-stone phrasing.
+  const gemPart = stoneCount === 1
+    ? `${_caratSizePhrase(totalCarats, gDisp, 'center stone')}`
+    : `${stoneCount} ${gDisp} stones (${stones.map(s => _ctOf(s) + 'ct').join(', ')}, ${totalCarats}ct total)`;
   return `Professional product photograph of a single luxury ${style} ${wPart}${type}, shown alone and centered. ` +
     `Crafted in ${mDisp}, set with ${gemPart}.` +
     (desc.trim() ? ` ${desc.trim()}.` : '') +
