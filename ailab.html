@@ -2221,35 +2221,57 @@ async function _verifyImage(blobUrl, expected) {
   }
 }
 
-// Drop-in replacement for _generateImage at the flow level: generate → verify →
-// (regenerate up to maxAttempts−1 more times) → serve the best match. No error
-// spam: a full miss just serves the closest attempt with a console note.
+// Drop-in replacement for _generateImage at the flow level. Strategy (when a spec
+// expectation exists): fire 2 candidates IN PARALLEL on round 1, verify both, and
+// serve the first that passes. If neither passes, keep the best and run ONE more
+// sequential attempt. Total generations are capped at 3 — same worst-case cost as the
+// old sequential 3-try loop, but lower latency and a better hit rate. No error spam:
+// a full miss just serves the closest attempt. (maxAttempts is retained for signature
+// compatibility; the 2-parallel-then-1 shape fixes the cap at 3.)
 async function _generateVerified(prompt, initImage, expected, maxAttempts) {
   if (!expected) return _generateImage(prompt, initImage);
-  const tries = Math.max(1, maxAttempts || 3);
   const genText = document.getElementById('genText');
-  let best = null;
-  for (let i = 0; i < tries; i++) {
-    const url = await _generateImage(prompt, initImage);
-    if (!url) continue;
-    if (genText) genText.textContent = 'Verifying your design…';
+  const _gen = () => _generateImage(prompt, initImage);
+
+  // Verify one candidate; returns { url, score, pass } or null if generation failed.
+  const _check = async (url, label) => {
+    if (!url) return null;
     const v = await _verifyImage(url, expected);
-    console.log('[Verify] attempt', (i + 1) + '/' + tries,
+    console.log('[Verify]', label,
                 '| expected:', JSON.stringify(expected),
                 '| seen:', JSON.stringify(v.seen || {}),
-                '| pass:', v.pass, v.unverified ? '(unverified — worker unavailable)' : '');
-    if (v.pass) {
-      if (best && best.url !== url) URL.revokeObjectURL(best.url);
-      return url;
-    }
-    if (!best || v.score < best.score) {
-      if (best) URL.revokeObjectURL(best.url);
-      best = { url: url, score: v.score };
-    } else {
-      URL.revokeObjectURL(url);
-    }
-    if (i < tries - 1 && genText) genText.textContent = 'Refining accuracy…';
-  }
+                '| score:', v.score, '| pass:', v.pass,
+                v.unverified ? '(unverified — worker unavailable)' : '');
+    return { url: url, score: v.score, pass: v.pass };
+  };
+
+  // Track the best (lowest-score) non-passing candidate; revoke everything we discard.
+  let best = null;
+  const _consider = (cand) => {
+    if (!cand) return;
+    if (!best) { best = cand; return; }
+    if (cand.score < best.score) { URL.revokeObjectURL(best.url); best = cand; }
+    else { URL.revokeObjectURL(cand.url); }
+  };
+
+  // ── Round 1: two candidates in parallel (generations 1 & 2) ──
+  if (genText) genText.textContent = 'Creating your piece…';
+  const [urlA, urlB] = await Promise.all([_gen(), _gen()]);
+  if (genText) genText.textContent = 'Verifying your design…';
+  const [candA, candB] = await Promise.all([_check(urlA, 'candidate 1/2'), _check(urlB, 'candidate 2/2')]);
+
+  // Serve the FIRST that passes (candidate 1 preferred); revoke the other.
+  if (candA && candA.pass) { if (candB) URL.revokeObjectURL(candB.url); return candA.url; }
+  if (candB && candB.pass) { if (candA) URL.revokeObjectURL(candA.url); return candB.url; }
+  // Neither passed — keep the closer of the two.
+  _consider(candA); _consider(candB);
+
+  // ── Round 2: ONE more sequential attempt (generation 3, the worst-case cap) ──
+  if (genText) genText.textContent = 'Refining accuracy…';
+  const candC = await _check(await _gen(), 'candidate 3/3');
+  if (candC && candC.pass) { if (best) URL.revokeObjectURL(best.url); return candC.url; }
+  _consider(candC);
+
   if (best) {
     console.log('[Verify] no attempt fully matched — serving the closest (score ' + best.score + ')');
     return best.url;
