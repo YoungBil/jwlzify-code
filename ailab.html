@@ -2242,10 +2242,13 @@ async function _verifyImage(blobUrl, expected) {
 // old sequential 3-try loop, but lower latency and a better hit rate. No error spam:
 // a full miss just serves the closest attempt. (maxAttempts is retained for signature
 // compatibility; the 2-parallel-then-1 shape fixes the cap at 3.)
-async function _generateVerified(prompt, initImage, expected, maxAttempts) {
-  if (!expected) return _generateImage(prompt, initImage);
+async function _generateVerified(prompt, initImage, expected, maxAttempts, seed) {
+  // seed (optional): forwarded to _generateImage as opts.seed so multi-angle callers
+  // can share one seed across angles. Retries here reuse the SAME seed by design.
+  const _opts = Number.isFinite(seed) ? { seed: seed } : undefined;
+  if (!expected) return _generateImage(prompt, initImage, _opts);
   const genText = document.getElementById('genText');
-  const _gen = () => _generateImage(prompt, initImage);
+  const _gen = () => _generateImage(prompt, initImage, _opts);
 
   // Verify one candidate; returns { url, score, pass } or null if generation failed.
   const _check = async (url, label) => {
@@ -4853,7 +4856,7 @@ function _setRingLoadingMsg() {
 // stones (count spelled exactly once, centre stone prominent, band finish stated
 // affirmatively) → the user's style text → one short quality clause. Returns blob
 // URL or null.
-function _genRingAngle(userText, angle) {
+function _genRingAngle(userText, angle, seed) {
   const isHeadOn = !!angle.headOn;
   // Head-on resolves its camera clause at call time (equal-carat rings get the
   // clause variant with no "center stone" wording — see _ringHeadOnClause).
@@ -4873,9 +4876,10 @@ function _genRingAngle(userText, angle) {
   // each other at those camera angles, so a count check would false-fail.
   if (isHeadOn) {
     const _vx = _buildVerifyExpectation();
-    return _enqueueGen(() => _generateVerified(prompt, null, _vx, 3)).catch(() => null);
+    return _enqueueGen(() => _generateVerified(prompt, null, _vx, 3, seed)).catch(() => null);
   }
-  return _enqueueGen(() => _generateImage(prompt, null)).catch(() => null);
+  const _opts = Number.isFinite(seed) ? { seed: seed } : undefined;
+  return _enqueueGen(() => _generateImage(prompt, null, _opts)).catch(() => null);
 }
 
 async function _generateRingMultiAngle(opts) {
@@ -4885,8 +4889,13 @@ async function _generateRingMultiAngle(opts) {
   const ri = document.getElementById('refineImg');
   _setRingLoadingMsg();
 
+  // One shared seed for all 3 angles of THIS generation so Flux renders one design
+  // from three camera angles rather than three unrelated designs. (Seed + the per-angle
+  // prompt clauses steer consistency together; the seed alone is not a hard guarantee.)
+  const seed = Math.floor(Math.random() * 2147483647);
+
   // Generate all 3 angles (queue caps concurrency). Any that fail resolve to null.
-  let urls = await Promise.all(RING_ANGLES.map(a => _genRingAngle(userText, a)));
+  let urls = await Promise.all(RING_ANGLES.map(a => _genRingAngle(userText, a, seed)));
 
   // Try-on REQUIRES a real head-on at index 0. It is the priority angle — retry it
   // specifically up to 2 more times (3 attempts total) before giving up. The other
@@ -4895,7 +4904,7 @@ async function _generateRingMultiAngle(opts) {
   while (!urls[0] && retryCount < 2) {
     retryCount++;
     console.log('[Ring] head-on (index 0) missing — retry', retryCount, 'of 2');
-    urls[0] = await _genRingAngle(userText, RING_ANGLES[0]);
+    urls[0] = await _genRingAngle(userText, RING_ANGLES[0], seed);
   }
   const success = !!urls[0];
   console.log('[Ring] head-on angle generated at index 0:', success, '| retries:', retryCount);
@@ -5071,7 +5080,7 @@ function _braceletLayoutPositive(layout, stoneCount) {
 // layout (approximate count stated exactly once) → user text → one quality clause.
 // The head-on angle (try-on anchor) uses the strict flat front-elevation camera
 // instruction, stated once.
-function _genBraceletAngle(userText, layout, stoneCount, angle) {
+function _genBraceletAngle(userText, layout, stoneCount, angle, seed) {
   const parts     = _braceletPromptParts(userText);
   const layoutPos = _braceletLayoutPositive(layout, stoneCount);
   const isHeadOn  = !!angle.headOn;
@@ -5082,7 +5091,8 @@ function _genBraceletAngle(userText, layout, stoneCount, angle) {
     (parts.user ? ` ${parts.user}.` : '') +
     ` The single band is the sole subject, isolated on a seamless white studio background, soft even studio lighting, sharp focus, photorealistic jewelry product photography.`;
   console.log('[Bracelet]', angle.cap, '| layout:', layout, '| target count:', stoneCount, '| prompt:', prompt);
-  return _enqueueGen(() => _generateImage(prompt, null)).catch(() => null);
+  const _opts = Number.isFinite(seed) ? { seed: seed } : undefined;
+  return _enqueueGen(() => _generateImage(prompt, null, _opts)).catch(() => null);
 }
 
 async function _generateBraceletMultiAngle(opts) {
@@ -5095,13 +5105,18 @@ async function _generateBraceletMultiAngle(opts) {
   const layout     = (userSelections && userSelections.stoneLayout) || 'full';
   const stoneCount = _braceletStoneCount();   // exact math target stated in the prompt
 
-  let urls = await Promise.all(BRACELET_ANGLES.map(a => _genBraceletAngle(userText, layout, stoneCount, a)));
+  // One shared seed for all 3 angles of THIS generation so Flux renders one band from
+  // three camera angles rather than three unrelated bands. (Seed + the per-angle prompt
+  // clauses steer consistency together; the seed alone is not a hard guarantee.)
+  const seed = Math.floor(Math.random() * 2147483647);
+
+  let urls = await Promise.all(BRACELET_ANGLES.map(a => _genBraceletAngle(userText, layout, stoneCount, a, seed)));
 
   // Try-on REQUIRES head-on (index 0): it is the priority angle, so retry it
   // specifically up to 2 times before falling back to another angle.
   for (let _attempt = 1; _attempt <= 2 && !urls[0]; _attempt++) {
     console.log(`[Bracelet] head-on (index 0) failed — retry ${_attempt}/2 before fallback`);
-    urls[0] = await _genBraceletAngle(userText, layout, stoneCount, BRACELET_ANGLES[0]);
+    urls[0] = await _genBraceletAngle(userText, layout, stoneCount, BRACELET_ANGLES[0], seed);
   }
   if (!urls[0]) {
     urls[0] = urls[1] || urls[2] || null;
