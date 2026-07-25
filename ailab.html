@@ -2106,10 +2106,15 @@ async function _generateImage(prompt, initImage, opts) {
    VISION-VERIFIED GENERATION
    After a generation lands, the image is checked against the paid spec by
    the vision-verify worker (Groq vision): stone count (exact-count types
-   only) + gross form/type check. On a miss we regenerate up to 2 more
-   times and serve the closest match — never an error to the user. The
-   verifier FAILS OPEN: if the worker is down/undeployed, images are
-   accepted unverified so generation can never be blocked by verification.
+   only), gross form/type, metal color, stone shape (rings), equal stone
+   sizes (equal-carat rings) and setting style (stud earrings' prongs-only
+   promise). On a miss we regenerate (≤3 attempts total) and serve the
+   closest match — never an error to the user. Seeded generations keep the
+   SAME seed on retries and add an affirmative corrective emphasis for the
+   failed checks (same seed + same prompt would reproduce the identical
+   image on fal). The verifier FAILS OPEN: if the worker is down/undeployed
+   or a field is missing (older deployed worker), images are accepted
+   unverified so verification can never block generation.
    Exact counts are only promised (and verified) for 1–7 stones; coverage-
    priced layouts (bracelet, necklace full/pavé) are never count-verified.
 ═══════════════════════════════════════════════════════════════════════ */
@@ -2175,7 +2180,12 @@ function _buildVerifyExpectation() {
   if (t === 'earrings') {
     // The image renders ONE earring — verify the per-earring count.
     const n = s.perEarringCount || 1;
-    return { type: 'earrings', stones: (n >= 1 && n <= 7) ? n : null, form: s.earringForm || 'stud', metalColor: metalColor };
+    const exp = { type: 'earrings', stones: (n >= 1 && n <= 7) ? n : null, form: s.earringForm || 'stud', metalColor: metalColor };
+    // Setting style: the stud prompt promises prongs-only unless the USER asked for
+    // a surround — the only place the app makes a firm setting promise, so the only
+    // place a setting expectation is enforceable (there is no setting selector).
+    if ((s.earringForm || 'stud') === 'stud' && !_earStudSurroundRequested()) exp.setting = 'prong';
+    return exp;
   }
   if (t === 'pendant') return { type: 'pendant', stones: 1, metalColor: metalColor };
   return null;
@@ -2226,31 +2236,77 @@ async function _verifyImage(blobUrl, expected) {
     // stonesEqual field) fails OPEN, never blocking generation.
     const equalKnown = !!expected.equalSize && typeof seen.stonesEqual === 'boolean';
     const equalOk    = !equalKnown || seen.stonesEqual === true;
-    const score = (typeOk ? 0 : 100) + (metalOk ? 0 : 30) + (formOk ? 0 : 25) + (equalOk ? 0 : 20) + (shapeOk ? 0 : 15)
+    // Setting style (stud earrings only: the prompt promises prongs-only unless the
+    // user asked for a surround). Fails OPEN on an older worker / unknown reading.
+    const settingKnown = !!expected.setting && typeof seen.setting === 'string' && !!seen.setting && seen.setting !== 'other';
+    const settingOk    = !settingKnown || seen.setting === expected.setting;
+    const score = (typeOk ? 0 : 100) + (metalOk ? 0 : 30) + (formOk ? 0 : 25) + (equalOk ? 0 : 20) + (settingOk ? 0 : 20) + (shapeOk ? 0 : 15)
                 + (countKnown ? Math.abs(seen.stoneCount - expected.stones) * 10 : 0);
-    return { pass: typeOk && formOk && countOk && metalOk && shapeOk && equalOk, score: score, seen: seen, unverified: false };
+    return {
+      pass: typeOk && formOk && countOk && metalOk && shapeOk && equalOk && settingOk,
+      score: score, seen: seen, unverified: false,
+      // Per-check verdicts — the seeded retry uses these to build its corrective emphasis.
+      checks: { typeOk: typeOk, formOk: formOk, countOk: countOk, metalOk: metalOk, shapeOk: shapeOk, equalOk: equalOk, settingOk: settingOk },
+    };
   } catch (e) {
     console.warn('[Verify] unavailable — accepting image unverified:', e && e.message);
-    return { pass: true, score: 0, seen: null, unverified: true };
+    return { pass: true, score: 0, seen: null, unverified: true, checks: null };
   }
 }
 
-// Drop-in replacement for _generateImage at the flow level. Strategy (when a spec
-// expectation exists): fire 2 candidates IN PARALLEL on round 1, verify both, and
-// serve the first that passes. If neither passes, keep the best and run ONE more
-// sequential attempt. Total generations are capped at 3 — same worst-case cost as the
-// old sequential 3-try loop, but lower latency and a better hit rate. No error spam:
-// a full miss just serves the closest attempt. (maxAttempts is retained for signature
-// compatibility; the 2-parallel-then-1 shape fixes the cap at 3.)
+// Affirmative corrective emphasis for a seeded retry, built from the FAILED checks
+// only. Restates spec facts the verifier saw missed — never names the unwanted
+// outcome. `firm` (attempt 3) re-words the same facts so the prompt differs from
+// attempt 2 (identical prompt + identical seed would reproduce attempt 2 exactly).
+function _verifyCorrective(expected, checks, firm) {
+  if (!checks) return '';
+  const parts = [];
+  if (!checks.typeOk) {
+    parts.push('The piece is a single ' + (expected.type === 'earrings' ? 'earring' : expected.type));
+  }
+  if (!checks.countOk && expected.stones != null) {
+    parts.push('the piece is set with exactly ' + _sgSpell(expected.stones) + ' (' + expected.stones + ') stones, every stone clearly visible');
+  }
+  if (!checks.metalOk && expected.metalColor) {
+    parts.push(expected.metalColor === 'yellow gold'
+      ? 'every metal surface is rich yellow gold'
+      : 'every metal surface is bright polished white metal with a silvery mirror finish');
+  }
+  if (!checks.shapeOk && expected.stoneShape) {
+    parts.push('every stone is ' + expected.stoneShape + '-cut');
+  }
+  if (!checks.equalOk) {
+    parts.push('all stones are exactly the same size as one another');
+  }
+  if (!checks.settingOk) {
+    parts.push('each stone is held by small metal prongs only, its girdle fully exposed');
+  }
+  if (!checks.formOk && expected.form) {
+    parts.push('the earring is a ' + expected.form + ' earring');
+  }
+  if (!parts.length) return '';
+  return firm ? ' Render the specification exactly: ' + parts.join('; ') + '.'
+              : ' ' + parts.map(p => p.charAt(0).toUpperCase() + p.slice(1)).join('. ') + '.';
+}
+
+// Drop-in replacement for _generateImage at the flow level, two strategies:
+// • NO seed: fire 2 candidates IN PARALLEL on round 1 (independent random designs),
+//   verify both, serve the first that passes; one more sequential attempt if not.
+// • WITH seed (multi-angle head-on + seeded single-image paths): fal is deterministic
+//   for the same seed + prompt, so parallel duplicates and bare same-seed retries
+//   would reproduce the identical image. Instead: ONE candidate first; on a miss,
+//   retry with the SAME seed plus an affirmative corrective emphasis built from the
+//   failed checks — the design stays anchored to the seed while the missed specs get
+//   restated. Both strategies cap at 3 generations; a full miss serves the closest
+//   attempt, never a user-facing error. (maxAttempts retained for signature compat.)
 async function _generateVerified(prompt, initImage, expected, maxAttempts, seed) {
-  // seed (optional): forwarded to _generateImage as opts.seed so multi-angle callers
-  // can share one seed across angles. Retries here reuse the SAME seed by design.
-  const _opts = Number.isFinite(seed) ? { seed: seed } : undefined;
+  const hasSeed = Number.isFinite(seed);
+  const _opts = hasSeed ? { seed: seed } : undefined;
   if (!expected) return _generateImage(prompt, initImage, _opts);
   const genText = document.getElementById('genText');
-  const _gen = () => _generateImage(prompt, initImage, _opts);
+  const _gen = (p) => _generateImage(p || prompt, initImage, _opts);
 
-  // Verify one candidate; returns { url, score, pass } or null if generation failed.
+  // Verify one candidate; returns { url, score, pass, checks } or null if generation failed.
   const _check = async (url, label) => {
     if (!url) return null;
     const v = await _verifyImage(url, expected);
@@ -2259,7 +2315,7 @@ async function _generateVerified(prompt, initImage, expected, maxAttempts, seed)
                 '| seen:', JSON.stringify(v.seen || {}),
                 '| score:', v.score, '| pass:', v.pass,
                 v.unverified ? '(unverified — worker unavailable)' : '');
-    return { url: url, score: v.score, pass: v.pass };
+    return { url: url, score: v.score, pass: v.pass, checks: v.checks };
   };
 
   // Track the best (lowest-score) non-passing candidate; revoke everything we discard.
@@ -2271,7 +2327,35 @@ async function _generateVerified(prompt, initImage, expected, maxAttempts, seed)
     else { URL.revokeObjectURL(cand.url); }
   };
 
-  // ── Round 1: two candidates in parallel (generations 1 & 2) ──
+  if (hasSeed) {
+    // ── Seeded: sequential corrective attempts, same seed throughout ──
+    if (genText) genText.textContent = 'Creating your piece…';
+    let cand = await _check(await _gen(prompt), 'seeded attempt 1/3');
+    if (cand && cand.pass) return cand.url;
+    let lastFailedChecks = cand ? cand.checks : null;
+    _consider(cand);
+    for (let attempt = 2; attempt <= 3; attempt++) {
+      let p = prompt;
+      if (lastFailedChecks) {
+        const corrective = _verifyCorrective(expected, lastFailedChecks, attempt === 3);
+        // Nothing to correct → a same-seed rerun would reproduce the identical image.
+        if (!corrective) break;
+        p = prompt + corrective;
+      } // else: the generation itself failed (transient) — plain retry, same seed
+      if (genText) genText.textContent = 'Refining accuracy…';
+      cand = await _check(await _gen(p), 'seeded attempt ' + attempt + '/3' + (p === prompt ? '' : ' (corrective)'));
+      if (cand && cand.pass) { if (best) URL.revokeObjectURL(best.url); return cand.url; }
+      if (cand) lastFailedChecks = cand.checks;
+      _consider(cand);
+    }
+    if (best) {
+      console.log('[Verify] no seeded attempt fully matched — serving the closest (score ' + best.score + ')');
+      return best.url;
+    }
+    return null;
+  }
+
+  // ── Unseeded round 1: two candidates in parallel (generations 1 & 2) ──
   if (genText) genText.textContent = 'Creating your piece…';
   const [urlA, urlB] = await Promise.all([_gen(), _gen()]);
   if (genText) genText.textContent = 'Verifying your design…';
@@ -2283,7 +2367,7 @@ async function _generateVerified(prompt, initImage, expected, maxAttempts, seed)
   // Neither passed — keep the closer of the two.
   _consider(candA); _consider(candB);
 
-  // ── Round 2: ONE more sequential attempt (generation 3, the worst-case cap) ──
+  // ── Unseeded round 2: ONE more sequential attempt (generation 3, the worst-case cap) ──
   if (genText) genText.textContent = 'Refining accuracy…';
   const candC = await _check(await _gen(), 'candidate 3/3');
   if (candC && candC.pass) { if (best) URL.revokeObjectURL(best.url); return candC.url; }
@@ -4643,7 +4727,10 @@ async function startGeneration(isTweak) {
     return;
   }
 
-  _enqueueGen(() => _generateVerified(fullPrompt, initImage, _buildVerifyExpectation())).then((blobUrl) => {
+  // One seed per generation so verification retries refine THIS design (same seed +
+  // corrective emphasis) instead of sampling a fresh random design each attempt.
+  const _genSeed = Math.floor(Math.random() * 2147483647);
+  _enqueueGen(() => _generateVerified(fullPrompt, initImage, _buildVerifyExpectation(), 3, _genSeed)).then((blobUrl) => {
     console.log('[JWLZIFY] setting image src to:', blobUrl?.slice(0, 50));
     if (!blobUrl) {
       if (thisGen !== generationId) return;
@@ -4795,7 +4882,10 @@ async function confirmAndGenerate() {
     return;
   }
 
-  _enqueueGen(() => _generateVerified(fullPrompt, null, _buildVerifyExpectation())).then(blobUrl => {
+  // One seed per generation so verification retries refine THIS design (same seed +
+  // corrective emphasis) instead of sampling a fresh random design each attempt.
+  const _genSeed = Math.floor(Math.random() * 2147483647);
+  _enqueueGen(() => _generateVerified(fullPrompt, null, _buildVerifyExpectation(), 3, _genSeed)).then(blobUrl => {
     if (!blobUrl) {
       if (thisGen !== generationId) return;
       setGenLoading(false);

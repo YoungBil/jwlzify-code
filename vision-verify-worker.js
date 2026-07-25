@@ -15,7 +15,7 @@
 //   model, so what it reports is unbiased.
 // Response (JSON): { jewelryType: string, form: string|null, metalColor: string|null,
 //                    stoneShape: string|null, stoneCount: number|null,
-//                    stonesEqual: boolean|null }
+//                    stonesEqual: boolean|null, setting: string|null }
 //   stonesEqual: with 2+ stones visible, whether they all appear ~the same size
 //   (null when fewer than 2 stones). Any upstream failure returns a 5xx — the
 //   front end FAILS OPEN (accepts the image unverified) so this worker can never
@@ -36,7 +36,9 @@ const VERIFY_PROMPT =
   '"stone_count": <integer — count every distinct gemstone/diamond visible, including small accent ' +
   'stones; if there are clearly more than 12 stones return 13; if there are no stones return 0>, ' +
   '"stones_equal_size": <if 2 or more stones are visible: true when they all appear approximately ' +
-  'the same size, false when one stone is clearly larger than the others; null if fewer than 2 stones>}';
+  'the same size, false when one stone is clearly larger than the others; null if fewer than 2 stones>, ' +
+  '"setting": "<how the main stone is held: one of prong, bezel, halo, pave, channel, tension, other; ' +
+  'use halo when a ring of small stones surrounds the main stone; null if there are no stones>"}';
 
 /* ── Shared security: origin allowlist + best-effort per-IP rate limit ─────────
    The rate limiter is per-isolate (resets on worker recycle, independent per PoP)
@@ -161,6 +163,7 @@ export default {
       stoneShape:  typeof parsed.stone_shape === 'string' ? parsed.stone_shape.toLowerCase() : null,
       stoneCount:  Number.isFinite(parsed.stone_count) ? Math.max(0, Math.round(parsed.stone_count)) : null,
       stonesEqual: typeof parsed.stones_equal_size === 'boolean' ? parsed.stones_equal_size : null,
+      setting:     typeof parsed.setting === 'string' ? parsed.setting.toLowerCase() : null,
     };
     console.log('[vision-verify] seen:', JSON.stringify(out));
     return new Response(JSON.stringify(out), {
