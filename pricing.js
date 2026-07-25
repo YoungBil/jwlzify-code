@@ -74,7 +74,10 @@
 
   // Lab grown diamond is a flat $80/ct (both lab_diamond and lab_diamond_vvs);
   // natural/real diamond and moissanite are unchanged. Mirrors ailab.html STONE_RATES.
-  var STONE_RATES = { moissanite_vvsd: 2.00, lab_diamond: 80.00, lab_diamond_vvs: 80.00, natural_diamond: 2.00 };
+  // real_diamond_vsvvs / natural_diamond are the SAME stone (AI Lab code vs
+  // collections-catalogue code) at a PLACEHOLDER $2.00/ct pending the real rate.
+  var STONE_RATES = { moissanite_vvsd: 2.00, lab_diamond: 80.00, lab_diamond_vvs: 80.00,
+                      real_diamond_vsvvs: 2.00, natural_diamond: 2.00, none: 0.00 };
   console.log('[Pricing] lab diamond rate set to $80/ct');
   var MATERIAL_WEIGHTS = {
     ring:     { metalGrams: 4,  stoneCarats: 0.80 },
@@ -99,7 +102,12 @@
     else if (metalType === '10ctgold') metalPerGram = spotPrices.gold10ctPerGram;
     else if (metalType === '14ctgold') metalPerGram = spotPrices.gold14ctPerGram;
 
-    var stoneRateUsed = STONE_RATES[stoneType] || 2.00;
+    // Strict: an unknown stone key must fail loudly, never price at the cheapest rate.
+    var stoneRateUsed = STONE_RATES[stoneType];
+    if (stoneRateUsed == null) {
+      console.error('[Pricing] UNKNOWN STONE TYPE "' + stoneType + '" — no STONE_RATES entry; refusing to price.');
+      throw new Error('Unknown stone type "' + stoneType + '" — cannot produce a price');
+    }
     var metalCost = weights.metalGrams * metalPerGram;
     var stoneCost = stoneCarats * stoneRateUsed;
     var baseCost  = metalCost + stoneCost;
@@ -131,9 +139,11 @@
       metalGrams: o.grams || 0, totalCarats: o.carats || 0,
       stoneCount: o.stoneCount || 0, stones: []
     };
-    var r = calculatePrice(o.metalCode, o.stoneCode, o.jewelryType, o.carats || 0);
-    root.jwlSpecifications = prev; // restore
-    return r;
+    try {
+      return calculatePrice(o.metalCode, o.stoneCode, o.jewelryType, o.carats || 0);
+    } finally {
+      root.jwlSpecifications = prev; // restore even if pricing throws
+    }
   }
   // Back-compat: just the final price (base + labour + tiered profit).
   function priceForSpec(o) { return priceDetail(o).finalPrice; }

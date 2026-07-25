@@ -5602,7 +5602,12 @@ function updateSpecCostEstimate() {
     const b = _applyBraceletSpecs();
     const count = (b && b.count) || BRACELET_DEFAULT_COUNT;
     const per   = (b && b.perStone) || 0.10;
-    const _gemRateB = (STONE_RATES[LAB.gem] != null) ? STONE_RATES[LAB.gem] : 2.00;
+    const _gemRateB = stoneRateFor(LAB.gem);
+    if (_gemRateB == null) { // unknown stone key — no estimate, never the cheapest rate
+      const elBad = document.getElementById('specCostEstimate');
+      if (elBad) elBad.textContent = '—';
+      return;
+    }
     const metalCostB = (s.metalGrams || 0) * metalRate;
     const stoneCostB = count * per * _gemRateB;
     const totalB = metalCostB + stoneCostB;
@@ -5621,7 +5626,12 @@ function updateSpecCostEstimate() {
   const effGrams  = +s.metalGrams.toFixed(2);
   const metalCost = effGrams * metalRate;
   // Use the same per-gem rate as the quote step so lab grown diamonds estimate at $80/ct.
-  const _gemRate  = (STONE_RATES[LAB.gem] != null) ? STONE_RATES[LAB.gem] : 2.00;
+  const _gemRate  = stoneRateFor(LAB.gem);
+  if (_gemRate == null) { // unknown stone key — no estimate, never the cheapest rate
+    const elBad = document.getElementById('specCostEstimate');
+    if (elBad) elBad.textContent = '—';
+    return;
+  }
   const stoneCost = s.totalCarats * _gemRate;
   const total     = metalCost + stoneCost;
 
@@ -5749,12 +5759,30 @@ const STONE_RATES = {
   moissanite_vvsd: 2.00,
   lab_diamond:     80.00,  // lab grown diamond — flat $80/ct
   lab_diamond_vvs: 80.00,  // lab grown diamond (VVS) — flat $80/ct
-  natural_diamond: 2.00    // natural/real diamond unchanged
+  // PLACEHOLDER RATE: real diamond does not have its sourcing rate yet. The key
+  // exists so the gold-option gem code prices INTENTIONALLY (never via a silent
+  // fallback) — update this NUMBER when the real per-carat rate is decided.
+  real_diamond_vsvvs: 2.00, // AI Lab gem code for real diamond (GEM_OPTIONS, gold only)
+  natural_diamond:    2.00, // SAME stone, collections-catalogue code — arrives via the
+                            // "Customize This Design" handoff (collections-data.js); keep in sync
+  none:               0.00  // stoneless collections pieces handed to the AI Lab
 };
 console.log('[Pricing] lab diamond rate set to $80/ct');
 
 function getDynamicStoneRates() {
   return STONE_RATES;
+}
+
+// Strict stone-rate lookup. A stone code with no STONE_RATES entry is a bug —
+// log loudly and return null so callers refuse to price. A typo in a stone key
+// must never silently price at the cheapest rate.
+function stoneRateFor(stoneType) {
+  const rates = getDynamicStoneRates();
+  if (rates[stoneType] == null) {
+    console.error('[Pricing] UNKNOWN STONE TYPE "' + stoneType + '" — no STONE_RATES entry; refusing to price.');
+    return null;
+  }
+  return rates[stoneType];
 }
 
 function extractCaratWeight(promptText) {
@@ -5817,8 +5845,10 @@ function calculatePrice(metalType, stoneType, jewelryType, userCarats) {
   else if (metalType === '10ctgold') metalPerGram = spotPrices.gold10ctPerGram;
   else if (metalType === '14ctgold') metalPerGram = spotPrices.gold14ctPerGram;
 
-  var stoneRates    = getDynamicStoneRates();
-  var stoneRateUsed = stoneRates[stoneType] || 2.00;
+  var stoneRateUsed = stoneRateFor(stoneType);
+  if (stoneRateUsed == null) {
+    throw new Error('Unknown stone type "' + stoneType + '" — cannot produce a quote');
+  }
   var metalCost = weights.metalGrams * metalPerGram;
   var stoneCost = stoneCarats * stoneRateUsed;
   var baseCost  = metalCost + stoneCost;
@@ -5997,7 +6027,20 @@ async function displayPricing(metalType, stoneType, jewelryType, overrideCarats)
   if (_bracePanel && jewelryType !== 'bracelet') _bracePanel.style.display = 'none';
   // Metal weight for necklaces is the auto-derived value (already encodes length +
   // placement) — do NOT scale it again by length here, that double-counts.
-  var r = calculatePrice(metalType, stoneType, jewelryType, userCarats);
+  var r;
+  try {
+    r = calculatePrice(metalType, stoneType, jewelryType, userCarats);
+  } catch (err) {
+    // Unknown stone key (or other pricing bug): refuse to quote, visibly.
+    console.error('[Pricing] quote refused:', err && err.message);
+    LAB.quote = null;
+    document.getElementById('priceRows').innerHTML =
+      '<p style="font-family:Inter,sans-serif;font-size:13px;line-height:1.6;color:#b3402a;margin:0;">'
+      + 'We can\'t price this configuration right now. Please re-select your metal and stone, '
+      + 'or contact us if this keeps happening.</p>';
+    document.getElementById('quoteTotal').textContent = 'Quote unavailable';
+    return;
+  }
   if (jewelryType === 'pendant') {
     console.log('[Pendant] derived metal grams:', r.metalGrams, '| stone carats:', r.stoneCarats, '| final price:', r.finalPrice);
   }
