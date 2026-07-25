@@ -3517,10 +3517,12 @@ const EARRING_MM_BASE = { 4: 1, 6: 1, 8: 2, 10: 3, 12: 4 };
 
 // Earring Style → hard design descriptor injected into the generation prompt.
 // Neutral, brand-luxury tone — NO gendered language.
+// Aesthetic words only — form (stud/hoop/drop) and size (mm/bucket) are separate
+// authoritative selectors, so the style descriptor must never name either.
 const EARRING_STYLE_DESCRIPTORS = {
-  minimal:   'minimal, understated, clean lines, small scale studs or fine hoops',
+  minimal:   'minimal, understated, clean simple lines',
   classic:   'classic, balanced, timeless silhouette',
-  statement: 'bold, larger scale, eye-catching design',
+  statement: 'bold, dramatic, eye-catching design',
 };
 
 // Earring Form → hard form descriptor with the correct findings.
@@ -4055,10 +4057,10 @@ function _buildPromptCore(type, material, gem, style, desc) {
     }
     // ONE paragraph: type + camera → metal → stone (count once) → user text → quality.
     const _pendCt = totalCarats;
-    return `Professional close-up macro product photograph of a single luxury ${style} ${wPart}pendant charm, photographed alone in flat lay on a white surface from directly above, the pendant centered and filling the frame with its bail connector at the top${proportionStr}. ` +
+    return `Professional close-up macro product photograph of a single luxury ${style} ${wPart}pendant charm, photographed in flat lay from directly above, the pendant centered and filling the frame with its bail connector at the top${proportionStr}. ` +
       `Crafted in ${mDisp}, set with a single ${_caratSizeDescriptor(_pendCt)} ${_pendCt} carat ${gDisp} center stone${_caratDomSuffix(_pendCt)} seated naturally in its setting.` +
       (desc.trim() ? ` ${desc.trim()}.` : '') +
-      ` Ultra sharp focus, soft even studio lighting, pure white seamless background, photorealistic product-only photography with precious metal gleam and gemstone sparkle — the pendant by itself is the sole subject of the image.`;
+      ` Ultra sharp focus, soft even studio lighting, precious metal gleam and gemstone sparkle, photorealistic product photography — the pendant the sole subject on a pure white seamless background.`;
   }
 
   if (type === 'necklace') {
@@ -4088,7 +4090,7 @@ function _buildPromptCore(type, material, gem, style, desc) {
       stonesStr = `set with ${_autoStations} ${_caratSizeDescriptor(_ct)} ${_ct} carat ${gDisp} stones spaced evenly as stations, long stretches of bare chain links clearly visible between each station, every stone the same ${_ct}ct size`;
     }
     // ONE paragraph: type + camera → metal → stones (count once) → user text → quality.
-    return `Professional product photograph of a single ${_neckLenIn}-inch${chainWord} chain necklace displayed as if worn on an invisible ghost mannequin neck form, photographed straight on, the chain draping in a clean symmetrical U-shape down both sides${_neckLenDesc}. ` +
+    return `Professional product photograph of a single ${_neckLenIn}-inch${chainWord} chain necklace suspended in the shape of being worn, photographed straight on, the chain draping in a clean symmetrical U-shape down both sides${_neckLenDesc}. ` +
       `Crafted in ${mDisp}, ${stonesStr}.` +
       (hasCustomDesc ? ` ${userDesc}.` : (chainSpecific ? ` ${chainSpecific}.` : '')) +
       ` Vertical portrait orientation, soft even studio lighting, seamless light grey background, highly detailed photorealistic jewelry photography — the necklace is the sole subject of the image.`;
@@ -4129,7 +4131,7 @@ function _buildPromptCore(type, material, gem, style, desc) {
     // ONE paragraph: type + camera → metal → stones (count once) → user text → quality.
     const finalEar =
       `Professional product photograph of one single ${earFormWord} earring from a matching identical pair, shown alone and centered, front-facing — ${earFormDesc}. ` +
-      `Crafted in ${mDisp}, set with exactly ${_sgSpell(perEar)} (${perEar}) ${cut} ${gDisp} ${stoneWord} per earring — ${perCt}ct each, ${sizeWord} size${earMm ? `, each earring ${earMm}mm` : ''} — the pair totalling ${totalCnt} identical stones, each seated naturally in its setting.` +
+      `Crafted in ${mDisp}, set with exactly ${_sgSpell(perEar)} (${perEar}) ${cut} ${gDisp} ${stoneWord} per earring — ${perCt}ct each, ${sizeWord} size${earMm ? `, each earring ${earMm}mm` : ''} — every stone identical, each seated naturally in its setting.` +
       studPositive +
       ` ${style} aesthetic: ${earStyleDesc}${cleanedText ? `, ${cleanedText}` : ''}.` +
       ` Sharp macro focus, soft even studio lighting, seamless white background, photorealistic product-only jewelry photography — the single earring is the sole subject of the image.`;
@@ -4150,7 +4152,7 @@ function _buildPromptCore(type, material, gem, style, desc) {
     const _bStoneDesc = gDisp
       ? `set with a continuous line of evenly spaced ${_bTierWord} ${gDisp} stones running the entire band in tennis-bracelet style, each stone prong-set in its own setting`
       : 'a plain polished band';
-    return `Professional product photograph of exactly one luxury ${style} bracelet — a single continuous ${mDisp} band with ${_bLinkW}, viewed perfectly head-on as a level horizontal oval loop facing the camera, symmetrical left-to-right, the view of a bracelet on a wrist raised toward you. ` +
+    return `Professional product photograph of exactly one luxury ${style} bracelet — a single continuous ${mDisp} band with ${_bLinkW}, viewed perfectly head-on as a flat horizontal strip of links and settings facing the camera, level and symmetrical. ` +
       `The band is ${_bStoneDesc}.` +
       (desc.trim() ? ` ${desc.trim()}.` : '') +
       ` The single band is the sole subject, isolated on a pure white seamless studio background, evenly lit, sharp focus, photorealistic jewelry product photography.`;
@@ -4832,9 +4834,8 @@ async function confirmAndGenerate() {
    - ringAngles[2] = profile/side.
    ══════════════════════════════════════════════════════════ */
 // Index-0 head-on: the try-on feature REQUIRES a true straight-on FRONT view (the
-// view of a ring on a finger pointing up at the camera). Stated explicitly and
-// redundantly — repeated at the START and END of the prompt — so the model cannot
-// drift to a tilted, three-quarter, or top-down framing. Ring only.
+// view of a ring on a finger pointing up at the camera). Stated ONCE, affirmatively —
+// describe the wanted framing, never the unwanted one. Ring only.
 // Head-on camera clause, resolved at CALL time. The focal sentence adapts: with
 // all-equal carats there is no designated "center stone" (naming one tells Flux to
 // render a dominant stone — the equal-sizing bug), so the clause references the
@@ -4843,9 +4844,8 @@ function _ringHeadOnClause() {
   const focal = _ringCaratsAllEqual()
     ? 'The set stones face directly toward the viewer, the ring centered in the frame.'
     : 'The center stone faces directly toward the viewer and sits in the middle of the frame.';
-  return 'Strict head-on front view of the ring, viewed straight on at eye level with zero tilt. ' + focal +
-    ' The band curves downward symmetrically on the left and right sides. Perfectly symmetrical left to right.' +
-    ' This is the view of a ring worn on a finger pointing straight up toward the camera.';
+  return 'Strict head-on front view of the ring, viewed perfectly straight on at eye level. ' + focal +
+    ' The band curves downward symmetrically on the left and right sides — the view of a ring worn on a finger pointing straight up toward the camera.';
 }
 const RING_ANGLES = [
   { cap: 'Head-On', headOn: true },   // clause resolved at call time via _ringHeadOnClause()
@@ -5055,13 +5055,12 @@ function _wireRingGallery() {
    - braceletAngles[2] = closer/top view showing the stones.
    ══════════════════════════════════════════════════════════ */
 // Index-0 head-on is the TRY-ON anchor: it must be a STRICT FLAT FRONT ELEVATION —
-// a flat horizontal band (the visible front arc of the bracelet), NOT an oval loop
-// with visible interior. Oval framing invited a tilted/perspective look (you could
-// see down into the settings), which warped on the wrist. A flat frontal strip overlays
-// the wrist far more cleanly with the existing hide-top occlusion mask. The strict
-// instruction below brackets the head-on prompt (START + short restatement at END).
-// Bracelet only — the other two gallery angles are unchanged.
-const _BRACELET_HEADON_PROMPT = 'STRICT FRONT ELEVATION VIEW, camera exactly at the bracelet\'s level, zero tilt, zero perspective: the bracelet is viewed perfectly straight-on from the front so it appears as a flat horizontal band running left to right across the frame. Only the front face of the band is visible, every link and setting seen face-on. The band reads as a straight horizontal strip of links/settings facing the camera directly, like a fence viewed head-on at eye level. Perfectly level and symmetrical.';
+// a flat horizontal band (the visible front arc of the bracelet). Oval-loop framing
+// invited a tilted/perspective look (you could see down into the settings), which
+// warped on the wrist; a flat frontal strip overlays the wrist far more cleanly with
+// the existing hide-top occlusion mask. Stated ONCE, affirmatively — describe the
+// wanted framing only. Bracelet only — the other two gallery angles are unchanged.
+const _BRACELET_HEADON_PROMPT = 'STRICT FRONT ELEVATION VIEW, the camera exactly level with the bracelet: the band appears as a flat horizontal strip of links and settings running straight left to right across the frame, every link and setting seen face-on, perfectly level and symmetrical.';
 
 const BRACELET_ANGLES = [
   { cap: 'Head-On', headOn: true,
@@ -5091,12 +5090,12 @@ function _braceletPromptParts(desc) {
 //    target {stoneCount} from the math, stated exactly once in the paragraph. ──
 function _braceletLayoutPositive(layout, stoneCount) {
   if (layout === 'everyOther') {
-    return `A station-style bracelet with a STRICT alternating pattern: exactly one stone, then a clearly visible gap of plain bare polished metal of equal size, then exactly one stone, then another equal gap of plain metal, repeating this stone-gap-stone-gap rhythm evenly along the entire band. Every stone is separated from the next by a distinct empty section of plain metal. Approximately ${stoneCount} evenly spaced individual stones in total, with bare metal visible between each and every stone.`;
+    return `A station-style bracelet with a strict alternating rhythm: one stone, then a gap of plain polished bare metal of equal width, repeating evenly along the entire band — approximately ${stoneCount} evenly spaced stones in total, plain metal clearly visible between every pair of stones.`;
   }
   if (layout === 'everyFourth') {
-    return `A widely-spaced station bracelet: exactly one single stone, then a LONG gap of plain bare polished metal roughly three to four times wider than the stone, then one single stone, then another long plain metal gap, repeating evenly. The stones are sparse and clearly separated, set far apart with large visible stretches of plain metal between each stone. Approximately ${stoneCount} stones in total, widely and evenly spaced, with large bare metal sections dominating the space between stones.`;
+    return `A widely spaced station bracelet: single stones set far apart, each separated by a long stretch of plain polished bare metal three to four times wider than the stone, repeating evenly — approximately ${stoneCount} stones in total, plain metal dominating the band.`;
   }
-  return `A classic tennis bracelet where the stones are set directly next to each other in an unbroken continuous line, every single setting filled, touching edge to edge, a solid continuous row of stones running the entire length of the band.`;
+  return `A classic tennis bracelet: the stones set edge to edge in one unbroken continuous row running the entire length of the band.`;
 }
 // Generate one bracelet angle via _generateImage (Flux only, no fallback). ONE
 // coherent paragraph per generation: type + camera angle → metal/links → stones +
