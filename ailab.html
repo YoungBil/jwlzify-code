@@ -3713,7 +3713,7 @@ function useInspiration(btn) {
    selectors — buildPrompt() strips any quantity words as a second guard.
 ═══════════════════════════════════════════════════════════════════════ */
 const ENHANCE_WORKER_URL = 'https://groq-enhance.sarkd333.workers.dev';
-window._enhanceState = { rawText: '', status: 'idle', useEnhanced: true, reqId: 0 };
+window._enhanceState = { rawText: '', status: 'idle', useEnhanced: true, reqId: 0, enhancedOriginal: '' };
 let _enhanceDebounce = null;
 
 // The enhancer panel is always on screen; this swaps its inner body between
@@ -3788,6 +3788,8 @@ async function _runEnhance(raw) {
     const orig = document.getElementById('enhanceOriginalText');
     if (ta)   ta.value = enhanced;
     if (orig) orig.textContent = raw;
+    st.enhancedOriginal = enhanced;  // what Groq returned, BEFORE any user edit —
+                                     // lets guards tell user edits from Groq additions
     st.useEnhanced = true;
     _renderEnhanceToggle();
     _setEnhanceStatus('ready');
@@ -3888,7 +3890,10 @@ function _stripMaterialWords(text) {
   t = t.replace(/\b(?:rose|white|yellow|red|green)[\s-]?gold\b/gi, ' ');
   t = t.replace(/\bsterling[\s-]?silver\b/gi, ' ');
   t = t.replace(/\bstainless[\s-]?steel\b/gi, ' ');
-  t = t.replace(/\b(?:gold|silver|platinum|palladium|titanium|tungsten|rhodium|steel|brass|bronze|copper|pewter|gunmetal|gold-?tone|silver-?tone|gilded|gilt)\b/gi, ' ');
+  t = t.replace(/\b(?:gold|golden|silver|silvery|platinum|palladium|titanium|tungsten|rhodium|steel|brass|bronze|copper|pewter|gunmetal|gold-?tone|silver-?tone|gilded|gilt)\b/gi, ' ');
+  // Orphan karat tokens left after a metal phrase strip ("18k", "10 kt", "24 karat") —
+  // NOT "ct"/"carat", those are stone weights and must survive.
+  t = t.replace(/\b\d{1,2}\s?(?:k|kt|karats?)\b/gi, ' ');
   // ── Gem/stone TYPE nouns (the gem type is authoritative from the selector). ──
   // "emerald" only when it is NOT immediately a cut/shape word — that stays legal.
   t = t.replace(/\bemeralds?\b(?!\s*-?\s*(?:cut|shaped?|shape))/gi, ' ');
@@ -3909,6 +3914,7 @@ function _stripMaterialWords(text) {
 function _stripEarringConflicts(text) {
   if (!text) return '';
   let t = stripStoneQuantities(String(text)); // stone counts (e.g. "6 diamonds")
+  t = _stripShapeWords(t); // stone cut/shape — the Stone Shape selector is the source of truth
   // earring TYPE / form words (so typed text can't override the Form selector)
   t = t.replace(/\b(studs?|hoops?|huggies?|drops?|danglers?|dangles?|dangling|dangly|chandeliers?|threaders?|jackets?|ear[\s-]?cuffs?|ear[\s-]?wires?|hooks?|lever[\s-]?backs?|butterfly\s?backs?|earrings?|earring)\b/gi, ' ');
   // size words (so typed text can't override the Size bucket / mm)
@@ -3919,16 +3925,26 @@ function _stripEarringConflicts(text) {
   return t;
 }
 
-// STUD earrings only: did the user's OWN typed/enhanced description explicitly ask
-// for a surrounding-metal setting (halo / bezel / frame / backing disk)? If so we
-// allow it; otherwise the default simple-solitaire stud forces surrounding metal off.
-// Reads the raw idea + enhanced text so it is independent of prompt-assembly order.
+// STUD earrings only: did the USER explicitly ask for a surrounding-metal setting
+// (halo / bezel / frame / backing disk)? If so we allow it; otherwise the default
+// simple-solitaire stud forces surrounding metal off.
+// USER INTENT ONLY: the raw typed idea counts, and an EDIT the user made to the
+// enhanced text counts — but a surround word the Groq enhancer introduced on its
+// own (present in the enhanced text AND in what Groq originally returned) must
+// never flip this default: specs/user intent win, never the enhancer.
 function _earStudSurroundRequested() {
+  const SURROUND = /\b(halo|bezel|framed?|surround(?:ing|ed)?|backing\s*dis[ck])\b/i;
   let t = '';
   try { t = (typeof LAB !== 'undefined' && LAB.prompt) ? String(LAB.prompt) : ''; } catch (e) {}
-  const pa = document.getElementById('promptArea');       if (pa && pa.value) t += ' ' + pa.value;
-  const ea = document.getElementById('enhancedTextArea'); if (ea && ea.value) t += ' ' + ea.value;
-  return /\b(halo|bezel|framed?|surround(?:ing|ed)?|backing\s*dis[ck])\b/i.test(t);
+  const pa = document.getElementById('promptArea');
+  if (pa && pa.value) t += ' ' + pa.value;
+  if (SURROUND.test(t)) return true;                 // typed by the user directly
+  const ea = document.getElementById('enhancedTextArea');
+  const groqOriginal = (window._enhanceState && window._enhanceState.enhancedOriginal) || '';
+  if (ea && ea.value && SURROUND.test(ea.value) && !SURROUND.test(groqOriginal)) {
+    return true;                                     // user EDITED the surround request in
+  }
+  return false;
 }
 
 // Authoritative stone count — ONLY from the spec selectors (synced into
@@ -4612,13 +4628,16 @@ async function startGeneration(isTweak) {
   console.log('[JWLZIFY] img2img:', initImage ? 'yes (initImage present)' : 'no (txt2img)');
 
   // RING ONLY: generate 3 camera angles (head-on / hero / profile) instead of one image.
+  // Multi-angle paths receive the SAME active (enhanced/edited/original) description
+  // as single-image types — the enhanced panel feeds every type; conflicts are
+  // stripped downstream (_ringUserText / _braceletPromptParts).
   if (resolvedType === 'ring') {
-    _generateRingMultiAngle({ userText: _ringUserText(desc), thisGen: thisGen, isTweak: isTweak, fullPromptForLog: fullPrompt });
+    _generateRingMultiAngle({ userText: _ringUserText(promptDesc), thisGen: thisGen, isTweak: isTweak, fullPromptForLog: fullPrompt });
     return;
   }
   // BRACELET: generate 3 angles (head-on / three-quarter / stone detail) of the same design.
   if (resolvedType === 'bracelet') {
-    _generateBraceletMultiAngle({ userText: desc, thisGen: thisGen, isTweak: isTweak, fullPromptForLog: fullPrompt });
+    _generateBraceletMultiAngle({ userText: promptDesc, thisGen: thisGen, isTweak: isTweak, fullPromptForLog: fullPrompt });
     return;
   }
 
@@ -4741,10 +4760,12 @@ async function confirmAndGenerate() {
   console.log('[JWLZIFY] confirmed user selections:', userSelections);
 
   const userIdea = (document.getElementById('promptArea')?.value || '').trim();
+  // ONE active description (enhanced/edited/original) for every generation path.
+  const activeDesc = _activeDesignDescription(userIdea);
 
   // buildPrompt handles all type-specific prompt logic; reuse it here so jewelry
   // type is always the primary subject regardless of which path triggered generation.
-  const fullPrompt = buildPrompt(LAB.type, LAB.material, LAB.gem, LAB.style || 'Modern', _activeDesignDescription(userIdea));
+  const fullPrompt = buildPrompt(LAB.type, LAB.material, LAB.gem, LAB.style || 'Modern', activeDesc);
 
   console.log('[JWLZIFY] jewelry type in prompt:', userSelections.jewelryType);
   console.log('[JWLZIFY] final prompt:', fullPrompt);
@@ -4760,13 +4781,15 @@ async function confirmAndGenerate() {
   console.log('[JWLZIFY] generation prompt:', fullPrompt);
 
   // RING ONLY: generate 3 camera angles (head-on / hero / profile) instead of one image.
+  // Multi-angle paths use the same active (enhanced/edited/original) description as
+  // single-image types; conflicts are stripped downstream.
   if (LAB.type === 'ring') {
-    _generateRingMultiAngle({ userText: _ringUserText(userIdea), thisGen: thisGen, isTweak: false, fullPromptForLog: fullPrompt });
+    _generateRingMultiAngle({ userText: _ringUserText(activeDesc), thisGen: thisGen, isTweak: false, fullPromptForLog: fullPrompt });
     return;
   }
   // BRACELET: generate 3 angles (head-on / three-quarter / stone detail) of the same design.
   if (LAB.type === 'bracelet') {
-    _generateBraceletMultiAngle({ userText: userIdea, thisGen: thisGen, isTweak: false, fullPromptForLog: fullPrompt });
+    _generateBraceletMultiAngle({ userText: activeDesc, thisGen: thisGen, isTweak: false, fullPromptForLog: fullPrompt });
     return;
   }
 

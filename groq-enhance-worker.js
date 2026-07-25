@@ -102,8 +102,10 @@ export default {
       'opal, topaz, etc.; you may refer generically to "the stone(s)" or "the gem(s)" without naming a type. ' +
       '(3) NEVER name a gem or stone COLOR — no blue, green, red, colorless, etc. for stones. ' +
       '(4) NEVER mention stone counts, quantities, carats, sizes, dimensions, lengths, or any measurement. ' +
-      '(5) Describe ONLY a ' + jewelryType + ' — never mention, add, or switch to any other type of jewelry. ' +
-      '(6) Do NOT use gendered language.' +
+      '(5) NEVER name a stone cut or shape — no round, oval, cushion, princess, emerald-cut, pear, ' +
+      'marquise, radiant, asscher, heart, baguette, or trillion; the cut is chosen elsewhere. ' +
+      '(6) Describe ONLY a ' + jewelryType + ' — never mention, add, or switch to any other type of jewelry. ' +
+      '(7) Do NOT use gendered language.' +
       (earringStyleDescriptor ? (' Respect this style direction: ' + earringStyleDescriptor + '.') : '') +
       ' Output only the description text — no preamble, no lists, no labels.';
 
