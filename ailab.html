@@ -769,6 +769,36 @@ tailwind.config={darkMode:"class",theme:{extend:{colors:{
          is hidden for rings; shown for bracelet / earring / pendant / necklace. -->
     <div id="ringCaratFlow" style="display:none;">
 
+      <!-- RING SIZE — physical spec (US sizes 4–13, half steps). Drives the metal
+           weight derivation in the calc-price worker (ringSize); NEVER enters the
+           generation prompt. Default 7 = the worker's documented default, so an
+           untouched selector prices exactly as before. -->
+      <div class="mb-8" id="ringSizeStep">
+        <label class="label block mb-3" style="font-size:10px;letter-spacing:0.18em;color:#3c6474;">Ring Size (US)</label>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;">
+          <button class="spec-toggle ring-size-btn" data-size="4" onclick="setRingSize(this,4)">4</button>
+          <button class="spec-toggle ring-size-btn" data-size="4.5" onclick="setRingSize(this,4.5)">4.5</button>
+          <button class="spec-toggle ring-size-btn" data-size="5" onclick="setRingSize(this,5)">5</button>
+          <button class="spec-toggle ring-size-btn" data-size="5.5" onclick="setRingSize(this,5.5)">5.5</button>
+          <button class="spec-toggle ring-size-btn" data-size="6" onclick="setRingSize(this,6)">6</button>
+          <button class="spec-toggle ring-size-btn" data-size="6.5" onclick="setRingSize(this,6.5)">6.5</button>
+          <button class="spec-toggle ring-size-btn active" data-size="7" onclick="setRingSize(this,7)">7</button>
+          <button class="spec-toggle ring-size-btn" data-size="7.5" onclick="setRingSize(this,7.5)">7.5</button>
+          <button class="spec-toggle ring-size-btn" data-size="8" onclick="setRingSize(this,8)">8</button>
+          <button class="spec-toggle ring-size-btn" data-size="8.5" onclick="setRingSize(this,8.5)">8.5</button>
+          <button class="spec-toggle ring-size-btn" data-size="9" onclick="setRingSize(this,9)">9</button>
+          <button class="spec-toggle ring-size-btn" data-size="9.5" onclick="setRingSize(this,9.5)">9.5</button>
+          <button class="spec-toggle ring-size-btn" data-size="10" onclick="setRingSize(this,10)">10</button>
+          <button class="spec-toggle ring-size-btn" data-size="10.5" onclick="setRingSize(this,10.5)">10.5</button>
+          <button class="spec-toggle ring-size-btn" data-size="11" onclick="setRingSize(this,11)">11</button>
+          <button class="spec-toggle ring-size-btn" data-size="11.5" onclick="setRingSize(this,11.5)">11.5</button>
+          <button class="spec-toggle ring-size-btn" data-size="12" onclick="setRingSize(this,12)">12</button>
+          <button class="spec-toggle ring-size-btn" data-size="12.5" onclick="setRingSize(this,12.5)">12.5</button>
+          <button class="spec-toggle ring-size-btn" data-size="13" onclick="setRingSize(this,13)">13</button>
+        </div>
+        <p style="font-family:Inter,sans-serif;font-size:11px;color:#9ca3af;margin:6px 0 0;">Not sure? Size 7 is the most common — we confirm sizing before crafting.</p>
+      </div>
+
       <!-- STEP A — Total carat weight -->
       <div class="mb-8" id="ringStepA">
         <label class="label block mb-3" style="font-size:10px;letter-spacing:0.18em;color:#3c6474;">Total Carat Weight</label>
@@ -3344,11 +3374,23 @@ function _validateRingAllocation() {
   return matches;
 }
 
+// RING SIZE (US 4–13, half steps) — physical spec, stored with the rest; drives
+// the worker's weight derivation. Never read by any prompt builder.
+function setRingSize(btn, size) {
+  document.querySelectorAll('.ring-size-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  userSelections.ringSize = size;
+  if (window.jwlSpecifications) window.jwlSpecifications.ringSize = size;
+  console.log('[Ring] US ring size:', size);
+  if (typeof updateSpecCostEstimate === 'function') updateSpecCostEstimate();
+}
+
 // Write the ring allocation into jwlSpecifications. Stores the task-specified
 // rich shape PLUS the numeric mirrors the untouched pricing/prompt code reads.
 function _applyRingSpecs() {
   const s = window.jwlSpecifications;
   s.metal           = LAB.material || userSelections.material || null;
+  s.ringSize        = parseFloat(userSelections.ringSize) || 7; // US size; 7 = default
   s.stoneShape      = userSelections.gemShape || 'Round';
   s.designAesthetic = LAB.style || userSelections.style || 'Modern';
   s.totalCt         = +(_ringTotalCt || 0).toFixed(2);
@@ -5729,11 +5771,13 @@ function _renderStoneRows() {
 const CALC_PRICE_URL = 'https://calc-price.sarkd333.workers.dev';
 
 // Spec fields the worker derives metal weight from (its METAL WEIGHT MODEL).
-// Only fields the app ACTUALLY collects are sent; ring size is not collected
-// anywhere yet, so rings rely on the worker's documented default (US size 7).
+// Only fields the app ACTUALLY collects are sent; rings send the US ring size
+// selector value (untouched selector → worker's documented default, US size 7).
 function _pricingGeomFields(jewelryType) {
   const f = {};
-  if (jewelryType === 'bracelet') {
+  if (jewelryType === 'ring') {
+    f.ringSize = parseFloat(userSelections.ringSize) || undefined; // worker defaults to US 7
+  } else if (jewelryType === 'bracelet') {
     f.lengthIn   = parseFloat(userSelections.braceletLengthIn) || undefined;
     f.widthMm    = parseFloat(userSelections.linkWidthMm) || undefined;
     f.chainStyle = 'tennis'; // AI Lab bracelets are stone-set bands
@@ -6105,7 +6149,8 @@ async function displayPricing(metalType, stoneType, jewelryType, overrideCarats)
   document.getElementById('priceRows').innerHTML =
     '<div style="margin-bottom:14px;">'
     + '<p style="font-family:Inter,sans-serif;font-size:10px;letter-spacing:0.16em;color:#3c6474;margin:0 0 8px;">ITEMIZED SPECIFICATION</p>'
-    + row('Metal — ' + matLabel(metalType) + ' · ' + r.metalGrams.toFixed(1) + 'g',
+    + row('Metal — ' + matLabel(metalType) + ' · ' + r.metalGrams.toFixed(1) + 'g'
+          + (jewelryType === 'ring' ? ' · US size ' + ((_specsNow && _specsNow.ringSize) || 7) : ''),
           '$' + r.metalCost.toFixed(2))
     + row('Stones — ' + _quoteStoneLine(jewelryType, stoneType),
           '$' + r.stoneCost.toFixed(2))
@@ -6174,7 +6219,9 @@ document.addEventListener('visibilitychange', function() {
 function populateOrderSummary() {
   const q = LAB.quote || calcQuote();
   const typeName = typeLabel(LAB.type);
-  document.getElementById('orderSummaryTitle').textContent = `${LAB.style} ${typeName} · ${matLabel(LAB.material)}`;
+  const _sizeTag = (LAB.type === 'ring')
+    ? ` · US size ${(window.jwlSpecifications && window.jwlSpecifications.ringSize) || 7}` : '';
+  document.getElementById('orderSummaryTitle').textContent = `${LAB.style} ${typeName} · ${matLabel(LAB.material)}${_sizeTag}`;
   document.getElementById('orderSummaryPrice').textContent = (q.total != null) ? '$' + q.total.toLocaleString() : '—';
 }
 

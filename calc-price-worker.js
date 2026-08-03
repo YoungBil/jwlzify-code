@@ -23,7 +23,7 @@
 //                             // the spec fields below via the METAL WEIGHT MODEL
 //                             // (geometry × density); client metalGrams is ignored
 //     stoneCount?: number,    // ring setting uplift (single vs accents)
-//     ringSize?: number,      // US size (not collected yet → default size 7)
+//     ringSize?: number,      // US ring size from the AI Lab selector (absent → size 7)
 //     lengthIn?: number, widthMm?: number, chainStyle?: string,  // bracelet/necklace
 //     pendantWidthMm?: number, pendantHeightMm?: number          // pendant plate
 //   }, ... ] }   (max 25 items per request — the collections page batches a category)
@@ -67,7 +67,7 @@ const MATERIAL_WEIGHTS = {
 ══════════════════════════════════════════════════════════════════════════ */
 const METAL_DENSITY = { '925silver': 10.36, '10ctgold': 11.6, '14ctgold': 13.1 }; // g/cm³
 const RING_MODEL = {
-  defaultUsSize: 7,        // ring size is NOT collected anywhere in the app yet
+  defaultUsSize: 7,        // used when no ringSize arrives (collections; untouched selector)
   innerDiaAtSize7Mm: 17.3, // US size 7; +0.8mm inner diameter per full size
   mmPerSize: 0.8,
   bandWidthMm: 2.5,        // assumed standard band cross-section
