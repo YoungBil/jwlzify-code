@@ -87,6 +87,75 @@
 
   var CAT_ORDER = ['ring', 'pendant', 'earring', 'bracelet', 'necklace'];
 
+  /* ══════════════════════════════════════════════════════════════════════════
+     STONE STRUCTURE BY STYLE — industry-average PLACEHOLDERS pending real
+     supplier figures. Every number a piece's stones derive from lives HERE:
+       centreCt      — centre stone carat (0 = no dominant centre)
+       accents       — accent/melee stone count
+       accentTotalCt — TOTAL carat weight of all accents combined
+     Totals: carats = centreCt + accentTotalCt; stoneCount = accents + (centre?1:0).
+     Reference points used: halo ≈ 12–16 accents totalling 0.25–0.35ct; three-stone
+     sides ≈ 40% of centre each; cluster ≈ 7–9 similar stones, no dominant centre.
+     Earring entries are PER PAIR. Styles absent from a category's table fall back
+     to DEFAULT_STRUCTURE (1ct solitaire).
+  ══════════════════════════════════════════════════════════════════════════ */
+  var DEFAULT_STRUCTURE = { centreCt: 1.00, accents: 0, accentTotalCt: 0 };
+  var STONE_STRUCTURE = {
+    ring: {
+      'Solitaire':     { centreCt: 1.00, accents: 0,  accentTotalCt: 0 },
+      'Halo':          { centreCt: 1.00, accents: 14, accentTotalCt: 0.30 },
+      'Three-Stone':   { centreCt: 1.00, accents: 2,  accentTotalCt: 0.80 },
+      'Pavé Eternity': { centreCt: 0,    accents: 24, accentTotalCt: 1.20 },
+      'Cathedral':     { centreCt: 1.20, accents: 0,  accentTotalCt: 0 },
+      'Bezel':         { centreCt: 1.00, accents: 0,  accentTotalCt: 0 },
+      'Tension':       { centreCt: 0.90, accents: 0,  accentTotalCt: 0 },
+      'Cluster':       { centreCt: 0,    accents: 8,  accentTotalCt: 1.00 },
+      'Twist':         { centreCt: 0.75, accents: 0,  accentTotalCt: 0 }
+    },
+    pendant: {
+      'Drop':      { centreCt: 1.00, accents: 0,  accentTotalCt: 0 },
+      'Teardrop':  { centreCt: 1.25, accents: 0,  accentTotalCt: 0 },
+      'Solitaire': { centreCt: 1.00, accents: 0,  accentTotalCt: 0 },
+      'Locket':    { centreCt: 0.15, accents: 0,  accentTotalCt: 0 },
+      'Charm':     { centreCt: 0.25, accents: 0,  accentTotalCt: 0 },
+      'Crescent':  { centreCt: 0,    accents: 12, accentTotalCt: 0.60 },
+      'Disc':      { centreCt: 0.10, accents: 0,  accentTotalCt: 0 },
+      'Bar':       { centreCt: 0,    accents: 5,  accentTotalCt: 0.25 },
+      'Halo':      { centreCt: 1.00, accents: 12, accentTotalCt: 0.25 },
+      'Heart':     { centreCt: 0.75, accents: 0,  accentTotalCt: 0 }
+    },
+    earring: { // PER PAIR
+      'Chandelier': { centreCt: 0,    accents: 14, accentTotalCt: 1.40 },
+      'Drops':      { centreCt: 1.00, accents: 2,  accentTotalCt: 0.20 },
+      'Studs':      { centreCt: 1.00, accents: 0,  accentTotalCt: 0 },    // 0.50ct per ear
+      'Hoops':      { centreCt: 0,    accents: 24, accentTotalCt: 0.72 },
+      'Threaders':  { centreCt: 0.20, accents: 0,  accentTotalCt: 0 },
+      'Huggies':    { centreCt: 0,    accents: 12, accentTotalCt: 0.36 },
+      'Climbers':   { centreCt: 0,    accents: 10, accentTotalCt: 0.50 },
+      'Dangles':    { centreCt: 0.80, accents: 4,  accentTotalCt: 0.24 },
+      'Jackets':    { centreCt: 1.00, accents: 8,  accentTotalCt: 0.32 },
+      'Crawlers':   { centreCt: 0,    accents: 10, accentTotalCt: 0.40 }
+    },
+    bracelet: { // no-stone styles (Cuff, Bangle, …) never reach this table
+      'Tennis': { centreCt: 0,    accents: 40, accentTotalCt: 3.20 },
+      'Line':   { centreCt: 0,    accents: 30, accentTotalCt: 2.10 },
+      'Link':   { centreCt: 0,    accents: 5,  accentTotalCt: 0.50 },
+      'Wrap':   { centreCt: 0.50, accents: 0,  accentTotalCt: 0 }
+    },
+    necklace: {
+      'Pendant': { centreCt: 1.00, accents: 0,  accentTotalCt: 0 },
+      'Layered': { centreCt: 0,    accents: 3,  accentTotalCt: 0.60 },
+      'Tennis':  { centreCt: 0,    accents: 54, accentTotalCt: 4.32 },
+      'Lariat':  { centreCt: 0.50, accents: 1,  accentTotalCt: 0.25 },
+      'Station': { centreCt: 0,    accents: 7,  accentTotalCt: 1.40 },
+      'Rivière': { centreCt: 0,    accents: 36, accentTotalCt: 5.40 },
+      'Choker':  { centreCt: 0,    accents: 16, accentTotalCt: 1.60 }
+    }
+  };
+  function stoneStructureFor(category, style) {
+    return (STONE_STRUCTURE[category] && STONE_STRUCTURE[category][style]) || DEFAULT_STRUCTURE;
+  }
+
   // Categories whose plainer styles (chains / metal cuffs) sometimes carry no stone.
   function noStoneFor(category, style) {
     if (category === 'bracelet') return ['Cuff', 'Bangle', 'Hinge Cuff', 'Rope', 'Bolo', 'Mesh'].indexOf(style) !== -1;
@@ -125,11 +194,13 @@
       // (same rotation position, so every other item is untouched).
       if (!REAL_DIAMOND_ENABLED && st.code === 'natural_diamond') st = STONE_TYPES[0];
       stoneType = st.code; stoneLabel = st.label;
-      carats = Math.round((0.4 + (idx % 6) * 0.45) * 100) / 100;
-      var isPave = style === 'Pavé Eternity' || style === 'Tennis' || style === 'Station';
-      stoneCount = isPave ? Math.max(2, Math.round(carats / 0.15)) : 1;
-      stoneSize = carats.toFixed(2) + ' ct' + (isPave ? ' total' : '');
-      gemPhrase = 'featuring ' + (isPave ? stoneSize + ' of ' + stoneLabel.toLowerCase() : 'a ' + stoneSize + ' ' + stoneLabel.toLowerCase());
+      // Style-driven structure (see STONE_STRUCTURE): totals = centre + accents.
+      var struct = stoneStructureFor(category, style);
+      carats     = Math.round((struct.centreCt + struct.accentTotalCt) * 100) / 100;
+      stoneCount = struct.accents + (struct.centreCt > 0 ? 1 : 0);
+      var isMulti = stoneCount > 1;
+      stoneSize = carats.toFixed(2) + ' ct' + (isMulti ? ' total' : '');
+      gemPhrase = 'featuring ' + (isMulti ? stoneSize + ' of ' + stoneLabel.toLowerCase() : 'a ' + stoneSize + ' ' + stoneLabel.toLowerCase());
     }
 
     // SDXL description (front-facing, single item; orientation clause added by generator)
