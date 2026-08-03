@@ -1,20 +1,17 @@
 /*
- * pricing.js — shared jewelry pricing formula.
+ * pricing.js — client for the server-side pricing formula.
  *
- * This is the SAME formula the AI Lab quote step (ailab.html) uses, kept in one
- * place so the Collections page prices match the AI Lab exactly:
- *   - live metal price (USD/g) from the metals.dev Cloudflare workers
- *     (gold-price / silver-price, now fetched with currency=USD), with fallbacks
- *   - karat purity multipliers: 10k = 0.417, 14k = 0.583, 925 silver = 0.925
- *   - metal cost  = grams × (spot USD/g × purity)   [no currency conversion]
- *   - stone cost  = carats × per-gem rate ($80/ct lab grown diamond, $2.00/ct otherwise)
- *   - base        = metal + stone
- *   - + 20% labour, + profit margin (default 100%)
- *   - final price in USD
+ * The formula itself (stone rates, default weights, labour/profit tiers) lives
+ * ONLY in the calc-price Cloudflare Worker (calc-price-worker.js) — nothing in
+ * this file computes a price, so nothing sensitive is readable here. This file:
+ *   - fetches live metal spot prices (public data) from the gold-price /
+ *     silver-price workers, for display purposes
+ *   - sends spec inputs to calc-price and returns its display numbers
+ *     ({ finalPrice, metalCost, stoneCost, labourAndCraftsmanship, metalGrams,
+ *     stoneCarats }); unknown metal/stone keys come back as per-item { error }
  *
- * Exposes window.JWLZ_PRICING = { spotPrices, fetchSpotPrices, calculatePrice, priceForSpec }.
- * NOTE: this mirrors ailab.html's calculatePrice()/fetchSpotPrices()/spotPrices verbatim;
- *       if the AI Lab formula ever changes, update it here too.
+ * Exposes window.JWLZ_PRICING = { spotPrices, fetchSpotPrices, priceBatch,
+ * priceForSpec, priceDetail, KARAT_PURITY }. All pricing functions are ASYNC.
  */
 (function (root) {
   'use strict';
@@ -70,65 +67,6 @@
     if (!goldOk) { spotPrices.gold10ctPerGram = 44.24; spotPrices.gold14ctPerGram = 61.86; } // USD/g fallbacks
     if (!spotPrices.fetchedAt) { spotPrices.source = 'fallback-usd'; spotPrices.fetchedAt = new Date().toISOString(); }
     return spotPrices;
-  }
-
-  // Lab grown diamond is a flat $80/ct (both lab_diamond and lab_diamond_vvs);
-  // natural/real diamond and moissanite are unchanged. Mirrors ailab.html STONE_RATES.
-  // real_diamond_vsvvs / natural_diamond are the SAME stone (AI Lab code vs
-  // collections-catalogue code) at a PLACEHOLDER $2.00/ct pending the real rate.
-  var STONE_RATES = { moissanite_vvsd: 2.00, lab_diamond: 80.00, lab_diamond_vvs: 80.00,
-                      real_diamond_vsvvs: 2.00, natural_diamond: 2.00, none: 0.00 };
-  console.log('[Pricing] lab diamond rate set to $80/ct');
-  var MATERIAL_WEIGHTS = {
-    ring:     { metalGrams: 4,  stoneCarats: 0.80 },
-    necklace: { metalGrams: 8,  stoneCarats: 1.20 },
-    pendant:  { metalGrams: 5,  stoneCarats: 0.60 },
-    earrings: { metalGrams: 3,  stoneCarats: 0.50 },
-    bracelet: { metalGrams: 12, stoneCarats: 1.50 }
-  };
-
-  // Verbatim AI Lab pricing. Reads window.jwlSpecifications for grams/carats overrides.
-  function calculatePrice(metalType, stoneType, jewelryType, userCarats) {
-    var weights = Object.assign({}, MATERIAL_WEIGHTS[jewelryType] || MATERIAL_WEIGHTS['pendant']);
-    var specs = root.jwlSpecifications;
-    if (specs && specs.metalGrams > 0) weights.metalGrams = specs.metalGrams;
-
-    var stoneCarats = (userCarats && userCarats > 0) ? userCarats
-      : (specs && specs.totalCarats > 0) ? specs.totalCarats
-      : weights.stoneCarats;
-
-    var metalPerGram = 0;
-    if (metalType === '925silver')     metalPerGram = spotPrices.silverPerGram;
-    else if (metalType === '10ctgold') metalPerGram = spotPrices.gold10ctPerGram;
-    else if (metalType === '14ctgold') metalPerGram = spotPrices.gold14ctPerGram;
-
-    // Strict: an unknown stone key must fail loudly, never price at the cheapest rate.
-    var stoneRateUsed = STONE_RATES[stoneType];
-    if (stoneRateUsed == null) {
-      console.error('[Pricing] UNKNOWN STONE TYPE "' + stoneType + '" — no STONE_RATES entry; refusing to price.');
-      throw new Error('Unknown stone type "' + stoneType + '" — cannot produce a price');
-    }
-    var metalCost = weights.metalGrams * metalPerGram;
-    var stoneCost = stoneCarats * stoneRateUsed;
-    var baseCost  = metalCost + stoneCost;
-
-    var labourRate = 0.20, profitRate = 1.00;
-    if (metalType === '925silver' && stoneType === 'moissanite_vvsd') profitRate = 1.50;
-    else if ((metalType === '10ctgold' || metalType === '14ctgold') && (stoneType === 'real_diamond_vsvvs' || stoneType === 'natural_diamond')) profitRate = 0.70;
-
-    var labourCost = baseCost * labourRate;
-    var profitCost = baseCost * profitRate;
-    var finalPrice = baseCost + labourCost + profitCost;
-
-    // Metal price arrives from the workers already in USD/g — no currency conversion.
-    console.log('[Pricing] metal USD/g:', metalPerGram, '| final price USD:', finalPrice);
-
-    return {
-      metalGrams: weights.metalGrams, stoneCarats: stoneCarats, metalPerGram: metalPerGram,
-      metalCost: metalCost, stoneCost: stoneCost, baseCost: baseCost,
-      labourRate: labourRate, profitRate: profitRate,
-      labourCost: labourCost, profitCost: profitCost, finalPrice: finalPrice
-    };
   }
 
   /* ── Server-side pricing (calc-price worker) ──

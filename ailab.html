@@ -2964,7 +2964,7 @@ function _necklaceInches() {
 //   16–18" ≈ 3g (light) · 20–22" ≈ 5g (medium) · 24"+ ≈ 7g (heavier)
 //   + Full placement adds ~2g (stones run the whole chain = more material)
 //   + Stations adds ~0.5g (a handful of set stones)
-// [WEIGHT-TUNE] necklace length-tier grams (see METAL-WEIGHT TUNING INDEX near MATERIAL_WEIGHTS)
+// [WEIGHT-TUNE] necklace length-tier grams (see METAL-WEIGHT TUNING INDEX)
 function _necklaceAutoWeight(inches, placement) {
   let g;
   if      (inches <= 18) g = 3;
@@ -3021,7 +3021,7 @@ const PENDANT_TIERS = {
   large:  { min: 8,   max: 11, label: '(8–11 ct)'  },
 };
 // Approx metal densities (g/cm³) and a tunable plate-thickness / fill model.
-// [WEIGHT-TUNE] pendant weight constants (see METAL-WEIGHT TUNING INDEX near MATERIAL_WEIGHTS)
+// [WEIGHT-TUNE] pendant weight constants (see METAL-WEIGHT TUNING INDEX)
 const PENDANT_METAL_DENSITY = { '925silver': 10.36, '10ctgold': 11.57, '14ctgold': 13.07 };
 const PENDANT_THICKNESS_MM  = 1.6;   // assumed average plate thickness
 const PENDANT_FILL_FACTOR   = 0.62;  // pendants aren't solid rectangles — proportional factor
@@ -3046,7 +3046,7 @@ function _pendantDims() {
 }
 
 // Write the pendant inputs into jwlSpecifications so every downstream reader
-// (cost estimate, buildPrompt, calculatePrice) sees a single source of truth.
+// (cost estimate, buildPrompt, pricing inputs) sees a single source of truth.
 function _applyPendantSpecs() {
   if (LAB.type !== 'pendant') return null;
   const ws = window.jwlSpecifications = window.jwlSpecifications || {};
@@ -3338,7 +3338,7 @@ function _applyRingSpecs() {
   s.totalCarats     = s.totalCt;  // quote reads this as stoneCarats
   // Weight selector was removed for rings; pricing formula is untouched, so use
   // the engine's canonical ring metal weight as a fixed value.
-  s.metalGrams      = (typeof MATERIAL_WEIGHTS !== 'undefined' && MATERIAL_WEIGHTS.ring) ? MATERIAL_WEIGHTS.ring.metalGrams : 4;
+  s.metalGrams      = 4;  // [WEIGHT-TUNE] ring default grams (band weight, was MATERIAL_WEIGHTS.ring)
   s.weightLabel     = 'medium';
 }
 
@@ -3400,7 +3400,7 @@ function _resetRingFlow() {
    apply ONLY when LAB.type === 'bracelet'.
 ═══════════════════════════════════════════════════════════════════════ */
 const BRACELET_PER_STONE_CARAT = { accent: 0.10, medium: 0.25, large: 0.50 };
-// [WEIGHT-TUNE] bracelet weight constants (see METAL-WEIGHT TUNING INDEX near MATERIAL_WEIGHTS)
+// [WEIGHT-TUNE] bracelet weight constants (see METAL-WEIGHT TUNING INDEX)
 const BRACELET_METAL_DENSITY   = { '925silver': 10.36, '10ctgold': 11.57, '14ctgold': 13.07 };
 const BRACELET_THICKNESS_MM    = 1.2;   // assumed link/strand thickness
 const BRACELET_FILL_FACTOR     = 0.55;  // links aren't solid bars — proportional factor
@@ -3750,7 +3750,7 @@ function _applyEarringSpecs() {
   // authoritative count + stones describe a single earring's stones.
   s.stoneCount      = r.perEarringCount;
   s.stones          = Array(r.perEarringCount).fill(r.perStoneCt);
-  s.metalGrams      = (typeof MATERIAL_WEIGHTS !== 'undefined' && MATERIAL_WEIGHTS.earrings) ? MATERIAL_WEIGHTS.earrings.metalGrams : 3;
+  s.metalGrams      = 3;  // [WEIGHT-TUNE] earrings fixed grams, PAIR (was MATERIAL_WEIGHTS.earrings)
   s.weightLabel     = 'medium';
 }
 
@@ -5812,11 +5812,13 @@ function updateSpecCostEstimate() {
 
    ── ALL TUNABLE WEIGHT CONSTANTS (grouped here for the upcoming tuning pass) ──
    Each still lives at its derivation site; grep the tag [WEIGHT-TUNE] to jump.
-     • RING      tier grams   → MATERIAL_WEIGHTS.ring.metalGrams (=4, below)
+     • RING      tier grams   → _applyRingSpecs default grams (=4)
                                + PRESET_GRAMS { light:2.5, medium:4.5, heavy:8.5 }
                                  (inside _readSpecsFromDOM, ~line 4463)
-     • EARRINGS  fixed grams  → MATERIAL_WEIGHTS.earrings.metalGrams (=3, below)
+     • EARRINGS  fixed grams  → _applyEarringSpecs default grams (=3)
                                  NOTE: should represent the PAIR, not one earring.
+     NOTE: the pricing-side default weights fallback lives in calc-price-worker.js
+     (MATERIAL_WEIGHTS there) — keep these client spec defaults in sync with it.
      • PENDANT   derivation   → PENDANT_THICKNESS_MM (=1.6), PENDANT_FILL_FACTOR
                                  (=0.62), PENDANT_METAL_DENSITY {…}  (~line 2917)
                                  grams = w × h × thickness × fill × density
@@ -5868,7 +5870,7 @@ function _logWeightDiagnostics(jewelryType, metalType, specs, grams) {
       inputs = { weightTier: specs.weightLabel || 'medium', note: 'grams should represent the PAIR' };
       break;
     default:
-      inputs = { note: 'unknown type — default MATERIAL_WEIGHTS used' };
+      inputs = { note: 'unknown type — calc-price worker default weights used' };
   }
   console.log('[Weight]', jewelryType, '| inputs:', inputs, '| assumed thickness:', thickness, '| density:', density, '| derived grams:', grams);
 
@@ -5885,43 +5887,12 @@ function _logWeightDiagnostics(jewelryType, metalType, specs, grams) {
   }
 }
 
-/* ── Pricing engine ── */
-const MATERIAL_WEIGHTS = {
-  ring:     { metalGrams: 4,  stoneCarats: 0.80 },  // [WEIGHT-TUNE] ring default grams
-  necklace: { metalGrams: 8,  stoneCarats: 1.20 },  // [WEIGHT-TUNE] necklace fallback (live value from _necklaceAutoWeight)
-  pendant:  { metalGrams: 5,  stoneCarats: 0.60 },  // [WEIGHT-TUNE] pendant fallback (live value derived from mm×mm)
-  earrings: { metalGrams: 3,  stoneCarats: 0.50 },  // [WEIGHT-TUNE] earrings fixed grams (PAIR?)
-  bracelet: { metalGrams: 12, stoneCarats: 1.50 },  // [WEIGHT-TUNE] bracelet fallback (live value derived from width×length)
-};
-const STONE_RATES = {
-  moissanite_vvsd: 2.00,
-  lab_diamond:     80.00,  // lab grown diamond — flat $80/ct
-  lab_diamond_vvs: 80.00,  // lab grown diamond (VVS) — flat $80/ct
-  // PLACEHOLDER RATE: real diamond does not have its sourcing rate yet. The key
-  // exists so the gold-option gem code prices INTENTIONALLY (never via a silent
-  // fallback) — update this NUMBER when the real per-carat rate is decided.
-  real_diamond_vsvvs: 2.00, // AI Lab gem code for real diamond (GEM_OPTIONS, gold only)
-  natural_diamond:    2.00, // SAME stone, collections-catalogue code — arrives via the
-                            // "Customize This Design" handoff (collections-data.js); keep in sync
-  none:               0.00  // stoneless collections pieces handed to the AI Lab
-};
-console.log('[Pricing] lab diamond rate set to $80/ct');
-
-function getDynamicStoneRates() {
-  return STONE_RATES;
-}
-
-// Strict stone-rate lookup. A stone code with no STONE_RATES entry is a bug —
-// log loudly and return null so callers refuse to price. A typo in a stone key
-// must never silently price at the cheapest rate.
-function stoneRateFor(stoneType) {
-  const rates = getDynamicStoneRates();
-  if (rates[stoneType] == null) {
-    console.error('[Pricing] UNKNOWN STONE TYPE "' + stoneType + '" — no STONE_RATES entry; refusing to price.');
-    return null;
-  }
-  return rates[stoneType];
-}
+/* ── Pricing ──
+   The formula (stone rates, default weights fallback, labour/profit tiers) lives
+   ONLY in the calc-price Cloudflare Worker (calc-price-worker.js) — nothing here
+   computes a price. displayPricing and the spec estimate send spec inputs via
+   _fetchPriceCalc and render the returned display numbers. Unknown metal/stone
+   keys come back as per-item { error } and are refused visibly, never priced. */
 
 function extractCaratWeight(promptText) {
   if (!promptText) return null;
@@ -5948,98 +5919,6 @@ function extractCaratWeight(promptText) {
   return null;
 }
 
-function calculatePrice(metalType, stoneType, jewelryType, userCarats) {
-  console.log('Using silver price:', spotPrices.silverPerGram);
-  console.log('Source:', spotPrices.source);
-  var weights     = Object.assign({}, MATERIAL_WEIGHTS[jewelryType] || MATERIAL_WEIGHTS['pendant']);
-  var specs       = window.jwlSpecifications;
-
-  // Override weights from Specifications step if user made selections
-  if (specs && specs.metalGrams > 0) weights.metalGrams = specs.metalGrams;
-
-  // DIAGNOSTIC (no math change): surface the derived metal weight + how it compares
-  // to realistic reference ranges, for every price calc. See METAL_WEIGHT_REFERENCE.
-  try { _logWeightDiagnostics(jewelryType, metalType, specs, weights.metalGrams); }
-  catch (e) { console.warn('[Weight] diagnostics skipped:', e && e.message); }
-
-  var stoneCarats, caratSource;
-  if (jewelryType === 'necklace') {
-    // Necklace is fully authoritative: gemstone weight = per-stone ct × auto stone
-    // count (placement + length), already in specs.totalCarats. Honour an explicit
-    // 0 (None placement) instead of falling back to a default carat weight.
-    stoneCarats = (specs && specs.totalCarats >= 0) ? specs.totalCarats : 0;
-    caratSource = 'necklace auto (per-stone × count)';
-  } else {
-    stoneCarats = (userCarats && userCarats > 0) ? userCarats
-      : (specs && specs.totalCarats > 0)             ? specs.totalCarats
-      : weights.stoneCarats;
-    caratSource = (userCarats && userCarats > 0) ? 'user specified'
-      : (specs && specs.totalCarats > 0)             ? 'specifications'
-      : 'default';
-  }
-
-  var metalPerGram = 0;
-  if (metalType === '925silver')     metalPerGram = spotPrices.silverPerGram;
-  else if (metalType === '10ctgold') metalPerGram = spotPrices.gold10ctPerGram;
-  else if (metalType === '14ctgold') metalPerGram = spotPrices.gold14ctPerGram;
-
-  var stoneRateUsed = stoneRateFor(stoneType);
-  if (stoneRateUsed == null) {
-    throw new Error('Unknown stone type "' + stoneType + '" — cannot produce a quote');
-  }
-  var metalCost = weights.metalGrams * metalPerGram;
-  var stoneCost = stoneCarats * stoneRateUsed;
-  var baseCost  = metalCost + stoneCost;
-
-  var labourRate = 0.20;
-  var profitRate = 1.00;
-  if (metalType === '925silver' && stoneType === 'moissanite_vvsd') {
-    profitRate = 1.50;
-  } else if ((metalType === '10ctgold' || metalType === '14ctgold') &&
-             (stoneType === 'real_diamond_vsvvs' || stoneType === 'natural_diamond')) {
-    profitRate = 0.70;
-  }
-
-  var labourCost = baseCost * labourRate;
-  var profitCost = baseCost * profitRate;
-  var finalPrice = baseCost + labourCost + profitCost;
-
-  // Metal price arrives from the workers already in USD/g — no currency conversion.
-  console.log('[Pricing] metal USD/g:', metalPerGram, '| final price USD:', finalPrice);
-
-  console.log('DEBUG metalPerGram:', metalPerGram);
-  console.log('DEBUG metalGrams:', weights.metalGrams);
-  console.log('DEBUG metalCost:', metalCost);
-  console.log('DEBUG stoneCarats:', stoneCarats);
-  console.log('DEBUG stoneRate:', STONE_RATES[stoneType]);
-  console.log('DEBUG stoneCost:', stoneCost);
-  console.log('DEBUG baseCost:', baseCost);
-  console.log('DEBUG profitRate:', profitRate);
-  console.log('DEBUG finalPrice:', finalPrice);
-
-  console.log('=== EXACT PRICE CALCULATION ===');
-  console.log('Type:', jewelryType, '| Stone carats:', stoneCarats, '(' + caratSource + ')');
-  console.log('Metal:', metalType, '@ $' + metalPerGram.toFixed(6) + '/g ×', weights.metalGrams + 'g = $' + metalCost.toFixed(4));
-  console.log('Stone:', stoneType, '@ $' + stoneRateUsed.toFixed(4) + '/ct ×', stoneCarats + 'ct = $' + stoneCost.toFixed(4));
-  console.log('Base: $' + baseCost.toFixed(4), '| Labour 20%: $' + labourCost.toFixed(4), '| Profit ' + (profitRate*100) + '%: $' + profitCost.toFixed(4));
-  console.log('FINAL: $' + finalPrice.toFixed(2));
-  console.log('================================');
-
-  return {
-    metalGrams:    weights.metalGrams,
-    stoneCarats:   stoneCarats,
-    caratSource:   caratSource,
-    metalCostPerG: metalPerGram,
-    stoneRateUsed: stoneRateUsed,
-    metalCost:     metalCost,
-    stoneCost:     stoneCost,
-    baseCost:      baseCost,
-    labourCost:    labourCost,
-    profitCost:    profitCost,
-    finalPrice:    finalPrice
-  };
-}
-
 function calcQuote() {
   // Pricing is server-side (calc-price worker) — there is no local formula to fall
   // back on. The quote step (displayPricing) sets LAB.quote before the order step
@@ -6047,59 +5926,9 @@ function calcQuote() {
   return LAB.quote || { total: null };
 }
 
-/* ══════════════════════════════════════════════════════════════════════════
-   PRICING AUDIT (verification only — exercises the REAL calculatePrice; does not
-   change any formula value or logic). Runs one sample calc per jewelry type and
-   prints the full profit-tier matrix so the breakdown can be eyeballed against
-   the intended formula. Also exposed as window._auditPricing() to re-run in the
-   console after live spot prices load. Uses whatever spotPrices are current
-   (fallback USD/g at first load). See findings in the commit message / report.
-═══════════════════════════════════════════════════════════════════════════ */
-function _auditPricing() {
-  const _prevSpecs = window.jwlSpecifications;
-  console.log('[Price audit] ==== formula verification | spot source:', (typeof spotPrices !== 'undefined' ? spotPrices.source : 'n/a'), '====');
-  // One representative sample per jewelry type (grams/carats stand in for real specs).
-  const samples = [
-    { type: 'ring',     metal: '925silver', stone: 'moissanite_vvsd',    grams: 4,  carats: 0.80 },
-    { type: 'pendant',  metal: '14ctgold',  stone: 'lab_diamond',        grams: 5,  carats: 0.60 },
-    { type: 'bracelet', metal: '925silver', stone: 'lab_diamond_vvs',    grams: 12, carats: 1.50 },
-    { type: 'necklace', metal: '10ctgold',  stone: 'natural_diamond',    grams: 8,  carats: 1.20 },
-    { type: 'earrings', metal: '14ctgold',  stone: 'real_diamond_vsvvs', grams: 3,  carats: 0.50 },
-  ];
-  samples.forEach(s => {
-    // Temp specs so calculatePrice reads our sample grams/carats; restored after.
-    window.jwlSpecifications = { metalGrams: s.grams, totalCarats: s.carats, stoneCount: 1, stones: [s.carats] };
-    const r  = calculatePrice(s.metal, s.stone, s.type, 0);
-    const pt = r.baseCost > 0 ? Math.round((r.profitCost / r.baseCost) * 100) + '%' : 'n/a';
-    console.log('[Price audit]', s.type,
-      '| metal:', s.metal, '| stone:', s.stone,
-      '| metalGrams:', r.metalGrams,
-      '| metalCost:', +r.metalCost.toFixed(2),
-      '| stoneCost:', +r.stoneCost.toFixed(2),
-      '| baseCost:',  +r.baseCost.toFixed(2),
-      '| labour:',    +r.labourCost.toFixed(2),
-      '| profitTier:', pt,
-      '| profit:',    +r.profitCost.toFixed(2),
-      '| finalPrice:', +r.finalPrice.toFixed(2));
-  });
-  window.jwlSpecifications = _prevSpecs; // restore — never leave audit specs behind
-
-  // Full profit-tier matrix: every metal × stone combination, tier that WOULD be chosen.
-  console.log('[Price audit] ---- profit-tier matrix (metal × stone) ----');
-  const _metals = ['925silver', '10ctgold', '14ctgold'];
-  const _stones = ['moissanite_vvsd', 'lab_diamond', 'lab_diamond_vvs', 'real_diamond_vsvvs', 'natural_diamond'];
-  _metals.forEach(m => _stones.forEach(st => {
-    let profitRate = 1.00;
-    if (m === '925silver' && st === 'moissanite_vvsd') profitRate = 1.50;
-    else if ((m === '10ctgold' || m === '14ctgold') && (st === 'real_diamond_vsvvs' || st === 'natural_diamond')) profitRate = 0.70;
-    const rate = (typeof STONE_RATES !== 'undefined' && STONE_RATES[st] != null) ? STONE_RATES[st] : 2.00;
-    console.log('[Price audit] tier | metal:', m, '| stone:', st, '| profit:', (profitRate * 100) + '%', '| stoneRate: $' + rate + '/ct');
-  }));
-  console.log('[Price audit] ==== end verification ====');
-}
-window._auditPricing = _auditPricing;
-// Run once at load (fallback spot prices) so the breakdown is visible without interaction.
-try { _auditPricing(); } catch (e) { console.warn('[Price audit] skipped:', e && e.message); }
+// (The old load-time _auditPricing block is gone with the local formula — it
+// exercised calculatePrice and printed the full rate/tier matrix to the console,
+// which is exactly what moving pricing server-side is meant to stop.)
 
 // One-line stone description for the itemized quote sheet. Exact-count types
 // (ring / earrings / pendant, counts 1–7) state count × ct × type — the contract.
