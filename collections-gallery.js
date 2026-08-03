@@ -36,23 +36,42 @@
     for (var i = 0; i < METAL_OPTIONS.length; i++) if (METAL_OPTIONS[i].code === code) return METAL_OPTIONS[i];
     return METAL_OPTIONS[0];
   }
-  function computePrice(item, metalCode) {
+  // Pricing happens in the calc-price worker (server-side formula). One BATCH
+  // request prices a whole category render; results are cached per item+metal so
+  // tab flips and modal re-opens don't refetch.
+  var _priceCache = {};   // "itemId|metalCode" → rounded USD price
+  function cacheKey(item, metalCode) { return item.id + '|' + metalCode; }
+  function specOf(item, metalCode) {
     var s = item.specs || {};
-    var mc = metalCode || s.metalCode;
-    if (!P || !P.priceDetail) return null;
-    // FULL AI Lab formula: baseCost (metal + stone) + 20% labour + tiered profit.
-    var r = P.priceDetail({
-      metalCode: mc, grams: s.grams, stoneCode: s.stoneType,
-      jewelryType: s.jewelryType, carats: s.carats, stoneCount: s.stoneCount
-    });
-    var price = Math.round(r.finalPrice);
-    console.log('[Collections] price | item:', item.id, '| metal:', mc, '| stone:', s.stoneType,
-      '| profit tier:', r.profitRate, '| finalPrice:', price);
-    if (price < 50 || price > 100000) {
-      console.warn('[Collections] price OUT OF SANE RANGE:', item.id, '| metal:', mc, '| price:', price,
-        '| inputs:', JSON.stringify({ grams: s.grams, carats: s.carats, stone: s.stoneType }));
-    }
-    return price;
+    return { metalCode: metalCode || s.metalCode, grams: s.grams, stoneCode: s.stoneType,
+             jewelryType: s.jewelryType, carats: s.carats, stoneCount: s.stoneCount };
+  }
+  // Price item+metal pairs in ONE worker request; fills _priceCache. Resolves when done.
+  function fetchPrices(pairs) {
+    if (!P || !P.priceBatch || !pairs.length) return Promise.resolve();
+    return P.priceBatch(pairs.map(function (p) { return specOf(p.item, p.metal); }))
+      .then(function (results) {
+        pairs.forEach(function (p, i) {
+          var r = results[i];
+          if (!r || r.error || !isFinite(r.finalPrice)) {
+            console.warn('[Collections] price unavailable:', p.item.id, '| metal:', p.metal, '|', r && r.error);
+            return;
+          }
+          var price = Math.round(r.finalPrice);
+          console.log('[Collections] price | item:', p.item.id, '| metal:', p.metal,
+            '| stone:', (p.item.specs || {}).stoneType, '| finalPrice:', price);
+          if (price < 50 || price > 100000) {
+            console.warn('[Collections] price OUT OF SANE RANGE:', p.item.id, '| metal:', p.metal, '| price:', price,
+              '| inputs:', JSON.stringify({ grams: (p.item.specs || {}).grams, carats: (p.item.specs || {}).carats }));
+          }
+          _priceCache[cacheKey(p.item, p.metal)] = price;
+        });
+      })
+      .catch(function (e) { console.warn('[Collections] pricing worker unavailable:', e && e.message); });
+  }
+  function cachedPrice(item, metalCode) {
+    var c = _priceCache[cacheKey(item, metalCode)];
+    return (c != null) ? c : null;
   }
   function fmtPrice(n) { return (n == null) ? '—' : '$' + n.toLocaleString('en-US') + ' USD'; }
 
@@ -111,7 +130,8 @@
 
     var price = document.createElement('p');
     price.className = 'col-card-price';
-    price.textContent = fmtPrice(computePrice(item, item.specs.metalCode));
+    // Cached price shows instantly; otherwise a dash until the batch request lands.
+    price.textContent = fmtPrice(cachedPrice(item, item.specs.metalCode));
     body.appendChild(price);
 
     card.appendChild(wrap);
@@ -127,6 +147,20 @@
     grid.innerHTML = '';
     var items = ITEMS.filter(function (it) { return it.category === category; });
     items.forEach(function (it, i) { grid.appendChild(makeCard(it, i)); });
+
+    // ONE batch request for every not-yet-cached price in this category, then fill
+    // the card price lines (skipped entirely when the whole category is cached).
+    var uncached = items.filter(function (it) { return cachedPrice(it, it.specs.metalCode) == null; });
+    if (uncached.length) {
+      fetchPrices(uncached.map(function (it) { return { item: it, metal: it.specs.metalCode }; }))
+        .then(function () {
+          if (currentCategory !== category) return; // superseded by a tab switch
+          items.forEach(function (it) {
+            var el = grid.querySelector('.col-card[data-id="' + it.id + '"] .col-card-price');
+            if (el) el.textContent = fmtPrice(cachedPrice(it, it.specs.metalCode));
+          });
+        });
+    }
 
     if (items.length > INITIAL) {
       exploreBtn.style.display = '';
@@ -212,7 +246,16 @@
     }).join('');
   }
   function renderPrice(item, metalCode) {
-    if (mPrice) mPrice.textContent = fmtPrice(computePrice(item, metalCode));
+    if (!mPrice) return;
+    var cached = cachedPrice(item, metalCode);
+    if (cached != null) { mPrice.textContent = fmtPrice(cached); return; }
+    mPrice.textContent = '…';
+    fetchPrices([{ item: item, metal: metalCode }]).then(function () {
+      // Only paint if the modal still shows this item + metal (guards stale responses).
+      if (_openItem === item && _openMetal === metalCode) {
+        mPrice.textContent = fmtPrice(cachedPrice(item, metalCode));
+      }
+    });
   }
 
   function openSpecs(item) {
@@ -275,8 +318,8 @@
 
   // ── Init ──
   console.log('[Collections] tab theme updated to site palette');
-  render('ring'); // default view: Rings (uses fallback spot prices until live ones load)
-  if (P && P.fetchSpotPrices) {
-    P.fetchSpotPrices().then(function () { render(currentCategory); }).catch(function () {});
-  }
+  // Default view: Rings. Prices arrive from the calc-price worker's batch response —
+  // no fallback-then-live double render needed (the worker prices with its own live
+  // spot on the very first request).
+  render('ring');
 })();

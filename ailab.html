@@ -5700,32 +5700,69 @@ function _renderStoneRows() {
   }, 40);
 }
 
+/* ── Server-side pricing (calc-price worker) ──
+   The pricing formula (stone rates, labour/profit tiers) lives in the calc-price
+   Cloudflare Worker; the front end sends spec inputs and displays the returned
+   numbers. POST { items: [...] } → { results: [...] }; each result is either
+   { finalPrice, metalCost, stoneCost, labourAndCraftsmanship, metalGrams,
+   stoneCarats } or { error } (unknown metal/stone keys are rejected loudly). */
+const CALC_PRICE_URL = 'https://calc-price.sarkd333.workers.dev';
+async function _fetchPriceCalc(items) {
+  const res = await fetch(CALC_PRICE_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ items: items }),
+  });
+  if (!res.ok) throw new Error('calc-price HTTP ' + res.status);
+  const data = await res.json();
+  if (!data || !Array.isArray(data.results)) throw new Error('calc-price: malformed response');
+  return data.results;
+}
+
+// Debounced worker call for the live spec estimate: several estimate triggers are
+// oninput handlers (pendant mm, ring carats, necklace length, …) that fire per
+// keystroke — wait 400ms after the last change before asking the worker.
+let _specEstimateDebounce = null;
+let _specEstimateReqId    = 0;
+function _scheduleSpecEstimate(grams, carats) {
+  clearTimeout(_specEstimateDebounce);
+  _specEstimateDebounce = setTimeout(async () => {
+    const myId = ++_specEstimateReqId;
+    const el = document.getElementById('specCostEstimate');
+    try {
+      // exact:true = estimate semantics (grams/carats as-is, an explicit zero stays
+      // zero — no per-type default fallbacks). Estimate shows metal + stone base.
+      const r = (await _fetchPriceCalc([{
+        jewelryType: LAB.type, metalType: LAB.material || '925silver', stoneType: LAB.gem,
+        metalGrams: grams, totalCarats: carats, exact: true,
+      }]))[0];
+      if (myId !== _specEstimateReqId) return; // superseded by a newer change
+      if (!r || r.error) {
+        console.error('[Pricing] estimate refused:', r && r.error);
+        if (el) el.textContent = '—';
+        return;
+      }
+      const base = r.metalCost + r.stoneCost;
+      if (el) el.textContent = base > 0 ? '$' + base.toFixed(2) + ' USD' : '—';
+    } catch (e) {
+      if (myId !== _specEstimateReqId) return;
+      console.warn('[Pricing] estimate unavailable:', e && e.message);
+      if (el) el.textContent = '—';
+    }
+  }, 400);
+}
+
 function updateSpecCostEstimate() {
-  const s  = window.jwlSpecifications;
-  const mt = LAB.material || '925silver';
-  let metalRate = 0;
-  if      (mt === '925silver')  metalRate = spotPrices.silverPerGram   || 0.97;
-  else if (mt === '10ctgold')   metalRate = spotPrices.gold10ctPerGram || 44.24;
-  else if (mt === '14ctgold')   metalRate = spotPrices.gold14ctPerGram || 61.86;
+  const s = window.jwlSpecifications;
 
   // Bracelet: metal from link width × length, stones = count × per-stone carat.
-  // (Count is a preliminary estimate here; the real count comes from the image at quote time.)
+  // (Count is a preliminary estimate here; the real count comes at quote time.)
   if (LAB.type === 'bracelet') {
     const b = _applyBraceletSpecs();
     const count = (b && b.count) || BRACELET_DEFAULT_COUNT;
     const per   = (b && b.perStone) || 0.10;
-    const _gemRateB = stoneRateFor(LAB.gem);
-    if (_gemRateB == null) { // unknown stone key — no estimate, never the cheapest rate
-      const elBad = document.getElementById('specCostEstimate');
-      if (elBad) elBad.textContent = '—';
-      return;
-    }
-    const metalCostB = (s.metalGrams || 0) * metalRate;
-    const stoneCostB = count * per * _gemRateB;
-    const totalB = metalCostB + stoneCostB;
-    const elB     = document.getElementById('specCostEstimate');
+    _scheduleSpecEstimate(s.metalGrams || 0, count * per);
     const detailB = document.getElementById('specCostDetail');
-    if (elB) elB.textContent = totalB > 0 ? '$' + totalB.toFixed(2) + ' USD' : '—';
     // Coverage framing: bracelets are sold by total carat coverage, not stone count.
     if (detailB) detailB.textContent = (s.metalGrams || 0).toFixed(1) + 'g metal · '
       + (count * per).toFixed(2) + 'ct total coverage (' + per + 'ct stones, '
@@ -5735,21 +5772,10 @@ function updateSpecCostEstimate() {
 
   // Necklace metal weight is auto-derived (already encodes length + placement) —
   // use it directly, no extra length scaling. Other types: weight as-is.
-  const effGrams  = +s.metalGrams.toFixed(2);
-  const metalCost = effGrams * metalRate;
-  // Use the same per-gem rate as the quote step so lab grown diamonds estimate at $80/ct.
-  const _gemRate  = stoneRateFor(LAB.gem);
-  if (_gemRate == null) { // unknown stone key — no estimate, never the cheapest rate
-    const elBad = document.getElementById('specCostEstimate');
-    if (elBad) elBad.textContent = '—';
-    return;
-  }
-  const stoneCost = s.totalCarats * _gemRate;
-  const total     = metalCost + stoneCost;
+  const effGrams = +s.metalGrams.toFixed(2);
+  _scheduleSpecEstimate(effGrams, s.totalCarats);
 
-  const el     = document.getElementById('specCostEstimate');
   const detail = document.getElementById('specCostDetail');
-  if (el) el.textContent = total > 0 ? '$' + total.toFixed(2) + ' USD' : '—';
   if (detail) {
     // Necklace coverage framing: full/tennis layouts are SOLD by total carat
     // coverage (never a stone count); stations show an approximate station count.
@@ -6015,7 +6041,10 @@ function calculatePrice(metalType, stoneType, jewelryType, userCarats) {
 }
 
 function calcQuote() {
-  return LAB.quote || { total: calculatePrice(LAB.material, LAB.gem, LAB.type).finalPrice };
+  // Pricing is server-side (calc-price worker) — there is no local formula to fall
+  // back on. The quote step (displayPricing) sets LAB.quote before the order step
+  // is reachable; if it failed, the order summary shows a dash instead of a price.
+  return LAB.quote || { total: null };
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -6139,11 +6168,23 @@ async function displayPricing(metalType, stoneType, jewelryType, overrideCarats)
   if (_bracePanel && jewelryType !== 'bracelet') _bracePanel.style.display = 'none';
   // Metal weight for necklaces is the auto-derived value (already encodes length +
   // placement) — do NOT scale it again by length here, that double-counts.
+  // Pricing itself happens in the calc-price worker (server-side formula); the
+  // client sends the spec inputs and displays the returned numbers.
   var r;
   try {
-    r = calculatePrice(metalType, stoneType, jewelryType, userCarats);
+    var _specsNow = window.jwlSpecifications;
+    r = (await _fetchPriceCalc([{
+      jewelryType: jewelryType, metalType: metalType, stoneType: stoneType,
+      metalGrams: (_specsNow && _specsNow.metalGrams) || 0,
+      totalCarats: (_specsNow && typeof _specsNow.totalCarats === 'number') ? _specsNow.totalCarats : undefined,
+      userCarats: userCarats || 0,
+    }]))[0];
+    if (!r || r.error) throw new Error((r && r.error) || 'empty pricing result');
+    // Weight diagnostics (formerly inside calculatePrice) — reads the resolved grams.
+    try { _logWeightDiagnostics(jewelryType, metalType, _specsNow, r.metalGrams); }
+    catch (e) { console.warn('[Weight] diagnostics skipped:', e && e.message); }
   } catch (err) {
-    // Unknown stone key (or other pricing bug): refuse to quote, visibly.
+    // Unknown stone key, worker down, or other pricing failure: refuse to quote, visibly.
     console.error('[Pricing] quote refused:', err && err.message);
     LAB.quote = null;
     document.getElementById('priceRows').innerHTML =
@@ -6188,7 +6229,7 @@ async function displayPricing(metalType, stoneType, jewelryType, overrideCarats)
     + row('Stones — ' + _quoteStoneLine(jewelryType, stoneType),
           '$' + r.stoneCost.toFixed(2))
     + row('Labour &amp; craftsmanship',
-          '$' + (r.labourCost + r.profitCost).toFixed(2))
+          '$' + r.labourAndCraftsmanship.toFixed(2))
     + '</div>'
     + '<p style="font-family:Inter,sans-serif;font-size:11px;line-height:1.55;color:#8a9299;margin:6px 0 0;">'
     + 'This specification sheet defines your order. Your piece is crafted to these exact '
@@ -6253,7 +6294,7 @@ function populateOrderSummary() {
   const q = LAB.quote || calcQuote();
   const typeName = typeLabel(LAB.type);
   document.getElementById('orderSummaryTitle').textContent = `${LAB.style} ${typeName} · ${matLabel(LAB.material)}`;
-  document.getElementById('orderSummaryPrice').textContent = '$' + q.total.toLocaleString();
+  document.getElementById('orderSummaryPrice').textContent = (q.total != null) ? '$' + q.total.toLocaleString() : '—';
 }
 
 /* ── Order submission ────────────────────────── */

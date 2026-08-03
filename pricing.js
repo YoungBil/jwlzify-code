@@ -131,27 +131,51 @@
     };
   }
 
-  // Clean-parameter wrapper returning the FULL result (finalPrice, profitRate, breakdown).
-  // Does not clobber the AI Lab's global jwlSpecifications.
-  function priceDetail(o) {
-    var prev = root.jwlSpecifications;
-    root.jwlSpecifications = {
-      metalGrams: o.grams || 0, totalCarats: o.carats || 0,
-      stoneCount: o.stoneCount || 0, stones: []
+  /* ── Server-side pricing (calc-price worker) ──
+     The formula (stone rates, labour/profit tiers) lives in the calc-price
+     Cloudflare Worker; this file just sends spec inputs and returns the display
+     numbers. All pricing functions are ASYNC (they resolve a network call). */
+  var CALC_PRICE_URL = 'https://calc-price.sarkd333.workers.dev';
+  function _toWorkerItem(o) {
+    return {
+      jewelryType: o.jewelryType, metalType: o.metalCode, stoneType: o.stoneCode,
+      metalGrams: o.grams || 0, totalCarats: o.carats || 0, userCarats: o.carats || 0
     };
-    try {
-      return calculatePrice(o.metalCode, o.stoneCode, o.jewelryType, o.carats || 0);
-    } finally {
-      root.jwlSpecifications = prev; // restore even if pricing throws
-    }
   }
-  // Back-compat: just the final price (base + labour + tiered profit).
-  function priceForSpec(o) { return priceDetail(o).finalPrice; }
+  // Price many specs in ONE request (the collections page batches a whole category).
+  // Resolves to an array aligned with `specs`; each entry is either
+  // { finalPrice, metalCost, stoneCost, labourAndCraftsmanship, metalGrams,
+  // stoneCarats } or { error } (unknown metal/stone keys are rejected loudly).
+  function priceBatch(specs) {
+    return fetch(CALC_PRICE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items: specs.map(_toWorkerItem) })
+    }).then(function (res) {
+      if (!res.ok) throw new Error('calc-price HTTP ' + res.status);
+      return res.json();
+    }).then(function (data) {
+      if (!data || Object.prototype.toString.call(data.results) !== '[object Array]') {
+        throw new Error('calc-price: malformed response');
+      }
+      return data.results;
+    });
+  }
+  // ASYNC: full display breakdown for one spec (throws on unknown metal/stone key).
+  function priceDetail(o) {
+    return priceBatch([o]).then(function (results) {
+      var r = results[0];
+      if (!r || r.error) throw new Error((r && r.error) || 'empty pricing result');
+      return r;
+    });
+  }
+  // ASYNC back-compat: just the final price.
+  function priceForSpec(o) { return priceDetail(o).then(function (r) { return r.finalPrice; }); }
 
   root.JWLZ_PRICING = {
     spotPrices: spotPrices,
     fetchSpotPrices: fetchSpotPrices,
-    calculatePrice: calculatePrice,
+    priceBatch: priceBatch,
     priceForSpec: priceForSpec,
     priceDetail: priceDetail,
     KARAT_PURITY: KARAT_PURITY
