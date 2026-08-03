@@ -1778,7 +1778,7 @@ window.addEventListener('DOMContentLoaded', () => {
   if (design.type)     LAB.type     = design.type;
   if (design.style)    LAB.style    = design.style;
   if (design.material) LAB.material = design.material;
-  if (design.gem)      LAB.gem      = design.gem;
+  if (design.gem)      LAB.gem      = _gateIncomingGem(design.gem);
   if (design.prompt)   LAB.prompt   = design.prompt;
 
   // 1. Set the generated image (id="refineImg" in step 3's preview panel)
@@ -1893,11 +1893,31 @@ function typeLabel(t) {
 }
 
 /* ── Metal → gem options ── */
+// LAUNCH GATE: real diamond has no confirmed per-carat sourcing rate yet, so it is
+// hidden from customers until the rate lands. Flip to true to restore it everywhere
+// in the AI Lab (and flip the same-named constant in collections-data.js). The
+// calc-price worker keeps its real_diamond_vsvvs / natural_diamond rates and the
+// 70% profit tier — no server change is needed to re-enable.
+const REAL_DIAMOND_ENABLED = false;
 const GEM_OPTIONS = {
   '925silver':  [['moissanite_vvsd','Moissanite VVS/VVSD'],['lab_diamond_vvs','Lab Diamond VVS/VVSD']],
   '10ctgold':   [['lab_diamond','Lab Diamond VVS/VVSD'],['real_diamond_vsvvs','Real Diamond VS/VVS']],
   '14ctgold':   [['lab_diamond','Lab Diamond VVS/VVSD'],['real_diamond_vsvvs','Real Diamond VS/VVS']],
 };
+if (!REAL_DIAMOND_ENABLED) {
+  for (const _m in GEM_OPTIONS) {
+    GEM_OPTIONS[_m] = GEM_OPTIONS[_m].filter(([v]) => v !== 'real_diamond_vsvvs');
+  }
+}
+// Incoming gems from saved designs / collections handoffs written before the gate
+// (or while it is off) map to lab diamond so no path can price a real diamond.
+function _gateIncomingGem(gem) {
+  if (!REAL_DIAMOND_ENABLED && (gem === 'real_diamond_vsvvs' || gem === 'natural_diamond')) {
+    console.log('[Gem gate] real diamond disabled — substituting lab_diamond for', gem);
+    return 'lab_diamond';
+  }
+  return gem;
+}
 function updateGemOptions() {
   const matEl = document.getElementById('materialSelect');
   const sel   = document.getElementById('gemSelect');
@@ -2692,7 +2712,7 @@ function _loadIncomingCollectionPiece() {
   // (material: 925silver/10ctgold/14ctgold, gem: lab_diamond/natural_diamond/moissanite_vvsd).
   LAB.type     = piece.type     || LAB.type;
   LAB.material = piece.material || LAB.material;
-  LAB.gem      = piece.gem      || LAB.gem;
+  LAB.gem      = piece.gem ? _gateIncomingGem(piece.gem) : LAB.gem;
   LAB.style    = piece.style    || LAB.style;
   LAB.imageUrl = piece.imageUrl;
   LAB.prompt   = piece.prompt   || piece.name || '';

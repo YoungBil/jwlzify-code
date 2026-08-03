@@ -25,6 +25,13 @@
   // Tone of the original render → a sensible default locked metal (image is representative;
   // the metal is switchable in the modal between all three).
   var TONE_PREV = ['Yellow', 'White', 'Rose', 'Platinum']; // old idx%4 tone order
+  // LAUNCH GATE (keep in sync with ailab.html REAL_DIAMOND_ENABLED): real diamond
+  // has no confirmed per-carat rate yet. While false, pieces whose rotation slot is
+  // natural_diamond substitute lab diamond instead — the items still generate, so
+  // the 90-item grid, ids, names, images and sidebar counts stay identical. Flip to
+  // true to restore natural diamond in the rotation.
+  var REAL_DIAMOND_ENABLED = false;
+
   // Stone types are LOCKED to the AI Lab's three options so each piece maps to a
   // correct profit tier (925+moissanite=150%, gold+natural=70%, otherwise 100%).
   var STONE_TYPES = [
@@ -114,6 +121,9 @@
       gemPhrase = 'polished plain ' + metal.display.toLowerCase() + ', no stones';
     } else {
       var st = STONE_TYPES[(idx + CAT_ORDER.indexOf(category)) % STONE_TYPES.length];
+      // Gate: natural-diamond slots become lab diamond while real diamond is disabled
+      // (same rotation position, so every other item is untouched).
+      if (!REAL_DIAMOND_ENABLED && st.code === 'natural_diamond') st = STONE_TYPES[0];
       stoneType = st.code; stoneLabel = st.label;
       carats = Math.round((0.4 + (idx % 6) * 0.45) * 100) / 100;
       var isPave = style === 'Pavé Eternity' || style === 'Tennis' || style === 'Station';
