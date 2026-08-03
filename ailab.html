@@ -5727,6 +5727,27 @@ function _renderStoneRows() {
    { finalPrice, metalCost, stoneCost, labourAndCraftsmanship, metalGrams,
    stoneCarats } or { error } (unknown metal/stone keys are rejected loudly). */
 const CALC_PRICE_URL = 'https://calc-price.sarkd333.workers.dev';
+
+// Spec fields the worker derives metal weight from (its METAL WEIGHT MODEL).
+// Only fields the app ACTUALLY collects are sent; ring size is not collected
+// anywhere yet, so rings rely on the worker's documented default (US size 7).
+function _pricingGeomFields(jewelryType) {
+  const f = {};
+  if (jewelryType === 'bracelet') {
+    f.lengthIn   = parseFloat(userSelections.braceletLengthIn) || undefined;
+    f.widthMm    = parseFloat(userSelections.linkWidthMm) || undefined;
+    f.chainStyle = 'tennis'; // AI Lab bracelets are stone-set bands
+  } else if (jewelryType === 'necklace') {
+    f.lengthIn   = (typeof _necklaceInches === 'function') ? _necklaceInches() : undefined;
+    f.chainStyle = (selectedNecklacePlacement === 'full') ? 'tennis' : (selectedChainStyle || 'cable');
+  } else if (jewelryType === 'pendant') {
+    const s = window.jwlSpecifications || {};
+    f.pendantWidthMm  = s.pendantWidthMm;
+    f.pendantHeightMm = s.pendantHeightMm;
+  }
+  return f;
+}
+
 async function _fetchPriceCalc(items) {
   const res = await fetch(CALC_PRICE_URL, {
     method: 'POST',
@@ -5744,18 +5765,24 @@ async function _fetchPriceCalc(items) {
 // keystroke — wait 400ms after the last change before asking the worker.
 let _specEstimateDebounce = null;
 let _specEstimateReqId    = 0;
-function _scheduleSpecEstimate(grams, carats) {
+let _specEstimateDetailSuffix = null; // detail text after "…g metal · " — grams portion
+                                      // is re-rendered from the worker's derived value
+function _scheduleSpecEstimate(grams, carats, detailSuffix) {
+  _specEstimateDetailSuffix = detailSuffix || null;
   clearTimeout(_specEstimateDebounce);
   _specEstimateDebounce = setTimeout(async () => {
     const myId = ++_specEstimateReqId;
     const el = document.getElementById('specCostEstimate');
     try {
-      // exact:true = estimate semantics (grams/carats as-is, an explicit zero stays
-      // zero — no per-type default fallbacks). Estimate shows metal + stone base.
-      const r = (await _fetchPriceCalc([{
+      // exact:true = estimate semantics (carats as-is, an explicit zero stays zero).
+      // deriveWeight:true = the worker derives grams from the geometry/spec fields
+      // (its METAL WEIGHT MODEL) — same grams the quote will use.
+      const _specsNow = window.jwlSpecifications || {};
+      const r = (await _fetchPriceCalc([Object.assign({
         jewelryType: LAB.type, metalType: LAB.material || '925silver', stoneType: LAB.gem,
         metalGrams: grams, totalCarats: carats, exact: true,
-      }]))[0];
+        deriveWeight: true, stoneCount: _specsNow.stoneCount || 0,
+      }, _pricingGeomFields(LAB.type))]))[0];
       if (myId !== _specEstimateReqId) return; // superseded by a newer change
       if (!r || r.error) {
         console.error('[Pricing] estimate refused:', r && r.error);
@@ -5764,6 +5791,11 @@ function _scheduleSpecEstimate(grams, carats) {
       }
       const base = r.metalCost + r.stoneCost;
       if (el) el.textContent = base > 0 ? '$' + base.toFixed(2) + ' USD' : '—';
+      // Grams shown in the detail line = the worker's derived weight (what pricing uses).
+      const detail = document.getElementById('specCostDetail');
+      if (detail && _specEstimateDetailSuffix != null && typeof r.metalGrams === 'number') {
+        detail.textContent = r.metalGrams.toFixed(1) + 'g metal · ' + _specEstimateDetailSuffix;
+      }
     } catch (e) {
       if (myId !== _specEstimateReqId) return;
       console.warn('[Pricing] estimate unavailable:', e && e.message);
@@ -5775,40 +5807,34 @@ function _scheduleSpecEstimate(grams, carats) {
 function updateSpecCostEstimate() {
   const s = window.jwlSpecifications;
 
-  // Bracelet: metal from link width × length, stones = count × per-stone carat.
+  // Each branch computes the estimate carats + the detail SUFFIX (everything after
+  // "…g metal · "). The grams figure is rendered from the worker's derived weight
+  // when the estimate response lands; the client value is only the initial paint.
+
+  // Bracelet: stones = count × per-stone carat.
   // (Count is a preliminary estimate here; the real count comes at quote time.)
   if (LAB.type === 'bracelet') {
     const b = _applyBraceletSpecs();
     const count = (b && b.count) || BRACELET_DEFAULT_COUNT;
     const per   = (b && b.perStone) || 0.10;
-    _scheduleSpecEstimate(s.metalGrams || 0, count * per);
-    const detailB = document.getElementById('specCostDetail');
     // Coverage framing: bracelets are sold by total carat coverage, not stone count.
-    if (detailB) detailB.textContent = (s.metalGrams || 0).toFixed(1) + 'g metal · '
-      + (count * per).toFixed(2) + 'ct total coverage (' + per + 'ct stones, '
+    const suffixB = (count * per).toFixed(2) + 'ct total coverage (' + per + 'ct stones, '
       + _braceletLayoutLabel(userSelections.stoneLayout || 'full') + ' layout)';
+    _scheduleSpecEstimate(s.metalGrams || 0, count * per, suffixB);
+    const detailB = document.getElementById('specCostDetail');
+    if (detailB) detailB.textContent = (s.metalGrams || 0).toFixed(1) + 'g metal · ' + suffixB;
     return;
   }
 
-  // Necklace metal weight is auto-derived (already encodes length + placement) —
-  // use it directly, no extra length scaling. Other types: weight as-is.
   const effGrams = +s.metalGrams.toFixed(2);
-  _scheduleSpecEstimate(effGrams, s.totalCarats);
-
-  const detail = document.getElementById('specCostDetail');
-  if (detail) {
-    // Necklace coverage framing: full/tennis layouts are SOLD by total carat
-    // coverage (never a stone count); stations show an approximate station count.
-    if (LAB.type === 'necklace' && selectedNecklacePlacement === 'full') {
-      detail.textContent = effGrams + 'g metal · ' + s.totalCarats + 'ct total coverage (continuous, '
-        + selectedNecklaceCt + 'ct stones)';
-      return;
-    }
-    if (LAB.type === 'necklace' && selectedNecklacePlacement === 'stations') {
-      detail.textContent = effGrams + 'g metal · ≈' + s.stoneCount + ' stations × '
-        + selectedNecklaceCt + 'ct = ' + s.totalCarats + 'ct total';
-      return;
-    }
+  let suffix;
+  // Necklace coverage framing: full/tennis layouts are SOLD by total carat
+  // coverage (never a stone count); stations show an approximate station count.
+  if (LAB.type === 'necklace' && selectedNecklacePlacement === 'full') {
+    suffix = s.totalCarats + 'ct total coverage (continuous, ' + selectedNecklaceCt + 'ct stones)';
+  } else if (LAB.type === 'necklace' && selectedNecklacePlacement === 'stations') {
+    suffix = '≈' + s.stoneCount + ' stations × ' + selectedNecklaceCt + 'ct = ' + s.totalCarats + 'ct total';
+  } else {
     const cts = (s.stones || []).map(_ctOf); // tolerate numeric or { carat } stones
     const n = cts.length;
     // Collapse uniform stones (every stone the same ct) to "N × Xct" so a
@@ -5817,10 +5843,12 @@ function updateSpecCostEstimate() {
     const breakdown = (n === 0) ? 'no stones'
       : allEqual ? (n + ' × ' + cts[0] + 'ct')
       : cts.map(c => c + 'ct').join(' + ');
-    detail.textContent = effGrams + 'g metal · '
-      + n + ' stone' + (n === 1 ? '' : 's')
+    suffix = n + ' stone' + (n === 1 ? '' : 's')
       + ' (' + breakdown + (n > 0 ? ' = ' + s.totalCarats + 'ct total' : '') + ')';
   }
+  _scheduleSpecEstimate(effGrams, s.totalCarats, suffix);
+  const detail = document.getElementById('specCostDetail');
+  if (detail) detail.textContent = effGrams + 'g metal · ' + suffix;
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -6022,12 +6050,16 @@ async function displayPricing(metalType, stoneType, jewelryType, overrideCarats)
   var r;
   try {
     var _specsNow = window.jwlSpecifications;
-    r = (await _fetchPriceCalc([{
+    // metalGrams still sent for back-compat, but current workers derive grams
+    // themselves (deriveWeight) from the geometry/spec fields.
+    r = (await _fetchPriceCalc([Object.assign({
       jewelryType: jewelryType, metalType: metalType, stoneType: stoneType,
       metalGrams: (_specsNow && _specsNow.metalGrams) || 0,
       totalCarats: (_specsNow && typeof _specsNow.totalCarats === 'number') ? _specsNow.totalCarats : undefined,
       userCarats: userCarats || 0,
-    }]))[0];
+      deriveWeight: true,
+      stoneCount: (_specsNow && _specsNow.stoneCount) || 0,
+    }, _pricingGeomFields(jewelryType))]))[0];
     if (!r || r.error) throw new Error((r && r.error) || 'empty pricing result');
     // Weight diagnostics (formerly inside calculatePrice) — reads the resolved grams.
     try { _logWeightDiagnostics(jewelryType, metalType, _specsNow, r.metalGrams); }

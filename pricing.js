@@ -77,7 +77,13 @@
   function _toWorkerItem(o) {
     return {
       jewelryType: o.jewelryType, metalType: o.metalCode, stoneType: o.stoneCode,
-      metalGrams: o.grams || 0, totalCarats: o.carats || 0, userCarats: o.carats || 0
+      metalGrams: o.grams || 0, totalCarats: o.carats || 0, userCarats: o.carats || 0,
+      // The worker derives metal grams from these spec fields (its METAL WEIGHT
+      // MODEL) — geometry × density; the client never computes a weight.
+      deriveWeight: true,
+      stoneCount: o.stoneCount || 0,
+      chainStyle: o.chainStyle, lengthIn: o.lengthIn, widthMm: o.widthMm,
+      pendantWidthMm: o.pendantWidthMm, pendantHeightMm: o.pendantHeightMm
     };
   }
   // Price many specs in ONE request (the collections page batches a whole category).

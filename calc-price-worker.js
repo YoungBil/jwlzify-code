@@ -19,6 +19,13 @@
 //     exact?:       boolean,  // true = use metalGrams/totalCarats AS-IS, zero stays
 //                             // zero (the live spec-estimate semantics); default
 //                             // false = quote resolution with per-type defaults
+//     deriveWeight?: boolean, // true (current clients): grams are DERIVED here from
+//                             // the spec fields below via the METAL WEIGHT MODEL
+//                             // (geometry × density); client metalGrams is ignored
+//     stoneCount?: number,    // ring setting uplift (single vs accents)
+//     ringSize?: number,      // US size (not collected yet → default size 7)
+//     lengthIn?: number, widthMm?: number, chainStyle?: string,  // bracelet/necklace
+//     pendantWidthMm?: number, pendantHeightMm?: number          // pendant plate
 //   }, ... ] }   (max 25 items per request — the collections page batches a category)
 //
 // Response (JSON): { results: [ {
@@ -50,6 +57,82 @@ const MATERIAL_WEIGHTS = {
   earrings: { metalGrams: 3,  stoneCarats: 0.50 },
   bracelet: { metalGrams: 12, stoneCarats: 1.50 },
 };
+
+/* ══════════════════════════════════════════════════════════════════════════
+   METAL WEIGHT MODEL — every assumed constant lives HERE. All values are
+   industry-average PLACEHOLDERS pending real supplier cast weights.
+   Used when an item carries deriveWeight:true (current clients); items without
+   the flag keep the legacy behaviour (client-sent metalGrams, else the flat
+   MATERIAL_WEIGHTS fallback above) so older cached pages still price.
+══════════════════════════════════════════════════════════════════════════ */
+const METAL_DENSITY = { '925silver': 10.36, '10ctgold': 11.6, '14ctgold': 13.1 }; // g/cm³
+const RING_MODEL = {
+  defaultUsSize: 7,        // ring size is NOT collected anywhere in the app yet
+  innerDiaAtSize7Mm: 17.3, // US size 7; +0.8mm inner diameter per full size
+  mmPerSize: 0.8,
+  bandWidthMm: 2.5,        // assumed standard band cross-section
+  bandThicknessMm: 1.8,
+  upliftSingle: 1.20,      // setting uplift: head + prongs for one stone
+  upliftAccents: 1.35,     // gallery/settings when accent stones are present (count ≥ 2)
+};
+const CHAIN_MODEL = {
+  // grams per cm PER MM OF WIDTH, in 925 silver (gold scales by density ratio).
+  // Reference points: cuban ≈ 3× cable at the same width; tennis is dominated by
+  // settings rather than links; bangle/cuff are solid-section approximations.
+  gPerCmPerMmSilver: {
+    cable: 0.06, box: 0.08, rope: 0.11, cuban: 0.18, choker: 0.07,
+    tennis: 0.17, line: 0.15, link: 0.10, wrap: 0.09, mesh: 0.12,
+    bangle: 0.28, cuff: 0.30, bolo: 0.06, lariat: 0.06, layered: 0.12,
+    station: 0.08, collar: 0.20, riviere: 0.17,
+  },
+  defaultWidthMm: 3,        // necklace width is not collected — documented default
+  defaultBraceletLenIn: 7,  // used when a length is not collected (collections)
+  defaultNecklaceLenIn: 18,
+};
+const PENDANT_MODEL = {
+  thicknessMm: 1.6, fillFactor: 0.62, // plate model when mm × mm is collected
+  basePairlessG: 3.0, gPerCt: 0.9,    // fallback: base + carat-scaled setting (silver; density-scaled)
+};
+const EARRING_MODEL = { basePairG: 2.0, gPerCt: 0.8 }; // PAIR; carat-scaled setting (silver; density-scaled)
+
+// Derive metal grams from the specs the app actually collects. stoneCarats is the
+// already-resolved total carat weight (used to scale pendant/earring settings).
+function deriveMetalGrams(jewelryType, metalType, item, stoneCarats) {
+  const density = METAL_DENSITY[metalType];
+  const silverRatio = density / METAL_DENSITY['925silver'];
+  if (jewelryType === 'ring') {
+    const size = Number(item.ringSize) > 0 ? Number(item.ringSize) : RING_MODEL.defaultUsSize;
+    const innerDia = RING_MODEL.innerDiaAtSize7Mm + (size - 7) * RING_MODEL.mmPerSize;
+    const volMm3 = Math.PI * (innerDia + RING_MODEL.bandThicknessMm) * RING_MODEL.bandWidthMm * RING_MODEL.bandThicknessMm;
+    const bandG = (volMm3 / 1000) * density;
+    const count = Number(item.stoneCount) || 0;
+    const uplift = count >= 2 ? RING_MODEL.upliftAccents : count === 1 ? RING_MODEL.upliftSingle : 1.0;
+    return +(bandG * uplift).toFixed(2);
+  }
+  if (jewelryType === 'bracelet' || jewelryType === 'necklace') {
+    const isNeck = jewelryType === 'necklace';
+    const lengthIn = Number(item.lengthIn) > 0 ? Number(item.lengthIn)
+      : (isNeck ? CHAIN_MODEL.defaultNecklaceLenIn : CHAIN_MODEL.defaultBraceletLenIn);
+    const widthMm = Number(item.widthMm) > 0 ? Number(item.widthMm) : CHAIN_MODEL.defaultWidthMm;
+    const key = String(item.chainStyle || (isNeck ? 'cable' : 'tennis')).toLowerCase();
+    const rate = CHAIN_MODEL.gPerCmPerMmSilver[key] != null
+      ? CHAIN_MODEL.gPerCmPerMmSilver[key]
+      : CHAIN_MODEL.gPerCmPerMmSilver[isNeck ? 'cable' : 'tennis'];
+    return +((lengthIn * 2.54) * rate * widthMm * silverRatio).toFixed(2);
+  }
+  if (jewelryType === 'pendant') {
+    const w = Number(item.pendantWidthMm), h = Number(item.pendantHeightMm);
+    if (w > 0 && h > 0) {
+      return +(((w * h * PENDANT_MODEL.thicknessMm * PENDANT_MODEL.fillFactor) / 1000) * density).toFixed(2);
+    }
+    return +((PENDANT_MODEL.basePairlessG + PENDANT_MODEL.gPerCt * (stoneCarats || 0)) * silverRatio).toFixed(2);
+  }
+  if (jewelryType === 'earrings') {
+    return +((EARRING_MODEL.basePairG + EARRING_MODEL.gPerCt * (stoneCarats || 0)) * silverRatio).toFixed(2);
+  }
+  // Unknown type — pendant-style base fallback.
+  return +((PENDANT_MODEL.basePairlessG + PENDANT_MODEL.gPerCt * (stoneCarats || 0)) * silverRatio).toFixed(2);
+}
 const LABOUR_RATE = 0.20;
 function profitRateFor(metalType, stoneType) {
   if (metalType === '925silver' && stoneType === 'moissanite_vvsd') return 1.50;
@@ -127,6 +210,11 @@ function priceItem(item, spot) {
     } else {
       stoneCarats = userCt > 0 ? userCt : (total != null && total > 0) ? total : weights.stoneCarats;
     }
+  }
+  // Current clients ask the worker to derive weight from specs (METAL WEIGHT MODEL
+  // above) — geometry × density, varying by metal. Overrides both modes' grams.
+  if (item.deriveWeight) {
+    metalGrams = deriveMetalGrams(jewelryType, metalType, item, stoneCarats);
   }
 
   const metalCost  = metalGrams * metalPerGram;

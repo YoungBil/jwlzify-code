@@ -39,12 +39,24 @@
   // Pricing happens in the calc-price worker (server-side formula). One BATCH
   // request prices a whole category render; results are cached per item+metal so
   // tab flips and modal re-opens don't refetch.
-  var _priceCache = {};   // "itemId|metalCode" → rounded USD price
+  var _priceCache = {};   // "itemId|metalCode" → { price: rounded USD, grams: worker-derived }
   function cacheKey(item, metalCode) { return item.id + '|' + metalCode; }
+  // Style → chain/structure KEY for the worker's weight model. Names only — the
+  // grams-per-cm numbers live in the calc-price worker, never in client code.
+  var CHAIN_STYLE_KEY = {
+    bracelet: { 'Tennis': 'tennis', 'Line': 'line', 'Link': 'link', 'Wrap': 'wrap', 'Cuff': 'cuff',
+                'Bangle': 'bangle', 'Hinge Cuff': 'cuff', 'Rope': 'rope', 'Bolo': 'bolo', 'Mesh': 'mesh' },
+    necklace: { 'Pendant': 'cable', 'Chain': 'cable', 'Layered': 'layered', 'Collar': 'collar',
+                'Tennis': 'tennis', 'Lariat': 'lariat', 'Station': 'station', 'Rope': 'rope',
+                'Rivière': 'riviere', 'Choker': 'choker' }
+  };
   function specOf(item, metalCode) {
     var s = item.specs || {};
-    return { metalCode: metalCode || s.metalCode, grams: s.grams, stoneCode: s.stoneType,
-             jewelryType: s.jewelryType, carats: s.carats, stoneCount: s.stoneCount };
+    var o = { metalCode: metalCode || s.metalCode, stoneCode: s.stoneType,
+              jewelryType: s.jewelryType, carats: s.carats, stoneCount: s.stoneCount };
+    var map = CHAIN_STYLE_KEY[item.category];
+    if (map && map[s.style]) o.chainStyle = map[s.style];
+    return o;
   }
   // Price item+metal pairs in ONE worker request; fills _priceCache. Resolves when done.
   function fetchPrices(pairs) {
@@ -59,19 +71,23 @@
           }
           var price = Math.round(r.finalPrice);
           console.log('[Collections] price | item:', p.item.id, '| metal:', p.metal,
-            '| stone:', (p.item.specs || {}).stoneType, '| finalPrice:', price);
+            '| stone:', (p.item.specs || {}).stoneType, '| grams:', r.metalGrams, '| finalPrice:', price);
           if (price < 50 || price > 100000) {
             console.warn('[Collections] price OUT OF SANE RANGE:', p.item.id, '| metal:', p.metal, '| price:', price,
-              '| inputs:', JSON.stringify({ grams: (p.item.specs || {}).grams, carats: (p.item.specs || {}).carats }));
+              '| inputs:', JSON.stringify({ grams: r.metalGrams, carats: (p.item.specs || {}).carats }));
           }
-          _priceCache[cacheKey(p.item, p.metal)] = price;
+          _priceCache[cacheKey(p.item, p.metal)] = { price: price, grams: r.metalGrams };
         });
       })
       .catch(function (e) { console.warn('[Collections] pricing worker unavailable:', e && e.message); });
   }
   function cachedPrice(item, metalCode) {
     var c = _priceCache[cacheKey(item, metalCode)];
-    return (c != null) ? c : null;
+    return (c != null) ? c.price : null;
+  }
+  function cachedGrams(item, metalCode) {
+    var c = _priceCache[cacheKey(item, metalCode)];
+    return (c != null && c.grams != null) ? c.grams : null;
   }
   function fmtPrice(n) { return (n == null) ? '—' : '$' + n.toLocaleString('en-US') + ' USD'; }
 
@@ -233,7 +249,16 @@
     var s = item.specs || {};
     var m = metalOf(metalCode);
     mList.innerHTML = SPEC_ROWS.map(function (r) {
-      var v = (r[1] === 'material') ? m.display : (r[1] === 'karat') ? m.karat : s[r[1]];
+      var v;
+      if (r[1] === 'material')    v = m.display;
+      else if (r[1] === 'karat')  v = m.karat;
+      else if (r[1] === 'weight') {
+        // Weight comes from the worker's derived metalGrams (varies by metal) —
+        // shown once the price response lands, a pending dash until then.
+        var g = cachedGrams(item, metalCode);
+        v = (g != null) ? (g.toFixed(1) + ' g') : '…';
+      }
+      else v = s[r[1]];
       if (v === undefined || v === null || v === '') return '';
       return '<li><span class="k">' + r[0] + '</span><span class="v">' + v + '</span></li>';
     }).join('');
@@ -254,6 +279,7 @@
       // Only paint if the modal still shows this item + metal (guards stale responses).
       if (_openItem === item && _openMetal === metalCode) {
         mPrice.textContent = fmtPrice(cachedPrice(item, metalCode));
+        renderSpecList(item, metalCode); // weight row now has the derived grams
       }
     });
   }

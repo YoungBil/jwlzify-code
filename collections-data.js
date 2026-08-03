@@ -179,8 +179,9 @@
     else metalCode = '10ctgold';
     var metal = METALS[metalCode];
 
-    var grams = Math.round((cfg.weightBase + idx * (category === 'bracelet' || category === 'necklace' ? 1.6 : 0.6)) * 10) / 10;
-    var weightStr = grams + ' g';
+    // Metal weight is NOT baked here any more — it was a list-position guess.
+    // The calc-price worker derives grams from the piece's specs (style/metal),
+    // and collections-gallery.js renders the modal Weight row from that response.
 
     // Locked stone type → correct profit tier. Plain styles carry no stone.
     var hasStone = !noStoneFor(category, style);
@@ -225,10 +226,9 @@
         stoneSize: stoneSize,
         carats: carats,          // numeric total carats
         stoneCount: stoneCount,
-        style: style,
-        weight: weightStr,
-        grams: grams             // numeric grams (price input)
-        // price is computed at runtime via pricing.js (shared AI Lab formula)
+        style: style
+        // weight + price are computed at runtime by the calc-price worker
+        // (grams derived from specs; see collections-gallery.js)
       }
     };
   }
