@@ -1,0 +1,7 @@
+name = "calc-price"
+main = "calc-price-worker.js"
+compatibility_date = "2024-01-01"
+
+# No secrets needed — spot prices come from the public gold-price / silver-price
+# workers. Deploy via the Cloudflare dashboard (paste calc-price-worker.js),
+# never Wrangler CLI. This worker holds the pricing formula — keep it server-side.
